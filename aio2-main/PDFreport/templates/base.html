@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}分析サマリーレポート{% endblock %}</title>
+    <link rel="stylesheet" href="style.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <h1>{% block header_title %}アンケート一括分析 サマリーレポート{% endblock %}</h1>
+        {% block header_content %}{% endblock %}
+    </header>
+    
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    
+    <footer>
+        {% block footer_content %}
+        <p>生成日時: {{ generation_time|default('N/A') }}</p>
+        {% endblock %}
+    </footer>
+</body>
+</html>
+
+
+

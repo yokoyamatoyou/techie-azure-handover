@@ -1,0 +1,186 @@
+結論。いまの設計は少し無理筋です。
+**「自然な日本語」「一人称固定」「ゼロ照応の自然さ」「AI語の排除」「重複回避」**を1回の生成で同時にやらせると、`gpt-5.4-mini` では崩れやすいです。OpenAIの現行ガイドでも、`gpt-5.4-mini` は大きいモデルより**暗黙補完や曖昧性処理に弱く、完全な実行順・境界条件・出力契約を明示した方がよい**とされています。さらに GPT‑5.4 系は **Responses API** と **Structured Outputs** の相性がよく、複数段階のワークフロー前提で組んだ方が安定します。 ([OpenAI 開発者][1])
+
+研究側でも、制約つき長文生成は**単発生成より、計画→記述→監視→修正**の閉ループで扱う方が安定する、という流れがかなり強いです。WritingPath は前書き段階と執筆段階を分け、CogWriter は階層計画と継続監視を使い、DOME は動的アウトラインとメモリで整合性を保っています。つまり「骨格を作る」だけでは足りず、**生成中に状態を持ち続けること**が肝です。 ([ACLア Anthology][2])
+
+日本語では特に、主語省略をそのまま生成させると事故ります。日本語のゼロ照応は、述語に対して省略された項を**既存の談話エンティティへ結び直す問題**で、古典的にも**エンティティ管理、格フレーム、サリエンス**が効きます。さらに、非 pro-drop 言語では省略主語が表に出るため、日英のような並行表現がゼロ照応解決に効く、という結果もあります。要するに、**主語省略を先に書かせるのではなく、先に明示して後で落とす**方が筋がいいです。 ([ACLア Anthology][3])
+
+なので、すすめるアルゴリズムはこれです。
+
+## 影主語パイプライン
+
+### 1. まず「記事契約」を JSON で固定する
+
+本文を書く前に、自然文ではなく構造化データを作ります。`Structured Outputs` で強制してください。最低でも次を持ちます。 ([OpenAI 開発者][4])
+
+* `narrator_mode`: `none | watashi | boku | wareware`
+* `register`: `casual | semi_formal | formal`
+* `tense_policy`
+* `banned_lexemes`
+* `allowed_ending_buckets`
+* `entities`: 話題になる対象一覧
+* `claims`: 記事で言うべき意味単位
+* `sections`: 各セクションの役割、文字数、担当 claim IDs
+
+重要なのは、**主語省略**や**表現の揺れ**をここに入れないことです。ここでは不変条件だけ固定します。
+一人称ブレは、ほぼ例外なく `narrator_mode` を曖昧にしているのが原因です。
+
+### 2. 次に「影原稿」を作る
+
+ここが本丸です。各セクションをいきなり自然な日本語で書かせず、**省略なしの明示版**を作ります。各文をこんな単位で持たせます。
+
+```json
+{
+  "sentence_id": "s2_3",
+  "claim_ids": ["c7"],
+  "subject_entity_id": "service",
+  "topic_entity_id": "service",
+  "style_bucket": "assertive",
+  "explicit_text": "この機能は導入は簡単だが、運用設計を誤ると品質が不安定になる。"
+}
+```
+
+ここでは必ず**主語・話題・claim ID を明示**します。
+日本語でやってもいいですが、さらに安定させたいなら「主語必須の中間表現」を英語や擬似日本語で作ってから日本語化するとよいです。人類はすぐ1発で全部やらせたがりますが、その癖が壊れの温床です。
+
+### 3. その後で「省略判定」をする
+
+ゼロ照応は生成ではなく**判定**にします。簡単なルールで十分効きます。
+
+* 段落先頭の1文目は主語を省略しない
+* 前文と主語が同じでも、直近3文に競合エンティティが2つ以上あるなら省略しない
+* 引用の直後、話題転換の直後、見出し直後は再アンカーする
+* `narrator_mode = none` のときは `私/僕/筆者/われわれ` を禁止
+* 同じ claim を別セクションで再登場させる場合は `recap=true` のときだけ許可
+
+サリエンスは雑でもいいです。例えば
+`score = recent_mention*3 + topic_marker*2 + section_main_entity*2 - distance_penalty`
+でトップ候補と2位の差が小さければ、省略しない。
+これだけで「誰のことを言ってるのか分からない文」がかなり減ります。
+
+### 4. 文末の揺れは「自由生成」ではなく「有限状態制御」にする
+
+自然な揺れを直接プロンプトで出そうとすると、変な文末が増えます。なので文末は**バケット管理**にします。
+
+* `assertive`: だ。である。といえる。
+* `soft`: だろう。かもしれない。ようだ。
+* `explanatory`: のだ。ためだ。からだ。
+* `contrastive`: 一方で〜。ただ〜。
+
+ルールはこれで十分です。
+
+* 同じバケットを3回連続禁止
+* セクション冒頭は `explanatory` 禁止
+* 記事末尾は `contrastive` 禁止
+* 各セクションで目標分布を持つ
+
+つまり「揺れ」は sampling に任せず、**分布制御**します。
+
+### 5. AI語の除去は最後にやる
+
+ここも大事です。
+`さらに / 一方で / 重要なのは / つまり / 近年では / 注目されている` みたいなAI臭い語を**前段で強く禁止**すると、mini は別の不自然な言い換えで穴埋めしがちです。
+
+順番はこうです。
+
+1. まず意味を安定させる
+2. その後に AI語を検出する
+3. 問題箇所だけ局所置換する
+
+全文再生成はしません。**差分パッチ方式**です。
+
+### 6. Lint を先にかけて、修正は「問題箇所だけ」
+
+生成後に必ず機械判定を入れます。ここをサボると、延々と雰囲気で悩む羽目になります。OpenAI の eval ガイドでも、LLM の評価は**自由生成より分類・比較・採点**に寄せた方が安定するとされています。 ([OpenAI 開発者][5])
+
+Hard fail の lint 例:
+
+* 一人称混入
+* 禁止語混入
+* 同一 claim の重複登場
+* 文章埋め込み類似度が高すぎる文の重複
+* 同じ文末バケットの3連続
+* 省略主語の候補が複数ある文
+
+Soft score の judge 例:
+
+* ゼロ照応の明瞭さ 1-5
+* ブログらしい自然さ 1-5
+* セクション間の役割分担 1-5
+* AIっぽい言い回しの少なさ 1-5
+* 末尾表現の自然さ 1-5
+
+修正ループは全文ではなく、**flagged span ±2文だけ**再入力して直します。Self-Refine 系の発想です。1発生成より、この局所修正ループの方が強いです。 ([arXiv][6])
+
+## 実装の最小形
+
+```python
+contract = make_contract(topic, audience, target_len=2000)
+
+shadow_sections = []
+for section in contract["sections"]:
+    shadow_sections.append(write_shadow_section(contract, section))
+    # 主語・topic・claim_ids を必ず明示
+
+surface_sections = []
+state = init_discourse_state(contract)
+
+for shadow in shadow_sections:
+    text = realize_japanese(
+        shadow=shadow,
+        contract=contract,
+        state=state,
+        omission_rules=True,
+        ending_fsm=True
+    )
+    surface_sections.append(text)
+    state = update_state(state, text)
+
+draft = "\n\n".join(surface_sections)
+
+for _ in range(2):
+    issues = lint_blog(draft, contract)
+    if not issues:
+        break
+    draft = patch_only_flagged_spans(draft, issues, contract)
+
+final = rewrite_surface_only(
+    draft,
+    banned_lexemes=contract["banned_lexemes"],
+    no_semantic_change=True
+)
+```
+
+## GPT-5.4 mini での実装上のコツ
+
+`gpt-5.4-mini` では、プロンプトはこの順に固定すると安定します。OpenAI も小型モデル向けに **Task → Critical rule → Exact step order → Edge cases → Output format → One correct example** を推しています。 ([OpenAI 開発者][1])
+
+* **planning / judge** は `reasoning.effort = "medium"`
+* **shadow draft / patch** は `none` か `low`
+* `text.verbosity` は shadow で `low`, 最終整文で `medium`
+* 「step by step を説明しろ」は不要。内部推論より、**手順と schema を明示**する方が効きます。 ([OpenAI 開発者][7])
+
+さらに、固定の developer prompt、schema、良い短い例文は毎回先頭に置いてください。Prompt Caching は最近のモデルで自動有効で、**静的な接頭辞を前に置く**のが基本です。長い固定プロンプトを何段も使うこの設計では、地味に効きます。 ([OpenAI 開発者][8])
+
+## 予算が許すなら、もっと安定する構成
+
+OpenAI 自身が、**大きいモデルが planning / coordination / final judgment を担当し、mini が狭い下位タスクを並列実行する**使い方を推しています。なので最も現実的なのは、
+**GPT-5.4 で契約生成と最終 judge、GPT-5.4 mini で各セクションの shadow draft**
+です。これだけで品質はかなり上がります。 ([OpenAI][9])
+
+もう一段やるなら、文体専用の表層化モデルを別に持つ手もあります。現行の OpenAI の最適化ガイドでは、SFT / DPO の主な対象として 4.1 系が案内されています。なので、**5.4 mini を本文生成、4.1-mini の fine-tune を表層リライト専用**に使う構成はかなり筋がいいです。完全に同じモデルで全部やるより、ずっと現実的です。 ([OpenAI 開発者][10])
+
+要はこれです。
+**一発生成をやめる。意味と表層を分ける。主語省略は生成でなく判定にする。修正は全文でなく局所パッチにする。**
+ここまでやると、一人称のブレ、変な文末、意味重複、ゼロ照応の事故はかなり減ります。雑な人間の文章に近づけるには、まず雑さではなく**統制された不統一**を作る必要があるんですよ。面倒ですが、そこが効きます。
+
+[1]: https://developers.openai.com/api/docs/guides/prompt-guidance/ "https://developers.openai.com/api/docs/guides/prompt-guidance/"
+[2]: https://aclanthology.org/2025.naacl-industry.20.pdf "https://aclanthology.org/2025.naacl-industry.20.pdf"
+[3]: https://aclanthology.org/C08-1097.pdf "https://aclanthology.org/C08-1097.pdf"
+[4]: https://developers.openai.com/api/docs/guides/structured-outputs/ "https://developers.openai.com/api/docs/guides/structured-outputs/"
+[5]: https://developers.openai.com/api/docs/guides/evaluation-best-practices/ "https://developers.openai.com/api/docs/guides/evaluation-best-practices/"
+[6]: https://arxiv.org/pdf/2303.17651 "https://arxiv.org/pdf/2303.17651"
+[7]: https://developers.openai.com/api/docs/guides/latest-model/ "https://developers.openai.com/api/docs/guides/latest-model/"
+[8]: https://developers.openai.com/api/docs/guides/prompt-caching/ "https://developers.openai.com/api/docs/guides/prompt-caching/"
+[9]: https://openai.com/index/introducing-gpt-5-4-mini-and-nano/ "https://openai.com/index/introducing-gpt-5-4-mini-and-nano/"
+[10]: https://developers.openai.com/api/docs/guides/supervised-fine-tuning/ "https://developers.openai.com/api/docs/guides/supervised-fine-tuning/"

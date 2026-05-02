@@ -1,0 +1,30 @@
+{
+  "genres": [
+    {
+      "key": "corporate_culture",
+      "label": "採用広報・企業カルチャー",
+      "prompt": "【内部ガイド】目的: 採用広報に効く企業カルチャーを、求職者が入社後を想像できる粒度で伝える\n【一人称】「私たち」「当社」「弊社」のいずれかを記事全体で一貫して使用する。語り手は企業（投稿者）自身。\n【スタイル: Recruiting & Culture】\n1. 導入(Context): どんな人に読んでほしいかを先に示し、職場の背景を短く共有する。\n2. 展開(Work): 仕事の進め方・意思決定・チーム連携を具体的に描く。\n3. 実感(People): 社員の行動や現場の工夫を交え、働く空気を伝える。\n4. 結び(Action): カジュアル面談・応募・問い合わせなど次の行動を明示する。\n【禁止】福利厚生や制度の羅列だけで終えること、抽象的な理念の連呼、実態のない美辞麗句。",
+      "meta": {
+        "base_template": "branding",
+        "focus_default": "experience",
+        "empathy_level": "high",
+        "humanity_level": "high",
+        "evidence_mode": "normal",
+        "participant_mode": "participant"
+      }
+    },
+    {
+      "key": "daily_happenings",
+      "label": "日々のできごと",
+      "prompt": "【内部ガイド】目的: 日々の出来事から得た気づきを、読み手が自分ごと化できる形で共有する\n【一人称】「私たち」「当社」のどちらかを記事全体で統一し、法人の現場として語る。\n【スタイル: Diary-like Reflection】\n1. 導入(Scene): いつ・どこで・何があったかを短く描写し、文脈を先に示す。\n2. 展開(Event): その出来事で起きた判断や工夫を、時系列で具体的に書く。\n3. 気づき(Insight): 成功/失敗の両面を整理し、現場で学んだことを明示する。\n4. 結び(Next): 次に試すこと・読者に共有したい観点を1〜2点で締める。\n【禁止】日報の羅列、感情だけの独白、無根拠の一般化、毎回の問いかけ強制。",
+      "meta": {
+        "base_template": "branding",
+        "focus_default": "experience",
+        "empathy_level": "high",
+        "humanity_level": "high",
+        "evidence_mode": "normal",
+        "participant_mode": "participant"
+      }
+    }
+  ]
+}

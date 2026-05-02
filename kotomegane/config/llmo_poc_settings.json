@@ -1,0 +1,79 @@
+{
+  "service_key": "kotomegane",
+  "plan_key": "upper",
+  "analysis_mode": "market",
+  "enabled_provider_keys": [
+    "openai",
+    "gemini",
+    "claude"
+  ],
+  "provider": "openai",
+  "model": "gpt-5.4-nano",
+  "query_planner_model": "gpt-5.4-nano",
+  "query_planner_reasoning_effort": "medium",
+  "query_planner_max_output_tokens": 1200,
+  "query_expansion_max_total_queries": 5,
+  "query_expansion_shorten_threshold_chars": 50,
+  "query_expansion_template_set": "business_ja",
+  "query_execution_order": "query_then_repeat",
+  "reasoning_effort": "low",
+  "prompt_cache_key": "llmo-poc-v1",
+  "prompt_cache_retention": "24h",
+  "max_output_tokens": 1200,
+  "repeat_count": 20,
+  "keywords": [
+    "京都か大阪でデータ入力を行ってくれる会社"
+  ],
+  "target_domain": "https://www.kyotokogyo.co.jp/",
+  "brand_terms": [],
+  "market_context_terms": [],
+  "competitor_terms": [],
+  "allowed_domains": [],
+  "search_context_size": "low",
+  "user_location_country": "JP",
+  "user_location_city": "Tokyo",
+  "user_location_region": "Tokyo",
+  "timezone": "Asia/Tokyo",
+  "run_budget_guardrail_usd": 1.2,
+  "daily_budget_usd": 1.0,
+  "budget_guardrail_mode": "warn",
+  "ui_port": 8083,
+  "ui_host": "127.0.0.1",
+  "pricing": {
+    "model": "gpt-5.4-nano",
+    "input_per_million": 0.2,
+    "cached_input_per_million": 0.02,
+    "output_per_million": 1.25,
+    "web_search_call_per_1k": 10.0,
+    "usd_to_jpy": 160.0,
+    "show_poc_costs": true
+  },
+  "deterministic_scoring": {
+    "target_domain_hit_weight": 40,
+    "brand_mention_hit_weight": 15,
+    "owned_citation_weight": 12,
+    "owned_citation_share_weight": 15,
+    "competitor_mention_penalty": 12,
+    "external_only_penalty": 18,
+    "no_owned_cap": 44,
+    "brand_only_cap": 64,
+    "answer_type_weights": {
+      "comparison": 4,
+      "price": 3,
+      "faq": 2,
+      "case_study": 4,
+      "local": 3,
+      "branded": 6,
+      "how_to": 2,
+      "general": 1
+    }
+  },
+  "variance": {
+    "score_stddev_threshold": 18.0,
+    "score_range_threshold": 45.0,
+    "low_owned_hit_rate_threshold": 50.0
+  },
+  "enable_topic_signals": true,
+  "topic_signal_max_terms": 5,
+  "topic_signal_max_doc_freq_ratio": 0.85
+}

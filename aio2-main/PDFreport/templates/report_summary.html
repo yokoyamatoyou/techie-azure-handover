@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page { margin: 18mm; }
+        body { font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif; color: #222; }
+        h1 { font-size: 22px; margin: 0 0 8px; }
+        h2 { font-size: 14px; margin: 0 0 8px; }
+        h3 { font-size: 12px; margin: 0 0 6px; }
+        .meta { font-size: 10px; color: #555; margin-bottom: 12px; }
+        .grid { display: flex; gap: 8px; flex-wrap: wrap; }
+        .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        .score { font-size: 24px; font-weight: bold; }
+        .label { font-size: 10px; color: #666; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; background: #f3f4f6; margin-right: 6px; }
+        .issue-high { color: #b91c1c; }
+        .issue-medium { color: #b45309; }
+        .issue-low { color: #2563eb; }
+        .issue-info { color: #6b7280; }
+        .muted { color: #666; font-size: 10px; }
+        ul { margin: 6px 0 0 16px; padding: 0; }
+        li { margin: 2px 0; font-size: 11px; }
+        .section { margin: 12px 0; }
+    </style>
+</head>
+<body>
+    <h1>{{ data.title }}</h1>
+    <div class="meta">対象URL: {{ data.url }} / 生成日時: {{ data.generated_at }}</div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="label">統合スコア</div>
+            <div class="score">{{ data.scores.integrated }}/100</div>
+        </div>
+        <div class="card">
+            <div class="label">SEOスコア</div>
+            <div class="score">{{ data.scores.seo }}/100</div>
+        </div>
+        <div class="card">
+            <div class="label">AIOスコア</div>
+            <div class="score">{{ data.scores.aio }}/100</div>
+        </div>
+        {% if data.scores.legal is not none %}
+        <div class="card">
+            <div class="label">法務スコア</div>
+            <div class="score">{{ data.scores.legal }}/100</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if data.ec is not none %}
+    <div class="section">
+        <span class="pill">{{ "ECサイト" if data.ec.is_ec else "非ECサイト" }}</span>
+        {% if data.ec.reason %}<span class="muted">理由: {{ data.ec.reason }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if data.summary_improvements %}
+    <div class="card section">
+        <h2>改善ポイント（要約）</h2>
+        <ul>
+        {% for item in data.summary_improvements %}
+            <li>{{ item }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if data.top_issues %}
+    <div class="card section">
+        <h2>重要な問題（上位）</h2>
+        {% for issue in data.top_issues %}
+            <div class="issue-{{ issue.severity }}">{{ issue.title }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if data.crawl %}
+    <div class="card section">
+        <h2>クロール設定</h2>
+        <div class="muted">検出リンク数: {{ data.crawl.link_count }} / 深度: {{ data.crawl.depth }}</div>
+        {% if data.crawl.reason %}<div class="muted">理由: {{ data.crawl.reason }}</div>{% endif %}
+        {% if data.crawl.priority_pages %}
+        <ul>
+            {% for page in data.crawl.priority_pages %}
+            <li>{{ page }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if data.schema %}
+    <div class="card section">
+        <h2>構造化データ（Schema.org）</h2>
+        {% if data.schema.error %}
+            <div class="muted">エラー: {{ data.schema.error }}</div>
+        {% else %}
+            <div class="muted">検出: {{ data.schema.found_types|join(", ") if data.schema.found_types else "なし" }}</div>
+            <div class="muted">推奨未設定: {{ data.schema.missing_recommended|join(", ") if data.schema.missing_recommended else "なし" }}</div>
+            <div class="muted">スコア: {{ data.schema.score }}/100</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if data.content_gap %}
+    <div class="card section">
+        <h2>AIO改善ポテンシャル</h2>
+        {% if data.content_gap.potential is not none %}
+            <div class="muted">改善余地スコア: {{ data.content_gap.potential }}/100</div>
+        {% endif %}
+        {% if data.content_gap.gaps %}
+        <ul>
+            {% for gap in data.content_gap.gaps %}
+            <li>{{ gap }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if data.internal_links %}
+    <div class="card section">
+        <h2>内部リンク概要</h2>
+        <div class="muted">総ページ数: {{ data.internal_links.total_pages }} / 内部リンク数: {{ data.internal_links.total_internal_links }}</div>
+        <div class="muted">孤立ページ: {{ data.internal_links.orphan_count }} / 低リンク: {{ data.internal_links.low_link_count }}</div>
+    </div>
+    {% endif %}
+</body>
+</html>

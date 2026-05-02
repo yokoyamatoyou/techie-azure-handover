@@ -1,0 +1,468 @@
+# human_resonance2 Worklog
+
+## Logging Rule
+Record facts only:
+- what changed
+- where
+- why
+- how verified
+- risk and rollback note
+
+## Entry Template
+### YYYY-MM-DD HH:MM | Phase: PXX | status: in_progress/done/blocked
+- Goal:
+- Changed files:
+- Actions:
+- Verification:
+- Result:
+- Risk:
+- Rollback:
+- Next:
+
+## Entries
+### 2026-02-10 14:00 | Phase: P00 | status: done
+- Goal: Create planning scaffold for `human_resonance2`.
+- Changed files:
+  - `README.md`
+  - `PROGRESS.md`
+  - `WORKLOG.md`
+  - `config_contract.md`
+  - `integration_contract.md`
+  - `metrics/baseline_definition.md`
+  - `phases/PHASE_00_BOOTSTRAP.md`
+  - `phases/PHASE_01_LEXICAL_DIVERSITY.md`
+  - `phases/PHASE_02_BURSTINESS.md`
+  - `phases/PHASE_03_NOMINALIZATION.md`
+  - `phases/PHASE_04_STYLE_DRIFT.md`
+  - `phases/PHASE_05_LAYOUT_GUARD.md`
+  - `phases/PHASE_06_ORCHESTRATOR.md`
+  - `phases/PHASE_07_INTEGRATION_ROLLOUT.md`
+- Actions: Wrote phase-level execution instructions with DoD/tests/rollback/failure handling.
+- Verification: File tree and content presence checked.
+- Result: Planning workspace ready for implementation window.
+- Risk: None in production code (docs only).
+- Rollback: Delete `human_resonance2` docs if cancelled.
+- Next: Start Phase 01 implementation in separate window.
+
+### 2026-02-10 15:05 | Phase: P00 | status: done
+- Goal: Complete missing phase plan files to make execution package consistent.
+- Changed files:
+  - `phases/PHASE_02_BURSTINESS.md`
+  - `phases/PHASE_03_NOMINALIZATION.md`
+  - `phases/PHASE_04_STYLE_DRIFT.md`
+  - `phases/PHASE_05_LAYOUT_GUARD.md`
+  - `phases/PHASE_06_ORCHESTRATOR.md`
+  - `phases/PHASE_07_INTEGRATION_ROLLOUT.md`
+- Actions: Added unified phase specs (DoD/test/rollback/failure handling) for implementation window.
+- Verification: Confirmed `phases/PHASE_00` through `phases/PHASE_07` exist.
+- Result: Planning set is complete and implementation-ready.
+- Risk: None in production code (documents only).
+- Rollback: Remove added phase docs if planning is cancelled.
+- Next: Start implementation from `PHASE_01_LEXICAL_DIVERSITY.md` and update `PROGRESS.md`.
+
+### 2026-02-10 16:35 | Phase: P01 | status: done
+- Goal: Implement PHASE_01 lexical diversity with config-guarded shadow integration.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase01_lexical_diversity.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `quality_pipeline` config contract runtime loader (`off/shadow/enforce`, phase flag, threshold, rewrite cap, fail-open).
+  - Implemented deterministic Phase01 lexical scoring, repetition signal detection, and capped minimal rewrite suggestions.
+  - Added `QualityPipelineRunner` and integrated it into `ArticleGenerator._apply_resonance()` in shadow-safe path.
+  - Added phase report collection and output check payload (`quality_pipeline_check`).
+  - Added unit tests for deterministic scoring, explainable repetition positions, rewrite-cap guard, and shadow-mode no-change behavior.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m py_compile C:\tetie\notecode\core\app_config.py C:\tetie\notecode\note\article_generator.py C:\tetie\notecode\human_resonance2\__init__.py C:\tetie\notecode\human_resonance2\phase01_lexical_diversity.py C:\tetie\notecode\human_resonance2\quality_pipeline.py C:\tetie\notecode\note\tests\test_quality_phase01.py C:\tetie\notecode\note\tests\test_llm_config.py`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_quality_phase01.py -q`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_llm_config.py -q`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_offline.py -q -k "generate_with_dummy_llm"`
+- Result:
+  - py_compile: success
+  - tests: success (`4 passed`, `2 passed`, `1 passed`)
+  - Existing `human_resonance` flow preserved; shadow mode keeps user-visible text unchanged.
+- Risk:
+  - Current tokenization is regex-based; false positives can still occur for edge Japanese morphology.
+- Rollback:
+  - Set `quality_pipeline.enabled=false` or `quality_pipeline.mode=off`.
+  - If needed, set `quality_pipeline.phase01_lexical_enabled=false`.
+- Next:
+  - Start `PHASE_02_BURSTINESS` with the same shadow-first and config-guarded pattern.
+
+### 2026-02-10 17:05 | Phase: P01 | status: done
+- Goal: Improve PHASE_01 tokenization quality by adding Sudachi support with safe fallback.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/phase01_lexical_diversity.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_llm_config.py`
+  - `requirements.txt`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `quality_pipeline.phase01_tokenizer` config key (`auto|regex|sudachi`).
+  - Updated Phase01 tokenizer to prefer Sudachi (Mode B) when available and fallback to regex when unavailable or failing.
+  - Exposed tokenization method in phase report (`tokenization_method`, `configured_tokenizer`).
+  - Added tests for config parsing and Sudachi token split behavior.
+  - Installed runtime dependencies in `notecode` venv: `sudachipy==0.6.10`, `sudachidict-core==20260116`, and updated `requirements.txt`.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m py_compile C:\tetie\notecode\core\app_config.py C:\tetie\notecode\human_resonance2\phase01_lexical_diversity.py C:\tetie\notecode\human_resonance2\quality_pipeline.py C:\tetie\notecode\note\article_generator.py C:\tetie\notecode\note\tests\test_quality_phase01.py C:\tetie\notecode\note\tests\test_llm_config.py`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_quality_phase01.py -q`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_llm_config.py -q`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest C:\tetie\notecode\note\tests\test_offline.py -q -k "generate_with_dummy_llm"`
+- Result:
+  - py_compile: success
+  - tests: success (`5 passed`, `2 passed`, `1 passed`)
+  - PHASE_01 token boundary quality improved while preserving fail-open behavior.
+- Risk:
+  - Sudachi dictionary availability differs by environment; `auto` fallback path must remain enabled in deployment.
+- Rollback:
+  - Set `quality_pipeline.phase01_tokenizer=regex` or disable phase with `quality_pipeline.phase01_lexical_enabled=false`.
+  - If dependency issues occur, remove Sudachi packages and keep regex mode.
+- Next:
+  - Start `PHASE_02_BURSTINESS` and keep tokenizer mode configurable for comparative shadow metrics.
+
+### 2026-02-10 17:07 | Phase: P01 | status: done
+- Goal: Save restart checkpoint so implementation can resume immediately after reboot.
+- Changed files:
+  - `human_resonance2/WORKLOG.md`
+  - `human_resonance2/PROGRESS.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Recorded Phase01 completion state and Sudachi integration status.
+  - Recorded exact resume entrypoint: `PHASE_02_BURSTINESS.md`.
+  - Recorded current safe runtime mode recommendation: `quality_pipeline.mode=shadow`.
+- Verification:
+  - Manual log content check.
+- Result:
+  - Restart-safe handoff notes are persisted in required files.
+- Risk:
+  - None (documentation only).
+- Rollback:
+  - Remove this checkpoint entry if unnecessary.
+- Next:
+  - After reboot, continue from `PHASE_02_BURSTINESS.md`.
+
+### 2026-02-10 18:20 | Phase: P02 | status: done
+- Goal: Implement PHASE_02 burstiness control with config-guarded shadow/enforce integration.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase02_burstiness.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase02Burstiness` module with deterministic sentence-length profiling (`burstiness_score`) and paragraph zoning (`uniform/fragmented/natural`).
+  - Implemented minimal rhythm adjustment planner (`split/merge`) with heading/list guard and ratio cap (`max_sentence_split_ratio`).
+  - Extended `QualityPipelineRunner` to support independent phase toggles (`phase01_lexical_enabled` + `phase02_burstiness_enabled`) in `off/shadow/enforce`.
+  - Added phase-level retry/fail-open continuity and phase report output for Phase02 (`length_profile`, `rhythm_adjustments`, `post_burstiness_score`).
+  - Extended `quality_pipeline` config contract/runtime loader and article output check payload.
+  - Added dedicated tests for Phase02 behavior and preserved Phase01/test config compatibility.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "import ast,pathlib; files=[r'core/app_config.py',r'human_resonance2/__init__.py',r'human_resonance2/phase02_burstiness.py',r'human_resonance2/quality_pipeline.py',r'note/article_generator.py',r'note/tests/test_llm_config.py',r'note/tests/test_quality_phase01.py',r'note/tests/test_quality_phase02.py']; [ast.parse(pathlib.Path(f).read_text(encoding='utf-8')) for f in files]; print('AST OK')"`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase02.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_llm_config.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider`
+- Result:
+  - AST parse: success
+  - tests: success (`5 passed`, `4 passed`, `2 passed`, `1 passed`)
+  - PHASE_02 is integrated behind config toggles and keeps shadow mode non-destructive.
+- Risk:
+  - Split/merge rewrite quality can vary on edge punctuation patterns; keep shadow mode for baseline metric collection first.
+- Rollback:
+  - Set `quality_pipeline.phase02_burstiness_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Start `PHASE_03_NOMINALIZATION` with the same shadow-first pattern and add comparative report metrics.
+
+### 2026-02-10 19:10 | Phase: P03 | status: done
+- Goal: Implement PHASE_03 nominalization control with config-guarded shadow/enforce integration.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase03_nominalization.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_quality_phase03.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase03Nominalization` module with deterministic sentence-level nominalization ratio scoring and explainable alerts.
+  - Implemented protected-block guards for disclaimer/reference sections and domain-term preservation hints.
+  - Added minimal rewrite candidate generation and capped apply path via `max_nominalization_rewrite_ratio`.
+  - Extended `QualityPipelineRunner` to include `phase03_nominalization_enabled` in off/shadow/enforce flow.
+  - Added Phase03 report fields (`nominalization_score`, alerts, candidates, post score) to quality pipeline output.
+  - Extended runtime config loader and config contract to include Phase03 keys.
+  - Added dedicated tests for alerting, low false-positive path, disclaimer protection, and shadow-mode no-change behavior.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "import ast,pathlib,json; py_files=[r'notecode/core/app_config.py',r'notecode/human_resonance2/__init__.py',r'notecode/human_resonance2/phase03_nominalization.py',r'notecode/human_resonance2/quality_pipeline.py',r'notecode/note/article_generator.py',r'notecode/note/tests/test_llm_config.py',r'notecode/note/tests/test_quality_phase01.py',r'notecode/note/tests/test_quality_phase02.py',r'notecode/note/tests/test_quality_phase03.py']; [ast.parse(pathlib.Path(f).read_text(encoding='utf-8')) for f in py_files]; json.loads(pathlib.Path(r'notecode/config.json').read_text(encoding='utf-8')); print('AST/JSON OK')"`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase02.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase03.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_llm_config.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider`
+- Result:
+  - AST/JSON parse: success
+  - tests: success (`5 passed`, `4 passed`, `4 passed`, `2 passed`, `1 passed`)
+  - PHASE_03 is integrated behind config toggles and remains non-destructive in shadow mode.
+- Risk:
+  - Rule-based nominalization rewrite can miss edge idioms; keep shadow baseline collection before broader enforce rollout.
+- Rollback:
+  - Set `quality_pipeline.phase03_nominalization_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Start `PHASE_04_STYLE_DRIFT` with the same shadow-first pattern and comparative reporting.
+
+### 2026-02-10 20:05 | Phase: P04 | status: done
+- Goal: Implement PHASE_04 style drift guard with citation-source profile based domain alignment (not fixed pair rules).
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase04_style_drift.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_quality_phase03.py`
+  - `note/tests/test_quality_phase04.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase04StyleDrift` module with citation-source lexical profile inference from `source_text/url/topic/intent`.
+  - Replaced fixed domain-pair logic with general drift detection:
+    - infer active source domains from cited-source profile
+    - detect sentence terms from domains outside that profile
+    - generate minimal neutral corrections when confidence and strictness gates pass
+  - Added purpose-aware tone normalization (`explain/branding/thought_leadership`) as secondary guard.
+  - Extended `QualityPipelineRunner.process()` to accept optional context payload and integrated Phase04 in `off/shadow/enforce`.
+  - Added `ArticleGenerator` bridge context (`topic_hint/source_urls/source_text/writing_focus/article_type`) to quality pipeline.
+  - Added Phase04 report payload (`active_source_domains`, `drift_alerts`, `style_corrections`, post score).
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "import ast,pathlib,json; py_files=[r'notecode/core/app_config.py',r'notecode/human_resonance2/__init__.py',r'notecode/human_resonance2/phase04_style_drift.py',r'notecode/human_resonance2/quality_pipeline.py',r'notecode/note/article_generator.py',r'notecode/note/tests/test_llm_config.py',r'notecode/note/tests/test_quality_phase01.py',r'notecode/note/tests/test_quality_phase02.py',r'notecode/note/tests/test_quality_phase03.py',r'notecode/note/tests/test_quality_phase04.py']; [ast.parse(pathlib.Path(f).read_text(encoding='utf-8')) for f in py_files]; json.loads(pathlib.Path(r'notecode/config.json').read_text(encoding='utf-8')); print('AST/JSON OK')"`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase02.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase03.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase04.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_llm_config.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider`
+- Result:
+  - AST/JSON parse: success
+  - tests: success (`5 passed`, `4 passed`, `4 passed`, `5 passed`, `2 passed`, `1 passed`)
+  - PHASE_04 is integrated behind config toggles and remains non-destructive in shadow mode.
+- Risk:
+  - Rule-based replacement dictionary is intentionally conservative; some cross-domain drifts may remain alert-only until vocabulary expansion.
+- Rollback:
+  - Set `quality_pipeline.phase04_style_drift_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Start `PHASE_05_LAYOUT_GUARD` with the same shadow-first pattern.
+
+### 2026-02-10 20:10 | Phase: P05 | status: done
+- Goal: Implement PHASE_05 layout guard with deterministic section-role validation and minimal supplement reordering.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase05_layout_guard.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_quality_phase03.py`
+  - `note/tests/test_quality_phase04.py`
+  - `note/tests/test_quality_phase05.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase05LayoutGuard` module.
+    - Parses markdown sections and classifies roles (`intro/core/supplement/conclusion`).
+    - Detects supplements placed earlier than `supplement_min_position_ratio`.
+    - Computes `layout_validation_report` with intro ratio and adjacent section coherence.
+    - Builds structure-preserving `reorder_plan` and applies minimal section moves only.
+  - Extended `QualityPipelineRunner` with Phase05 integration in `off/shadow/enforce`.
+    - Added `phase05_layout_guard` report payload:
+      - `layout_validation_report`
+      - `supplement_position_alerts`
+      - `reorder_plan`
+      - `applied_reorder_steps`
+      - `post_layout_score`
+  - Extended `QualityPipelineConfig`/`config.json` with:
+    - `phase05_layout_guard_enabled`
+    - `supplement_min_position_ratio`
+    - `intro_max_length_ratio`
+    - `section_coherence_min_score`
+  - Extended generator-side `quality_pipeline_check` output with Phase05 keys.
+  - Added dedicated tests for Phase05 unit + pipeline behavior.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "<AST/JSON parse script>"` -> `AST/JSON OK`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase05.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py -q -p no:cacheprovider` -> `5 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase02.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase03.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase04.py -q -p no:cacheprovider` -> `5 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_llm_config.py -q -p no:cacheprovider` -> `2 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider` -> `1 passed`
+- Result:
+  - PHASE_05 integrated behind config toggles.
+  - `shadow` remains non-destructive.
+  - `enforce` applies section reordering only when reorder plan exists.
+- Risk:
+  - Coherence scoring is rule-based and conservative; edge heading styles may require lexicon tuning.
+- Rollback:
+  - Set `quality_pipeline.phase05_layout_guard_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Start `PHASE_06_ORCHESTRATOR` with same shadow-first integration pattern.
+
+### 2026-02-10 20:20 | Phase: P06 | status: done
+- Goal: Implement PHASE_06 orchestrator for deterministic quality bundle merge, conflict resolution, and gate decisions.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase06_orchestrator.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_quality_phase03.py`
+  - `note/tests/test_quality_phase04.py`
+  - `note/tests/test_quality_phase05.py`
+  - `note/tests/test_quality_phase06.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase06Orchestrator` module.
+    - Aggregates Phase01-05 reports into `quality_bundle` (`scores`, `alerts`, `actions`, `conflicts`).
+    - Deduplicates conflicting actions by configurable policy (`safe_first|readability_first|diversity_first`).
+    - Computes global rewrite ratio and quality score.
+    - Emits deterministic gate decision (`pass|hold|fallback`) with reason.
+  - Extended `QualityPipelineRunner` to execute Phase06 after Phase01-05.
+    - Added `phase06_orchestrator` report payload:
+      - `quality_bundle`
+      - `final_adjustment_plan`
+      - `gate_decision`
+      - `gate_reason`
+    - In `enforce`, `hold/fallback` gates safely revert text to original.
+  - Extended `QualityPipelineConfig`/`config.json` with:
+    - `phase06_orchestrator_enabled`
+    - `global_rewrite_ratio_cap`
+    - `conflict_resolution_policy`
+    - `quality_gate_min_score`
+  - Extended generator-side `quality_pipeline_check` output with Phase06 keys.
+  - Added dedicated tests for Phase06 unit + pipeline behavior.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "<AST/JSON parse script>"` -> `AST/JSON OK`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase06.py -q -p no:cacheprovider` -> `3 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py -q -p no:cacheprovider` -> `5 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase02.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase03.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase04.py -q -p no:cacheprovider` -> `5 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase05.py -q -p no:cacheprovider` -> `4 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_llm_config.py -q -p no:cacheprovider` -> `2 passed`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider` -> `1 passed`
+- Result:
+  - PHASE_06 integrated behind config toggles.
+  - `shadow` remains non-destructive.
+  - `enforce` applies gate-based fallback/hold safely via original text restore.
+- Risk:
+  - Conflict resolution is currently rule-priority based; policy tuning may be needed by domain traffic.
+- Rollback:
+  - Set `quality_pipeline.phase06_orchestrator_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Start `PHASE_07_INTEGRATION_ROLLOUT` with operation logs, rollout checklist, and rollback drills.
+
+### 2026-02-10 22:15 | Phase: P07 | status: done
+- Goal: Implement PHASE_07 integration rollout controls and telemetry with deterministic enforce traffic gating.
+- Changed files:
+  - `core/app_config.py`
+  - `config.json`
+  - `human_resonance2/__init__.py`
+  - `human_resonance2/phase07_rollout.py`
+  - `human_resonance2/quality_pipeline.py`
+  - `human_resonance2/config_contract.md`
+  - `note/article_generator.py`
+  - `note/tests/test_quality_phase01.py`
+  - `note/tests/test_quality_phase02.py`
+  - `note/tests/test_quality_phase03.py`
+  - `note/tests/test_quality_phase04.py`
+  - `note/tests/test_quality_phase05.py`
+  - `note/tests/test_quality_phase06.py`
+  - `note/tests/test_quality_phase07.py`
+  - `note/tests/test_llm_config.py`
+  - `human_resonance2/PROGRESS.md`
+  - `human_resonance2/WORKLOG.md`
+  - `C:\tetie\WORKLOG.md`
+  - `C:\tetie\techie-hub\plan\WORKLOG.md`
+  - `C:\tetie\azure-handoff-2026-02-09-ja.md`
+- Actions:
+  - Added `Phase07IntegrationRollout` module with deterministic request bucketing and enforce traffic selection.
+  - Added rollout telemetry output (`score_delta`, `text_change_ratio`, drift alert count, gate decision, report/error counts).
+  - Extended `QualityPipelineRunner` with Phase07 decision/telemetry reporting (`phase07_rollout` report).
+  - Applied effective-mode routing into Phase01-06 execution (`requested_mode` kept in reports for audit).
+  - Fixed integration guard bug:
+    - when `phase07_rollout_enabled=false`, rollout routing is bypassed and requested mode is used as-is.
+    - prevents unintended `enforce -> shadow` downgrade when `rollout_percent<100` but Phase07 is disabled.
+  - Added/updated tests for rollout 0%/100%, deterministic bucket behavior, and disabled-Phase07 passthrough behavior.
+- Verification:
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -c "import ast,pathlib,json; files=[r'core/app_config.py',r'human_resonance2/__init__.py',r'human_resonance2/phase07_rollout.py',r'human_resonance2/quality_pipeline.py',r'note/article_generator.py',r'note/tests/test_llm_config.py',r'note/tests/test_quality_phase01.py',r'note/tests/test_quality_phase02.py',r'note/tests/test_quality_phase03.py',r'note/tests/test_quality_phase04.py',r'note/tests/test_quality_phase05.py',r'note/tests/test_quality_phase06.py',r'note/tests/test_quality_phase07.py']; [ast.parse(pathlib.Path(f).read_text(encoding='utf-8')) for f in files]; json.loads(pathlib.Path('config.json').read_text(encoding='utf-8')); print('AST/JSON OK')"`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase07.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_quality_phase01.py note\tests\test_quality_phase02.py note\tests\test_quality_phase03.py note\tests\test_quality_phase04.py note\tests\test_quality_phase05.py note\tests\test_quality_phase06.py note\tests\test_quality_phase07.py note\tests\test_llm_config.py -q -p no:cacheprovider`
+  - `C:\tetie\notecode\.venv\Scripts\python.exe -m pytest note\tests\test_offline.py -q -k "generate_with_dummy_llm" -p no:cacheprovider`
+- Result:
+  - AST/JSON parse: success
+  - tests: success (`5 passed`, `32 passed`, `1 passed`)
+  - PHASE_07 is integrated behind config toggles with deterministic rollout behavior and non-destructive shadow operation.
+- Risk:
+  - Request bucketing uses text/topic/url hash; large content drift can move a request between buckets across revisions.
+- Rollback:
+  - Set `quality_pipeline.phase07_rollout_enabled=false` (or `quality_pipeline.enabled=false` / `quality_pipeline.mode=off`).
+- Next:
+  - Begin production shadow telemetry collection and tune rollout thresholds before broader enforce expansion.

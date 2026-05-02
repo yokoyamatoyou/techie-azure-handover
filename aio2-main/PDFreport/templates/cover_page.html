@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}表紙 - {{ report_title|default('分析レポート') }}{% endblock %}
+
+{% block header_title %}{{ report_title|default('アンケート分析レポート') }}{% endblock %}
+
+{% block header_content %}
+<div class="cover-info">
+    <p class="analysis-target">分析対象: {{ analysis_target|default('未設定') }}</p>
+    <p class="sample-size">サンプル数: {{ sample_size|default(0) }}件</p>
+    <p class="generation-date">生成日: {{ generation_date|default('N/A') }}</p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="cover-content">
+    <div class="executive-summary">
+        <h2>エグゼクティブサマリー</h2>
+        <p>{{ executive_summary|default('分析結果の要約がここに表示されます。') }}</p>
+    </div>
+    
+    {% if key_insights %}
+    <div class="key-insights">
+        <h2>主要インサイト</h2>
+        <ul>
+            {% for insight in key_insights %}
+            <li>
+                <strong>{{ insight.title }}</strong>: {{ insight.description }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    {% if hybrid_summary and hybrid_summary.insightful_quotes %}
+    <div class="representative-quotes">
+        <h2>代表的なご意見</h2>
+        <ul>
+            {% for quote in hybrid_summary.insightful_quotes[:3] %}
+            <li class="quote-item">"{{ quote }}"</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.cover-info {
+    text-align: center;
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.cover-info p {
+    margin: 5px 0;
+    font-size: 1.1em;
+}
+
+.cover-content {
+    margin-top: 40px;
+}
+
+.executive-summary, .key-insights, .representative-quotes {
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #ffffff;
+    border-left: 4px solid #E8590C;
+}
+
+.quote-item {
+    margin: 10px 0;
+    font-style: italic;
+    color: #555;
+}
+</style>
+{% endblock %}
+
+
+

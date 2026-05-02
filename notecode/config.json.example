@@ -1,0 +1,324 @@
+{
+  "llm": {
+    "model_name": "gpt-4.1-mini-2025-04-14",
+    "fallback_model": "gpt-5-nano",
+    "reasoning_effort": "low",
+    "timeout": 120,
+    "top_p": null,
+    "disable_temperature_model_prefixes": [
+      "gpt-5",
+      "o3",
+      "o1"
+    ],
+    "disable_top_p_model_prefixes": [
+      "gpt-5"
+    ],
+    "task_models": {}
+  },
+  "source_reading": {
+    "max_chars_per_source": 12000,
+    "quality_context_source_text_max_chars": 12000,
+    "style_drift_source_text_max_chars": 12000
+  },
+  "human_resonance": {
+    "phrase_max_per_paragraph": 2,
+    "phrase_probability": 0.75,
+    "phrase_min_occurrences": 2,
+    "pronoun_reduction_ratio": 0.5,
+    "pronoun_reduction_min_count": 4,
+    "use_llm_for_editor": false,
+    "use_llm_for_legal": true
+  },
+  "images": {
+    "model_name": "gpt-image-1.5",
+    "fallback_model": "gpt-image-1",
+    "quality": "low",
+    "size": "1536x1024",
+    "count": 2,
+    "note_width": 1280,
+    "note_height": 670,
+    "no_text_in_image": true,
+    "text_overlay_font_path": "",
+    "generated_images_dir": ""
+  },
+  "quality_pipeline": {
+    "enabled": true,
+    "mode": "enforce",
+    "mode_runbook": {
+      "shadow": "計測のみ。品質影響を観測する期間に使用。",
+      "enforce": "実修正を適用。A/B検証で問題ないことを確認後に段階適用。",
+      "switch_steps": [
+        "1) shadowでphase reportと失敗率を確認",
+        "2) rollout_percentを小さくしてenforceに切替",
+        "3) 指標悪化時はshadowへ戻して原因分析"
+      ]
+    },
+    "rollout_percent": 100,
+    "fail_open": true,
+    "phase01_lexical_enabled": true,
+    "phase01_tokenizer": "auto",
+    "phase02_burstiness_enabled": true,
+    "phase03_nominalization_enabled": true,
+    "phase04_style_drift_enabled": true,
+    "phase05_layout_guard_enabled": true,
+    "phase06_orchestrator_enabled": true,
+    "phase07_rollout_enabled": true,
+    "lexical_threshold": 0.32,
+    "burstiness_target_min": 0.18,
+    "burstiness_target_max": 0.52,
+    "nominalization_alert_threshold": 0.18,
+    "style_alignment_min_score": 0.72,
+    "domain_guard_strictness": "normal",
+    "supplement_min_position_ratio": 0.45,
+    "intro_max_length_ratio": 0.35,
+    "section_coherence_min_score": 0.4,
+    "global_rewrite_ratio_cap": 0.2,
+    "conflict_resolution_policy": "safe_first",
+    "quality_gate_min_score": 0.55,
+    "max_rewrite_ratio": 0.15,
+    "max_sentence_split_ratio": 0.12,
+    "max_nominalization_rewrite_ratio": 0.12,
+    "resonance_tuning_enabled": false
+  },
+  "style_profiles": {
+    "column": {
+      "bracket_limit": 3,
+      "ambiguous_word_limit": 5,
+      "emotional_waveform": "dynamic",
+      "digression_allowed": true,
+      "orthographic_variation_rate": 0.2
+    },
+    "how_to": {
+      "bracket_limit": 2,
+      "ambiguous_word_limit": 3,
+      "emotional_waveform": "steady",
+      "digression_allowed": false,
+      "orthographic_variation_rate": 0.1
+    },
+    "opinion": {
+      "bracket_limit": 4,
+      "ambiguous_word_limit": 6,
+      "emotional_waveform": "rising",
+      "digression_allowed": true,
+      "orthographic_variation_rate": 0.25
+    },
+    "announcement": {
+      "bracket_limit": 1,
+      "ambiguous_word_limit": 1,
+      "emotional_waveform": "flat",
+      "digression_allowed": false,
+      "orthographic_variation_rate": 0.0
+    },
+    "hobby": {
+      "bracket_limit": 5,
+      "ambiguous_word_limit": 7,
+      "emotional_waveform": "dynamic",
+      "digression_allowed": true,
+      "orthographic_variation_rate": 0.3
+    },
+    "technical": {
+      "bracket_limit": 2,
+      "ambiguous_word_limit": 2,
+      "emotional_waveform": "steady",
+      "digression_allowed": false,
+      "orthographic_variation_rate": 0.05
+    }
+  },
+  "fingerprint_threshold_presets": {
+    "active_preset": "superhuman",
+    "superhuman": {
+      "sentence_length_cv": 0.22,
+      "paragraph_length_cv": 0.18,
+      "conjunction_repetition_rate_high": 0.34,
+      "subject_explicit_rate_high": 0.38,
+      "particle_entropy_low": 2.1,
+      "pos_bigram_monotonicity_low": 0.58,
+      "mtld_low": 58.0,
+      "nominalization_rate_high": 0.16
+    },
+    "relaxed": {
+      "sentence_length_cv": 0.07,
+      "paragraph_length_cv": 0.07,
+      "conjunction_repetition_rate_high": 0.6,
+      "subject_explicit_rate_high": 0.65,
+      "particle_entropy_low": 1.5,
+      "pos_bigram_monotonicity_low": 0.3,
+      "mtld_low": 30.0,
+      "nominalization_rate_high": 0.3
+    },
+    "standard": {
+      "sentence_length_cv": 0.1,
+      "paragraph_length_cv": 0.1,
+      "conjunction_repetition_rate_high": 0.5,
+      "subject_explicit_rate_high": 0.55,
+      "particle_entropy_low": 1.8,
+      "pos_bigram_monotonicity_low": 0.4,
+      "mtld_low": 40.0,
+      "nominalization_rate_high": 0.25
+    },
+    "strict": {
+      "sentence_length_cv": 0.15,
+      "paragraph_length_cv": 0.15,
+      "conjunction_repetition_rate_high": 0.4,
+      "subject_explicit_rate_high": 0.45,
+      "particle_entropy_low": 2.0,
+      "pos_bigram_monotonicity_low": 0.5,
+      "mtld_low": 50.0,
+      "nominalization_rate_high": 0.2
+    }
+  },
+  "generation_mode": "zero_base_v2",
+  "semantic_dedupe": {
+    "enabled": true,
+    "rewrite_enabled": true,
+    "model": "text-embedding-3-small",
+    "similarity_threshold": 0.84,
+    "content_overlap_threshold": 0.42,
+    "high_overlap_shortcut_threshold": 0.62,
+    "relaxed_similarity_threshold": 0.78,
+    "min_shared_content_words": 3,
+    "timeout_seconds": 20,
+    "max_retries": 1,
+    "retry_backoff_seconds": 0.8,
+    "max_sentences": 96,
+    "max_chars_per_sentence": 280
+  },
+  "section_generation": {
+    "parallel_sections": false,
+    "novelty_gate": {
+      "enabled": true,
+      "max_retries": 3,
+      "intro_novelty_min": 0.22,
+      "middle_novelty_min": 0.32,
+      "closing_novelty_min": 0.38,
+      "focus_relaxation": 0.02,
+      "min_candidate_terms": 8,
+      "max_forbidden_terms": 12
+    },
+    "context_overlap": {
+      "enabled": true,
+      "base_ratio": 0.34,
+      "intro_ratio": 0.38,
+      "middle_ratio": 0.3,
+      "closing_ratio": 0.22,
+      "min_ratio": 0.08,
+      "max_ratio": 0.45,
+      "reduce_on_redundancy": 0.1
+    },
+    "hard_soft_thresholds": {
+      "enabled": true,
+      "mode": "enforce",
+      "hard_max_rewrite_ratio": 0.22,
+      "hard_max_grammar_breaks_per_1k": 2.5,
+      "hard_preserve_headings": true,
+      "soft_min_unpredictability": 0.48,
+      "soft_max_flat_zone_count": 5,
+      "soft_max_semantic_issue_count": 2,
+      "soft_max_ai_template_ending_count": 3
+    },
+    "lexical_policy": {
+      "enabled": true,
+      "extra_banned_phrases": []
+    }
+  },
+  "postprocess": {
+    "repair_only": {
+      "enabled": true,
+      "mode": "enforce",
+      "rewrite_ratio_cap": 0.08,
+      "llm_trigger_severity": "mid",
+      "min_chars_for_llm": 220,
+      "max_violations_per_1k": 1.8
+    },
+    "concise_compaction": {
+      "enabled": true,
+      "dedupe_similarity_ratio": 0.84,
+      "dedupe_jaccard_ratio": 0.6,
+      "summary_overlap_ratio": 0.55,
+      "max_sentence_chars": 130,
+      "max_connective_openings_per_paragraph": 2,
+      "max_splits_per_sentence": 2,
+      "target_reduction_ratio": 0.22,
+      "aggressive_keep_ratio": 0.6,
+      "aggressive_min_sentences_per_paragraph": 3,
+      "aggressive_min_chars": 1600,
+      "paragraph_clog_min_chars": 240,
+      "paragraph_clog_min_sentences": 4,
+      "paragraph_clog_min_commas": 5,
+      "paragraph_clog_min_comma_density": 0.017,
+      "paragraph_clog_threshold_jitter": 0.12
+    },
+    "focus_pipeline_overrides": {
+      "experience": {
+        "peak_temp_boost": 0.15,
+        "allow_digression_all_phases": true,
+        "paragraph_clog_min_chars_override": 280
+      }
+    }
+  },
+  "experience_pattern": {
+    "enabled": true,
+    "auto_detect": true,
+    "rules": {
+      "new_service": {
+        "keywords": [
+          "新サービス",
+          "新規",
+          "ローンチ",
+          "リリース",
+          "ベータ",
+          "プレビュー"
+        ],
+        "allow_experience": false,
+        "reason": "新サービス解説では体験談が不自然なため"
+      },
+      "established_service": {
+        "keywords": [
+          "既存",
+          "従来",
+          "これまで",
+          "従来から",
+          "長年",
+          "定番"
+        ],
+        "allow_experience": true,
+        "reason": "従来サービスでは体験談が自然なため"
+      },
+      "technical_analysis": {
+        "keywords": [
+          "技術",
+          "仕様",
+          "アーキテクチャ",
+          "API",
+          "システム",
+          "構成"
+        ],
+        "allow_experience": false,
+        "reason": "技術解説では事実優先のため"
+      },
+      "case_study": {
+        "keywords": [
+          "事例",
+          "ケーススタディ",
+          "導入事例",
+          "活用事例"
+        ],
+        "allow_experience": true,
+        "reason": "事例紹介では具体的体験が価値のため"
+      }
+    },
+    "fallback_policy": "conservative"
+  },
+  "cognitive_drift": {
+    "enabled": true,
+    "paragraph_enabled": true,
+    "paragraph_min_blocks": 3,
+    "paragraph_max_blocks": 4,
+    "paragraph_temp_swing": 0.06,
+    "paragraph_generation_mode": "paragraph"
+  },
+  "poc": {
+    "enable_token_csv": true,
+    "token_csv_path": "logs/token_usage.csv"
+  }
+}

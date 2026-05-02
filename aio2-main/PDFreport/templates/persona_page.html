@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ persona_name|default('ペルソナ') }} - レポート{% endblock %}
+{% block header_title %}{{ persona_name|default('ペルソナ') }}{% endblock %}
+
+{% block content %}
+<div class="pill-tabs">
+    <div class="pill-tab active">マーケ向け</div>
+    <div class="pill-tab">サイト作成者向け</div>
+</div>
+
+<section class="card">
+    <h2>マーケター向けハイライト</h2>
+    <p class="icon-line"><strong>概要:</strong> {{ analysis_text|default('要約がここに入ります。') }}</p>
+    {% if recommendations %}
+    <h3>アクション</h3>
+    <ul>
+        {% for rec in recommendations %}
+        <li class="icon-line">{{ rec }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+<section class="card site-creator-section">
+    <div class="header-with-badge">
+        <h2>サイト作成者・技術者向け（技術的改善案）</h2>
+        <span class="badge technical">Technical</span>
+    </div>
+    <div class="kpi-grid">
+        <div class="kpi-item">
+            <span class="kpi-label">優先KPI:</span>
+            <span class="kpi-value">{{ technical_kpis|default('INP/LCP (Core Web Vitals), 構造化データエラー率') }}</span>
+        </div>
+        <div class="kpi-item">
+            <span class="kpi-label">技術スタック:</span>
+            <span class="kpi-value">{{ tech_stack|default('OpenGraph, JSON-LD, robots.txt, sitemap.xml') }}</span>
+        </div>
+    </div>
+    
+    <div class="content-block">
+        <h3>技術的ハイライト</h3>
+        <p class="summary-text">{{ technical_summary|default('技術的な観点からの要約がここに入ります。パフォーマンス最適化やスキーマ実装が中心となります。') }}</p>
+    </div>
+
+    {% if hybrid_summary and hybrid_summary.representative_quotes %}
+    <div class="content-block">
+        <h3>サイト構成・構造に関するフィードバック</h3>
+        <ul class="quote-list">
+            {% for sentiment, quotes in hybrid_summary.representative_quotes.items() %}
+                {% if quotes %}
+                {% for quote in quotes[:3] %}
+                <li class="quote-item">"{{ quote }}"</li>
+                {% endfor %}
+                {% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

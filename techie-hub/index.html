@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>TECHIE</title>
+<link rel="icon" href="assets/logo.svg?v=20260207b" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=20260414c">
+<script src="config.js?v=20260430a"></script>
+</head>
+<body>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<div class="suite-shell">
+  <header class="suite-nav">
+    <a href="/" class="suite-nav-home" data-service-link="home">HOME</a>
+    <a href="https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomake">発信作成</a>
+    <a href="https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomegane">見え方観測</a>
+    <a href="https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomigaki">サイト改善</a>
+  </header>
+
+  <main class="suite-home">
+    <section class="hero-card">
+      <div class="hero-brand">
+        <img src="assets/logo.svg?v=20260207b" alt="TECHIE" class="hero-logo">
+        <p class="hero-tagline">作る、測る、改善する。</p>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="core-grid">
+        <article class="suite-card suite-card-kotomake" data-service="kotomake">
+          <h3>コトメイク</h3>
+          <p class="card-purpose">ブログ生成で流入導線を作る</p>
+          <a href="https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomake" class="button button-primary" target="_blank" rel="noopener">開く</a>
+        </article>
+
+        <article class="suite-card suite-card-kotomegane" data-service="kotomegane">
+          <h3>コトメガネ</h3>
+          <p class="card-purpose">AI検索での見え方を測る</p>
+          <a href="https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomegane" class="button button-primary" target="_blank" rel="noopener">開く</a>
+        </article>
+
+        <article class="suite-card suite-card-kotomigaki" data-service="kotomigaki">
+          <h3>コトミガキ</h3>
+          <p class="card-purpose">自社サイトの改善点を判断する</p>
+          <a href="https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomigaki" class="button button-primary" target="_blank" rel="noopener">開く</a>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var config = window.TECHIE_CONFIG || {};
+  var fallback = {
+    home: window.location.origin + '/',
+    kotomake: 'https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io',
+    kotomigaki: 'https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io',
+    kotomegane: 'https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io'
+  };
+  var urls = {
+    home: config.HUB_URL || fallback.home,
+    kotomake: config.KOTOMAKE_URL || fallback.kotomake,
+    kotomigaki: config.KOTOMIGAKI_URL || fallback.kotomigaki,
+    kotomegane: config.KOTOMEGANE_URL || fallback.kotomegane
+  };
+  var services = [
+    { key: 'kotomake', mode: 'no-cors' },
+    { key: 'kotomigaki', mode: 'no-cors' },
+    { key: 'kotomegane', healthPath: '/healthz', mode: 'cors' }
+  ];
+
+  function applyLinks() {
+    document.querySelectorAll('[data-service-link]').forEach(function (link) {
+      var key = link.getAttribute('data-service-link');
+      var url = urls[key] || '#';
+      link.setAttribute('href', url);
+      link.dataset.href = url;
+    });
+  }
+
+  function ping(svc) {
+    var controller = new AbortController();
+    var id = setTimeout(function () { controller.abort(); }, 6000);
+    var path = svc.healthPath || '/';
+    return fetch((urls[svc.key] || '').replace(/\/$/, '') + path, {
+      cache: 'no-store',
+      mode: svc.mode || 'no-cors',
+      signal: controller.signal
+    }).then(function (response) {
+      clearTimeout(id);
+      return svc.mode === 'cors' ? response.ok : true;
+    }).catch(function () {
+      clearTimeout(id);
+      return false;
+    });
+  }
+
+  function setStatus(svc, up) {
+    var card = document.querySelector('.suite-card[data-service="' + svc.key + '"]');
+    if (!card) return;
+    card.dataset.serviceState = up ? 'up' : 'down';
+    var btn = card.querySelector('.button');
+    if (!btn) return;
+    btn.setAttribute('href', btn.dataset.href || urls[svc.key] || '#');
+    btn.setAttribute('tabindex', '0');
+    if (up) {
+      btn.classList.remove('button-disabled');
+      btn.setAttribute('aria-disabled', 'false');
+      btn.removeAttribute('title');
+    } else {
+      btn.classList.add('button-disabled');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.setAttribute('title', '起動確認に失敗しました。押すとそのまま開けます');
+    }
+  }
+
+  async function tick() {
+    for (var i = 0; i < services.length; i++) {
+      var svc = services[i];
+      var up = await ping(svc);
+      setStatus(svc, up);
+    }
+  }
+
+  applyLinks();
+  tick();
+  setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>

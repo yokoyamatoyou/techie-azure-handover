@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+logs/
+outputs/
+node_modules/
+.git/
+note/generated_images/
+config.json

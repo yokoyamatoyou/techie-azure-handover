@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+logs/
+data/poc_outputs/
+outputs/
+node_modules/
+.git/
+*.db
+app_startup.log

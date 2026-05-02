@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}戦略提案 - 分析レポート{% endblock %}
+
+{% block header_title %}戦略的提案{% endblock %}
+
+{% block content %}
+<div class="strategic-proposal">
+    <div class="proposal-overview">
+        <h2>戦略的提言</h2>
+        <div class="proposal-text">
+            {{ strategic_proposal|default('戦略的提案内容がここに表示されます。') }}
+        </div>
+    </div>
+    
+    {% if action_plans %}
+    <div class="action-plans">
+        <h3>アクションプラン</h3>
+        {% for category, actions in action_plans.items() %}
+            {% if actions %}
+            <div class="action-category">
+                <h4>{{ category|title }}</h4>
+                <ul>
+                    {% for action in actions %}
+                    <li>{{ action }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    {% if web_research_results %}
+    <div class="web-research">
+        <h3>外部リサーチ結果</h3>
+        <div class="research-content">
+            {{ web_research_results|default('外部リサーチ結果がここに表示されます。') }}
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if business_impact %}
+    <div class="business-impact">
+        <h3>ビジネスインパクト</h3>
+        <div class="impact-details">
+            <p><strong>優先度:</strong> {{ business_impact.priority_level|default('中') }}</p>
+            <p><strong>緊急度スコア:</strong> {{ business_impact.urgency_score|default(0.5) }}</p>
+            
+            {% if business_impact.recommended_actions %}
+            <h4>推奨アクション</h4>
+            <ul>
+                {% for action in business_impact.recommended_actions %}
+                <li>{{ action }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            
+            {% if business_impact.risk_factors %}
+            <h4>リスク要因</h4>
+            <ul>
+                {% for risk in business_impact.risk_factors %}
+                <li>{{ risk }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            
+            {% if business_impact.opportunity_areas %}
+            <h4>機会領域</h4>
+            <ul>
+                {% for opportunity in business_impact.opportunity_areas %}
+                <li>{{ opportunity }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if hybrid_summary and hybrid_summary.topic_quotes %}
+    <div class="topic-insights">
+        <h3>トピック別インサイト</h3>
+        {% for topic, quotes in hybrid_summary.topic_quotes.items() %}
+            {% if quotes %}
+            <div class="topic-section">
+                <h4>{{ topic }}</h4>
+                <ul>
+                    {% for quote in quotes %}
+                    <li class="quote-item">"{{ quote }}"</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.strategic-proposal {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.proposal-overview {
+    background-color: #e8f4fd;
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    border-left: 5px solid #0d335d;
+}
+
+.proposal-text {
+    line-height: 1.7;
+    text-align: justify;
+    font-size: 1.05em;
+}
+
+.action-plans {
+    background-color: #f8f9fa;
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+.action-category {
+    margin-bottom: 20px;
+}
+
+.action-category h4 {
+    color: #0d335d;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.action-category ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.action-category li {
+    margin: 6px 0;
+    line-height: 1.5;
+}
+
+.web-research {
+    background-color: #fff3cd;
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    border-left: 5px solid #d04a02;
+}
+
+.research-content {
+    line-height: 1.6;
+    text-align: justify;
+}
+
+.business-impact {
+    background-color: #f8f9fa;
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+.impact-details h4 {
+    color: #0d335d;
+    margin: 15px 0 10px 0;
+    font-size: 1.1em;
+}
+
+.impact-details ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.impact-details li {
+    margin: 6px 0;
+    line-height: 1.5;
+}
+
+.topic-insights {
+    background-color: #e8f4fd;
+    padding: 25px;
+    border-radius: 8px;
+}
+
+.topic-section {
+    margin-bottom: 20px;
+}
+
+.topic-section h4 {
+    color: #0d335d;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.quote-item {
+    margin: 8px 0;
+    font-style: italic;
+    color: #555;
+    padding-left: 15px;
+    border-left: 3px solid #d04a02;
+}
+</style>
+{% endblock %}
+
+
+

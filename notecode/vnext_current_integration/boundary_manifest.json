@@ -1,0 +1,52 @@
+{
+  "manifest_version": "1",
+  "generated_on": "2026-04-30",
+  "allowed_lanes": [
+    "current-control",
+    "vnext-engine",
+    "shared-eval"
+  ],
+  "lane_rule": {
+    "current-control": [
+      "Current production UI and route selection remain controlled by the current mainline runner."
+    ],
+    "vnext-engine": [
+      "VNext engine work is isolated from the current production control path."
+    ],
+    "shared-eval": [
+      "Shared evaluation code can be used by both lanes without changing route ownership."
+    ]
+  },
+  "boundary_freeze": {
+    "route_mapping_source_of_truth": "note.current_mainline_runner.resolve_current_mainline_ui_selection",
+    "current_owner_files": [
+      "note/current_mainline_runner.py",
+      "note/generation_request_builder.py",
+      "note/current_mainline_runtime_logging.py",
+      "note/note_writer_app.py"
+    ],
+    "current_owner_count": 4,
+    "non_targets": [
+      "quarantine_only_slice10"
+    ],
+    "quarantine_only_slice10": {
+      "default_next_action_allowed": false,
+      "reopen_condition": "shared_eval_blocker_only"
+    },
+    "test_mapping": {
+      "current-control": [
+        "note/tests/test_current_mainline_runner.py",
+        "note/tests/test_current_mainline_ui_matrix.py"
+      ],
+      "vnext-engine": [
+        "note/tests/test_vnext_overlap_calibration.py"
+      ],
+      "shared-eval": [
+        "note/tests/test_vnext_current_shared_eval.py"
+      ],
+      "boundary-freeze": [
+        "note/tests/test_vnext_current_boundary_freeze.py"
+      ]
+    }
+  }
+}

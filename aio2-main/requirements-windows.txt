@@ -1,0 +1,37 @@
+# Windows (Python 3.11) PoC向け
+# - WeasyPrintはWindowsで外部依存（GTK/Pango等）が必要になりがちなので除外
+# - 本PoCは fpdf2 のPDF生成が主経路
+
+# Core runtime
+nicegui
+matplotlib
+requests
+beautifulsoup4
+tldextract
+openai
+python-dotenv
+playwright
+
+# PDF/analysis stack
+pandas
+numpy
+fpdf2
+jinja2
+wordcloud
+
+# Config / validation
+pydantic>=2.0
+pydantic-settings
+
+# LLM structured output
+instructor
+
+# Natural Language Processing (AIO)
+sudachipy
+sudachidict-full
+
+# API (WIX Integration)
+fastapi
+uvicorn
+python-multipart
+

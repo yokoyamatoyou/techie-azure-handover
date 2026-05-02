@@ -1,0 +1,7 @@
+data/*
+!data/stopwords_ja.txt
+!data/exclude_words_preset.json
+__pycache__/
+*.pyc
+.env
+.venv/

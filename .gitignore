@@ -1,0 +1,78 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.cer
+
+# Local tooling/cache
+.azure-cli/
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local debug/vendor installs
+.kotomegane_debug_vendor/
+.pdf_debug_vendor/
+**/.vendor/
+node_modules/
+**/node_modules/
+
+# Client handoff/source package archives kept outside version control
+Azure0410/
+Azure0429/
+cloud_handoff_minimal_2026-04-15/
+external_engineer_handover_2026-04-05/
+kotomegane_minimal_export/
+.codex_merge_backup/
+_phase2_docx_extract/
+
+# Runtime/generated data
+logs/
+**/logs/
+data/
+**/data/
+exports/
+**/exports/
+generated_images/
+**/generated_images/
+aio2-main/data/poc_outputs/
+notecode/data/
+notecode/image/
+
+# Runtime data files required by application code
+!kotomegane/data/
+!kotomegane/data/stopwords_ja.txt
+!kotomegane/data/exclude_words_preset.json
+!notecode/data/
+!notecode/data/human_corpus/
+!notecode/data/human_corpus/simple_note_refactor_2026-03-22/
+!notecode/data/human_corpus/simple_note_refactor_2026-03-22/learner_calibration_bootstrap.json
+!notecode/data/human_corpus/simple_note_refactor_2026-03-22/manifest.json
+!notecode/data/human_corpus/simple_note_refactor_2026-03-22/README.md
+
+# Build/export artifacts
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.bak
+*.backup.*
+*.backup
+infra/main.json
+**/config_backups/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
