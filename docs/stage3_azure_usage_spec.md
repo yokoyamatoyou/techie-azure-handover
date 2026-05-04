@@ -1,33 +1,34 @@
-# TECHIE Stage 3 Azure Usage Spec
+# TECHIE Stage 3 Azure Usage / Credit 仕様
 
-This document describes the current Stage 3 usage-credit contract that is already implemented in the Azure/backend side of the TECHIE platform.
+本資料は、TECHIE の Stage 3 で実装済みの usage/credit 管理仕様をまとめたものです。
 
-## Scope
+## 対象範囲
 
-The current Stage 3 backend covers:
+現在の Azure/backend 側では以下を扱います。
 
-- tenant-linked credit balances
-- per-service remaining-credit summaries
-- idempotent credit consumption
-- admin credit grants
-- insufficient-credit handling
-- manual debit hooks for Kotomake and Kotomigaki
-- manual and batch debit hooks prepared in Kotomegane code in the main repo
+- tenant に紐づく credit 残高管理
+- service ごとの残 credit 取得
+- idempotency key 付き credit 消費
+- admin による credit 付与
+- credit 不足時の制御
+- コトメイク生成時の debit hook
+- コトミガキ分析時の debit hook
+- コトメガネ手動実行・batch・scheduled 実行向け debit logic
 
-## Identity And Ownership Model
+## Identity / Ownership model
 
-- Credit balances are managed per `tenant_id`
-- Credit events may also carry `subscription_contract_id` metadata when available
-- The acting authenticated user is stored as `actor_user_id`
-- Service balances are separated by `service_key`
+- credit balance は `tenant_id` 単位で管理します。
+- event には必要に応じて `subscription_contract_id` を metadata として持たせます。
+- 操作ユーザーは `actor_user_id` として記録します。
+- service ごとの残高は `service_key` で分離します。
 
-## Service Keys
+## Service keys
 
 - `kotomake`
 - `kotomigaki`
 - `kotomegane`
 
-## Action Keys
+## Action keys
 
 - `kotomake.generate`
 - `kotomigaki.analyze`
@@ -35,38 +36,42 @@ The current Stage 3 backend covers:
 - `kotomegane.batch`
 - `kotomegane.scheduled`
 
-## Current Kotomegane Menu Rules
+## コトメガネ menu rule
 
-Fixed execution menus:
+固定 menu は以下です。
 
-- `OpenAI単独観測`
-  - manual run: `1` credit
-  - batch job create: `1` credit
-  - scheduled job create: `1` credit
-  - default cadence target: `72 hours`
+### OpenAI 単独観測
 
-- `3AI横断観測`
-  - manual run: `2` credits
-  - batch job create: `2` credits
-  - scheduled job create: `2` credits
-  - default cadence target: `48 hours`
+- 手動実行: `1` credit
+- batch job 作成: `1` credit
+- scheduled job 作成: `1` credit
+- 想定 cadence: `72 hours`
 
-Current implementation note:
+### 3AI 横断観測
 
-- the menu model and credit rules are implemented
-- `OpenAI単独観測` is the runtime-ready path today
-- `3AI横断観測` is modeled in code but should stay blocked until the client’s final multi-provider runtime/UI package is merged
+- 手動実行: `2` credits
+- batch job 作成: `2` credits
+- scheduled job 作成: `2` credits
+- 想定 cadence: `48 hours`
 
-## Default Usage Units For Existing Live Apps
+現状の注意:
 
-- Kotomake generation click: `1`
-- Kotomigaki analysis click: `1`
+- menu model と credit rule は実装済みです。
+- 現時点で runtime-ready な経路は OpenAI 単独観測です。
+- 3AI 横断観測は code 上の model はありますが、Gemini / Claude key と client 側 final runtime/UI package の確定後に有効化してください。
 
-## Current API Endpoints
+## 既存 live app の標準消費単位
+
+- コトメイク生成 click: `1`
+- コトミガキ分析 click: `1`
+- コトメガネ OpenAI 手動実行: `1`
+- コトメガネ 3AI 手動実行: `2`
+
+## API endpoints
 
 Base URL:
 
-- Production API base: `https://api.techie.jp`
+- `https://api.techie.jp`
 
 Endpoints:
 
@@ -74,7 +79,7 @@ Endpoints:
 - `POST /api/usage/consume`
 - `POST /api/usage/grant`
 
-## Request / Response Contract
+## Request / Response
 
 ### `GET /api/usage/summary`
 
@@ -82,7 +87,7 @@ Query parameter:
 
 - `service_key`
 
-Authenticated response shape:
+認証済み response 例:
 
 ```json
 {
@@ -112,17 +117,17 @@ Request body:
 }
 ```
 
-Success response includes the updated balance summary.
+成功時は更新後の balance summary を返します。
 
-If credits are insufficient, the API returns:
+credit 不足時:
 
 - HTTP `402`
-- `detail` explaining insufficient credits
+- `detail` に credit 不足理由を返します。
 
-Recommended UI behavior:
+UI 側の推奨動作:
 
-- show a clear `"insufficient credits"` message
-- do not start generation/analysis if `402` is returned
+- credit 不足 message を表示します。
+- `402` の場合は生成/分析を開始しません。
 
 ### `POST /api/usage/grant`
 
@@ -140,51 +145,51 @@ Request body:
 }
 ```
 
-Authorization rule:
+Authorization:
 
-- requires `admin` or `platform_admin`
+- `admin` または `platform_admin` が必要です。
 
-## Trigger Rules
+## Trigger rule
 
-### Kotomake
+### コトメイク
 
-- Trigger: article generation click
-- Debit timing: before generation starts
-- If debit fails with insufficient balance: stop and show shortage message
+- Trigger: 記事生成 click
+- Debit timing: 生成開始前
+- credit 不足時: 処理を止め、不足 message を表示します。
 
-### Kotomigaki
+### コトミガキ
 
-- Trigger: analysis click
-- Debit timing: before analysis starts
-- If debit fails with insufficient balance: stop and show shortage message
+- Trigger: 分析 click
+- Debit timing: 分析開始前
+- credit 不足時: 処理を止め、不足 message を表示します。
 
-### Kotomegane Manual
+### コトメガネ手動実行
 
 - Trigger: manual run click
-- Debit timing: before the manual run starts
-- If debit fails with insufficient balance: stop and show shortage message
+- Debit timing: 手動実行開始前
+- credit 不足時: 処理を止め、不足 message を表示します。
 
-### Kotomegane Batch
+### コトメガネ batch
 
-- Trigger: batch job submit / batch job creation
-- Debit timing: at batch submit time
-- Do **not** charge on import, display, or report open
-- Use an idempotency key tied to the batch job
-- If batch submit fails after debit, a compensating grant/rollback should be recorded
+- Trigger: batch job submit / batch job 作成
+- Debit timing: batch submit 時
+- import、表示、report open では課金しません。
+- batch job に紐づく idempotency key を使用します。
+- debit 後に batch submit が失敗した場合は compensating grant / rollback を ledger に記録してください。
 
-### Kotomegane Scheduled
+### コトメガネ scheduled
 
-- Trigger: scheduled batch job creation by the scheduler
-- Debit timing: when the due scheduled job is created
-- The scheduler uses the saved owner `tenant_id` / `user_id` from the question set or schedule
-- Use an idempotency key tied to `schedule_id + scheduled slot`
-- If scheduled batch submit fails after debit, a compensating grant/rollback should be recorded
+- Trigger: scheduler による scheduled batch job 作成
+- Debit timing: 実行予定 slot の job 作成時
+- 保存済みの `tenant_id` / `user_id` を使用します。
+- `schedule_id + scheduled slot` に紐づく idempotency key を使用します。
+- debit 後に submit が失敗した場合は compensating grant / rollback を記録してください。
 
-## Idempotency Rule
+## Idempotency rule
 
-Every debit/grant should send an `idempotency_key`.
+すべての debit/grant に `idempotency_key` を送ってください。
 
-Recommended patterns:
+推奨 pattern:
 
 - manual click: UI attempt ID
 - analysis click: analysis attempt ID
@@ -192,38 +197,33 @@ Recommended patterns:
 - scheduled: `schedule_id + slot key`
 - rollback: `<original-id>-rollback`
 
-This prevents accidental double charging during retries, refreshes, or transient failures.
+これにより retry、refresh、一時障害時の二重課金を防ぎます。
 
-## Database Tables
+## Database tables
 
-Implemented tables:
+実装済み table:
 
 - `service_usage_account`
 - `usage_event_ledger`
 
-Purpose:
+用途:
 
-- `service_usage_account`: current credit state by tenant and service
-- `usage_event_ledger`: immutable ledger of debits and grants
+- `service_usage_account`: tenant/service 単位の現在残高
+- `usage_event_ledger`: debit / grant の immutable ledger
 
-## Current Implementation Status
+## 実装状態
 
-Implemented in the main production repo:
+実装済み:
 
 - shared usage ledger backend
 - usage API endpoints
-- Kotomake debit hook
-- Kotomigaki debit hook
-- Kotomegane manual, batch, and scheduled debit logic in the promoted main-repo code
+- コトメイク debit hook
+- コトミガキ debit hook
+- コトメガネ manual / batch / scheduled debit logic
 
-Not yet fully deployed as a production Azure app:
+client 側で確認が必要な項目:
 
-- Kotomegane container/service deployment
-- final Kotomegane production runtime topology
-
-## Items Still Requiring Client Finalization
-
-- final Kotomegane UI package/version to promote
+- final Kotomegane UI package/version
 - final Kotomegane algorithm/runtime freeze
-- final 3AI execution/runtime package from the client side
-- any unit/menu changes beyond the currently encoded rules
+- Gemini / Claude を含む 3AI runtime の key と有効化範囲
+- plan ごとの credit 付与数と menu 単価の最終確定

@@ -1,64 +1,64 @@
-# TECHIE Production Deployment
+# TECHIE 本番デプロイ手順
 
-This repository contains several historical deployment scripts, but only the scripts below should be used for the current production handover.
+本リポジトリには過去のデプロイスクリプトも一部残していますが、現在の本番引き継ぎで使用するスクリプトは以下のみです。
 
-## Current Scripts
+## 現行スクリプト
 
-### Full current app refresh
+### 現在のアプリ一式を更新する場合
 
-Use this after UI/runtime changes for Kotomake, Kotomigaki, Kotomegane, or Techie Hub.
+コトメイク、コトミガキ、コトメガネ、TECHIE Hub の UI や runtime を更新した後は、以下を実行します。
 
 ```powershell
 .\deploy-azure0429-refresh-kyotokyotechie.ps1 -Environment prod
 ```
 
-This builds and deploys:
+このスクリプトは以下をビルド・デプロイします。
 
 - `techie-hub`
 - `kotomake`
 - `kotomigaki`
 - `kotomegane`
 
-It also updates the custom-domain App Service containers for:
+また、以下の custom domain 側 App Service container も更新します。
 
 - `https://app.techie.jp`
 - `https://api.techie.jp`
 
-### Platform / usage API deployment
+### Azure 基盤 / usage API を更新する場合
 
-Use this only when the Azure infrastructure, usage API, database schema, or shared runtime configuration changes.
+Azure インフラ、usage API、DB スキーマ、共通 runtime 設定を変更する場合のみ使用します。
 
 ```powershell
 .\deploy-stage3-kyotokyotechie.ps1 -Environment prod
 ```
 
-If the database schema has already been applied, use:
+DB スキーマをすでに適用済みの場合は以下を使用します。
 
 ```powershell
 .\deploy-stage3-kyotokyotechie.ps1 -Environment prod -SkipDatabaseInit
 ```
 
-### Kotomegane-only deployment
+### コトメガネのみデプロイする場合
 
-Normally this is called automatically by the full refresh script. Use directly only when deploying Kotomegane alone.
+通常は上記の full refresh script から自動的に呼び出されます。コトメガネだけを個別更新する場合のみ直接使用します。
 
 ```powershell
 .\deploy-kotomegane-kyotokyotechie.ps1 -Environment prod
 ```
 
-## Legacy Scripts
+## Legacy scripts
 
-Older Phase 2 / V2 deployment scripts are stored under:
+Phase 2 / V2 時点の古いスクリプトは以下に保管しています。
 
 ```text
 docs/legacy-deploy-scripts/
 ```
 
-They are retained for audit/history only and should not be used for the current production deployment unless an engineer intentionally needs to reproduce an older deployment path.
+これらは監査・履歴確認用です。現在の本番デプロイでは使用しないでください。
 
-## Required Secrets
+## 必要な secret
 
-Set required secrets in the shell before deployment. Do not commit real secret values to Git.
+デプロイ前に shell の環境変数として設定してください。実際の secret 値は Git に commit しないでください。
 
 ```powershell
 $env:POSTGRES_ADMIN_PASSWORD='<set securely>'
@@ -68,18 +68,18 @@ $env:STRIPE_PUBLISHABLE_KEY='<set securely>'
 $env:STRIPE_WEBHOOK_SECRET='<set securely>'
 ```
 
-Optional provider keys are required only when enabling Gemini or Claude runtime paths:
+Gemini / Claude の runtime path を有効化する場合のみ、以下も必要です。
 
 ```powershell
 $env:GEMINI_API_KEY='<set securely>'
 $env:ANTHROPIC_API_KEY='<set securely>'
 ```
 
-## Production URLs
+## 本番 URL
 
 - Hub: `https://app.techie.jp`
-- API / Kotomake custom domain: `https://api.techie.jp`
+- API / コトメイク custom domain: `https://api.techie.jp`
 - Stripe webhook: `https://api.techie.jp/webhook/stripe`
-- Kotomake Container App: `https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
-- Kotomigaki Container App: `https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
-- Kotomegane Container App: `https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
+- コトメイク Container App: `https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
+- コトミガキ Container App: `https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
+- コトメガネ Container App: `https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
