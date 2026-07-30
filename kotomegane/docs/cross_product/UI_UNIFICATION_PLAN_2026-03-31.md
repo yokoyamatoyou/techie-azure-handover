@@ -174,3 +174,11 @@
 - `aio2-main`: `Sora + Noto Sans JP`、`--brand / --self / --competitive / --external`、`card-primary / card-secondary / card-detail` の導入
 - `notecode`: `Work Sans` 依存を落としつつ、同一 token 名とカード階層へ置換
 - 追加で、保存済み draft / compare UI は `card-detail + summary-eyebrow + mini-stat + compact table` の共通文法として持ち込む
+
+## 2026-07-06 実装状況更新
+
+- フォント統一（`Sora + Noto Sans JP`）: 3製品とも完了済み（既存実装を確認）。
+- 意味色トークン（`--self` / `--competitive` / `--external`）とカード階層（`.card-primary` / `.card-secondary` / `.card-detail`）: `aio2-main`（`core/ui/styles.py`）と `notecode`（`note/note_writer_app_head_assets.py`）へ本日展開完了。値は本ファイル記載の `kotomegane` 基準値と一致させた。
+- `aio2-main` の既存15カードクラスのうち、補助/詳細相当の6クラスの `box-shadow` をtier相当の強さへ調整済み（詳細は `aio2-main\WORKLOG.md` 参照）。
+- `notecode` の既存14カードクラスは調査の結果、影の強弱によるtier分けが既にできていたため、値の書き換えは見送りトークン追加のみ。個性を残す本ファイルの `notecode` 向けガイダンス（「情報量が多いので、共通シェルの上で編集体験だけを個性として残す」）と整合。
+- 本セクションの完了をもって、上記「Immediate Next Step」記載のトークン・カード階層移植は完了とする。カード主従構造・バッジ・ステップ表示の全面統一（Rollout Order 4〜6）は引き続き未着手。

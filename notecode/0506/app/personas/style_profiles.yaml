@@ -1,0 +1,65 @@
+style_profiles:
+  note_hatena_owned_media_soft:
+    description: "Owned-media blog rhythm for note and Hatena Blog."
+    paragraph_policy:
+      preferred_sentences_per_paragraph: 2
+      max_sentences_per_paragraph: 3
+      line_break_policy: "topic_shift_or_two_sentences"
+    punctuation_policy:
+      comma_density: "moderate"
+      avoid_mechanical_commas: true
+    subject_omission_policy:
+      mode: "clear_context_only"
+      omit_repeated_narrator_after_clear_subject: true
+      protected_fact_terms:
+        - "年"
+        - "月"
+        - "日"
+        - "時"
+        - "円"
+        - "価格"
+        - "料金"
+        - "責任"
+        - "約束"
+        - "予約"
+        - "申込"
+        - "対象"
+        - "変更"
+        - "依頼"
+        - "担当"
+    ending_bucket_policy:
+      avoid_late_half_bucket_concentration: true
+      prefer_structural_variation: true
+    codex_visibility: "改行、読点、文頭の主語省略、文末バケットを記事ブリーフで明示する。"
+  formal_notice_compact:
+    description: "Compact factual notice rhythm for formal announcements."
+    paragraph_policy:
+      preferred_sentences_per_paragraph: 1
+      max_sentences_per_paragraph: 2
+      line_break_policy: "keep_dates_and_targets_visible"
+    punctuation_policy:
+      comma_density: "low"
+      avoid_mechanical_commas: true
+    subject_omission_policy:
+      mode: "protected_facts_explicit"
+      omit_repeated_narrator_after_clear_subject: false
+      protected_fact_terms:
+        - "年"
+        - "月"
+        - "日"
+        - "時"
+        - "円"
+        - "価格"
+        - "料金"
+        - "責任"
+        - "約束"
+        - "予約"
+        - "申込"
+        - "対象"
+        - "変更"
+        - "依頼"
+        - "担当"
+    ending_bucket_policy:
+      avoid_late_half_bucket_concentration: true
+      prefer_structural_variation: false
+    codex_visibility: "告知では日時、対象、責任主体を省略しない。"

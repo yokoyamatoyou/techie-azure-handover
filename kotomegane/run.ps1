@@ -1,5 +1,13 @@
+param(
+    [switch]$ReadOnlyDemo
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ($ReadOnlyDemo) {
+    $env:KOTOMEGANE_READONLY_DEMO = "1"
+}
 
 $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $envFile = Join-Path $PSScriptRoot ".env"
@@ -59,6 +67,14 @@ function Get-VenvBaseInterpreter {
     }
 
     return $null
+}
+
+function Test-ReadonlyDemoMode {
+    $rawValue = [Environment]::GetEnvironmentVariable("KOTOMEGANE_READONLY_DEMO", "Process")
+    if ([string]::IsNullOrWhiteSpace($rawValue)) {
+        return $false
+    }
+    return @("1", "true", "yes", "on") -contains $rawValue.Trim().ToLowerInvariant()
 }
 
 function Start-KotomeganeRuntime {
@@ -275,16 +291,21 @@ public static class KotomeganeRuntimeHost {
     return [KotomeganeRuntimeHost]::RunInKillOnCloseJob($commandLine, $PSScriptRoot)
 }
 
+$readonlyDemoMode = Test-ReadonlyDemoMode
 $providerEnvVars = @("OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY")
 $keyStatuses = @(
     $providerEnvVars | ForEach-Object { Get-KeySourceMessage -EnvVar $_ } | Where-Object { $null -ne $_ }
 )
-if ($keyStatuses.Count -eq 0) {
+if ($keyStatuses.Count -eq 0 -and -not $readonlyDemoMode) {
     throw "No provider API key was found. Set OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY in .env or in your environment before running .\run.ps1."
 }
 
-foreach ($keyStatus in $keyStatuses) {
-    Write-Host $keyStatus
+if ($readonlyDemoMode) {
+    Write-Host "KOTOMEGANE_READONLY_DEMO=1: provider API key check skipped; scheduler/provider/LLM/API actions are blocked."
+} else {
+    foreach ($keyStatus in $keyStatuses) {
+        Write-Host $keyStatus
+    }
 }
 $baseInterpreter = Get-VenvBaseInterpreter
 Write-Host "Runtime python launcher: $venvPython"

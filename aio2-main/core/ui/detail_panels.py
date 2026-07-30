@@ -124,6 +124,29 @@ def render_deep_dive_issue(issue: Dict):
                 ui.icon("lightbulb", size="sm").classes("text-blue-500")
                 ui.label(suggestion).classes("text-sm text-blue-700")
 
+        context = issue.get("context_judgement") or {}
+        decision = issue.get("legal_decision")
+        if decision == "review_needed":
+            ui.badge("要確認（文脈）", color="orange").classes("text-xs mt-2")
+        elif decision == "action_required":
+            ui.badge("要修正候補", color="red").classes("text-xs mt-2")
+        if decision or context:
+            detail_bits = []
+            if context.get("claim_target"):
+                detail_bits.append(f"対象: {context.get('claim_target')}")
+            if context.get("polarity"):
+                detail_bits.append(f"極性: {context.get('polarity')}")
+            if context.get("usage_type"):
+                detail_bits.append(f"用途: {context.get('usage_type')}")
+            if context.get("confidence") is not None:
+                detail_bits.append(f"判定信頼度: {float(context.get('confidence') or 0):.2f}")
+            if context.get("model"):
+                detail_bits.append(f"モデル: {context.get('model')}")
+            if detail_bits:
+                ui.label(" / ".join(detail_bits)).classes("text-xs text-gray-500 mt-1")
+            if issue.get("context_note"):
+                ui.label(f"文脈判定理由: {issue.get('context_note')}").classes("text-xs text-gray-600")
+
         # 消費者庁注釈
         ca_note = issue.get("consumer_agency_note", "")
         if ca_note:

@@ -66,7 +66,7 @@ class HealthAdviceGenerator:
         if scores.get("accessibility", 100) < 70:
             advice.append(
                 {
-                    "category": "アクセシビリティ改善",
+                    "category": "見やすさ・使いやすさ改善",
                     "priority": "medium",
                     "why": "すべてのユーザーがサイトを利用できるようにするため",
                     "action": "alt属性とARIAラベルを追加してください",

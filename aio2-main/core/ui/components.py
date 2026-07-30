@@ -50,7 +50,7 @@ def create_status_card(title: str, status: str, status_color: str, items: List[D
 
     card_data = build_status_card_data(title, status, status_color, items, summary)
 
-    with ui.card().classes("card p-4 w-full"):
+    with ui.card().classes("card p-4 w-full status-card"):
         ui.label(card_data["title"]).classes("card-title")
         ui.label(card_data["status"]).classes("card-sub font-bold").style(
             f"color: {card_data['status_color']}"

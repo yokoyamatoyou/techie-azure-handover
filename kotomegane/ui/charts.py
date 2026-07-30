@@ -55,10 +55,10 @@ def insight_card(label: str, headline: str, detail: str) -> tuple[ui.label, ui.l
 def localize_run_mode(run_mode: Any) -> str:
     mode = str(run_mode or "").lower()
     if mode == "scheduled":
-        return "自動定期分析"
+        return "自動チェック"
     if mode == "batch":
-        return "定期分析"
-    return "手動スポット確認"
+        return "まとめて分析"
+    return "1回だけ確認"
 
 
 def shorten_question_label(keyword: str, limit: int = 18) -> str:
@@ -78,6 +78,40 @@ def wrap_chart_question_label(text: Any, chunk_size: int = 16, max_chars: int = 
     if len(value) > max_chars:
         label += "…"
     return label
+
+
+def _compact_time_tick(timestamp: Any) -> str:
+    text = str(timestamp or "").strip()
+    if len(text) >= 16 and text[4:5] == "-" and text[7:8] == "-":
+        return f"{text[5:10].replace('-', '/')} {text[11:16]}"
+    return text or "-"
+
+
+def _time_axis(
+    timestamps: list[Any],
+    *,
+    title: str | None = None,
+    gridcolor: str = THEME_GRID_SOFT,
+) -> dict[str, Any]:
+    axis: dict[str, Any] = {"gridcolor": gridcolor, "automargin": True}
+    if title:
+        axis["title"] = title
+    unique_ticks = list(dict.fromkeys(str(value) for value in timestamps if str(value or "").strip() and str(value) != "-"))
+    if 0 < len(unique_ticks) <= 3:
+        axis.update(
+            {
+                "type": "category",
+                "categoryorder": "array",
+                "categoryarray": unique_ticks,
+                "tickmode": "array",
+                "tickvals": unique_ticks,
+                "ticktext": [_compact_time_tick(value) for value in unique_ticks],
+                "tickfont": {"size": 11},
+            }
+        )
+    else:
+        axis.update({"tickformat": "%m/%d %H:%M", "hoverformat": "%Y-%m-%d %H:%M"})
+    return axis
 
 
 def build_citation_share_series(rows: list[dict[str, Any]], config: AppConfig, limit: int = 8) -> list[dict[str, Any]]:
@@ -425,7 +459,7 @@ def build_visibility_focus_chart(rows: list[dict[str, Any]], config: AppConfig) 
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 24, "r": 18, "t": 18, "b": 24},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"gridcolor": THEME_GRID_STRONG},
+        xaxis=_time_axis([point["timestamp"] for point in series], gridcolor=THEME_GRID_STRONG),
         yaxis={"title": "割合 (%)", "gridcolor": THEME_GRID_STRONG, "rangemode": "tozero"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
     )
@@ -469,7 +503,11 @@ def build_history_chart(rows: list[dict[str, Any]]) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 18, "r": 18, "t": 18, "b": 42},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"title": "確認時刻", "gridcolor": THEME_GRID_SOFT},
+        xaxis=_time_axis(
+            [point["timestamp"] for item in series for point in item["points"]],
+            title="確認時刻",
+            gridcolor=THEME_GRID_SOFT,
+        ),
         yaxis={"title": "参考スコア", "range": [0, 100], "gridcolor": THEME_GRID_STRONG},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
@@ -514,7 +552,7 @@ def build_overall_visibility_chart(rows: list[dict[str, Any]], config: AppConfig
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 18, "r": 18, "t": 18, "b": 42},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"title": "実行時刻", "gridcolor": THEME_GRID_SOFT},
+        xaxis=_time_axis([point["timestamp"] for point in series], title="実行時刻", gridcolor=THEME_GRID_SOFT),
         yaxis={"title": "平均スコア", "range": [0, 100], "gridcolor": THEME_GRID_STRONG},
     )
     return fig
@@ -556,7 +594,11 @@ def build_intent_cluster_chart(rows: list[dict[str, Any]], config: AppConfig) ->
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 18, "r": 18, "t": 18, "b": 42},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"title": "実行時刻", "gridcolor": THEME_GRID_SOFT},
+        xaxis=_time_axis(
+            [point["timestamp"] for item in series for point in item["points"]],
+            title="実行時刻",
+            gridcolor=THEME_GRID_SOFT,
+        ),
         yaxis={"title": "意図別スコア", "range": [0, 100], "gridcolor": THEME_GRID_STRONG},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
@@ -599,7 +641,11 @@ def build_page_gap_trend_chart(rows: list[dict[str, Any]], config: AppConfig) ->
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 18, "r": 18, "t": 18, "b": 42},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"title": "実行時刻", "gridcolor": THEME_GRID_SOFT},
+        xaxis=_time_axis(
+            [point["timestamp"] for item in series for point in item["points"]],
+            title="実行時刻",
+            gridcolor=THEME_GRID_SOFT,
+        ),
         yaxis={"title": "未解消ページ件数", "gridcolor": THEME_GRID_STRONG},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
@@ -641,7 +687,7 @@ def build_query_drilldown_chart(rows: list[dict[str, Any]], keyword: str) -> go.
         plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 18, "r": 18, "t": 18, "b": 42},
         font={"color": THEME_TEXT_MAIN, "size": 14},
-        xaxis={"title": "確認時刻", "gridcolor": THEME_GRID_SOFT},
+        xaxis=_time_axis([point["timestamp"] for point in series], title="確認時刻", gridcolor=THEME_GRID_SOFT),
         yaxis={"title": "質問別スコア", "range": [0, 100], "gridcolor": THEME_GRID_STRONG},
     )
     return fig

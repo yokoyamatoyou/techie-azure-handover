@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple
 
+from fastapi.middleware.cors import CORSMiddleware
 from nicegui import app, run, ui
 from html_sanitizer import Sanitizer
 import re
@@ -19,6 +20,7 @@ import re
 from dotenv import load_dotenv
 
 from core.app_config import get_source_reading_config
+from shared.auth.nicegui_auth import NiceGUIAuthMiddleware
 from shared.billing.api import router as phase2_billing_router
 from shared.billing.webhook_handler import router as stripe_webhook_router
 from shared.usage.api import router as usage_router
@@ -29,6 +31,25 @@ load_dotenv()
 app.include_router(phase2_billing_router)
 app.include_router(stripe_webhook_router)
 app.include_router(usage_router)
+app.add_middleware(NiceGUIAuthMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        origin
+        for origin in dict.fromkeys(
+            [
+                os.environ.get("HUB_BASE_URL", "").rstrip("/"),
+                os.environ.get("HUB_URL", "").rstrip("/"),
+                "https://app.techie.jp",
+                "https://techie-app-exdde6afb0aydgg8.japanwest-01.azurewebsites.net",
+            ]
+        )
+        if origin
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 class _JSONFormatter(logging.Formatter):
     """ログをJSON形式にフォーマットする"""
@@ -97,6 +118,44 @@ def setup_app_logging() -> None:
 
 setup_app_logging()
 
+
+async def _ensure_usage_credit_available(service_key: str) -> bool:
+    try:
+        summary = await get_usage_summary_for_current_user(service_key=service_key)
+    except Exception:
+        logging.exception("Usage credit check failed for service_key=%s", service_key)
+        ui.notify("クレジット確認に失敗しました。時間をおいて再度お試しください。", color="negative")
+        return False
+    if int(summary.get("remaining_credits") or 0) <= 0:
+        ui.notify("クレジットが不足しています。契約管理画面で残高をご確認ください。", color="warning")
+        return False
+    return True
+
+
+async def _consume_usage_credit_after_success(*, service_key: str, action_key: str, attempt_id: str) -> bool:
+    try:
+        summary = await consume_usage_for_current_user(
+            service_key=service_key,
+            action_key=action_key,
+            units=1,
+            idempotency_key=f"{service_key}:{action_key}:{attempt_id}",
+            metadata={"trigger": "post_success"},
+        )
+        logging.info(
+            "Usage credit debited service_key=%s action_key=%s attempt_id=%s event_id=%s remaining=%s replay=%s",
+            service_key,
+            action_key,
+            attempt_id,
+            summary.get("usage_event_id"),
+            summary.get("remaining_credits"),
+            summary.get("idempotent_replay"),
+        )
+        return True
+    except Exception:
+        logging.exception("Usage credit debit failed for service_key=%s action_key=%s", service_key, action_key)
+        ui.notify("処理は完了しましたが、クレジット消費の記録に失敗しました。管理者へ連絡してください。", color="negative")
+        return False
+
 _PREVIEW_PLACEHOLDER = """生成を始めると、ここに本文の冒頭が表示されます。"""
 
 # 画像パターン定数 / helper は note.image_prompt_helpers に分離済み (ファイル後段の import 経由で参照)。
@@ -154,6 +213,14 @@ from note.current_mainline_runtime_logging import (
     build_latest_quality_report_payload as runtime_build_latest_quality_report_payload,
     collect_runtime_config_snapshot as runtime_collect_runtime_config_snapshot,
     persist_latest_generation_snapshot as runtime_persist_latest_generation_snapshot,
+)
+from note.route_0506_ui_bridge import (
+    ROUTE_0506_ID,
+    UI_ROUTE_SELECTION_ENV,
+    build_route_0506_progress_view,
+    build_route_0506_user_facing_blocked_view,
+    resolve_ui_body_route_selection,
+    run_route_0506_ui_onecase,
 )
 from note.note_text_format_helpers import (
     _build_short_sns_text,
@@ -292,6 +359,7 @@ from note.note_writer_app_main_page_sections import (
     render_source_mode_choice_cards,
     render_step_track,
 )
+from shared.usage.nicegui import consume_usage_for_current_user, get_usage_summary_for_current_user
 
 UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -309,10 +377,10 @@ GENERATION_AUDIT_JSONL_PATH = PROJECT_ROOT_DIR / "logs" / "generation_audit_log.
 GENERATION_AUDIT_JSONL_PATH_WORKSPACE = WORKSPACE_ROOT_DIR / "logs" / "generation_audit_log.jsonl"
 
 # Hub URL (top page) — _safe_url / _sanitize_href_allow_file は note_text_format_helpers に分離済み。
-HUB_URL = _safe_url(os.environ.get("HUB_URL", "/"))
-KOTOMAKE_URL = _safe_url(os.environ.get("KOTOMAKE_URL", "http://localhost:8080"))
-KOTOMIGAKI_URL = _safe_url(os.environ.get("KOTOMIGAKI_URL", "http://localhost:8081"))
-KOTOMEGANE_URL = _safe_url(os.environ.get("KOTOMEGANE_URL", "http://localhost:8083"))
+HUB_URL = _safe_url(os.environ.get("HUB_URL", "https://app.techie.jp"))
+KOTOMAKE_URL = _safe_url(os.environ.get("KOTOMAKE_URL", "https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
+KOTOMIGAKI_URL = _safe_url(os.environ.get("KOTOMIGAKI_URL", "https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
+KOTOMEGANE_URL = _safe_url(os.environ.get("KOTOMEGANE_URL", "https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
 
 # Allow only the tags/attrs we use in ui.html
 HTML_SANITIZER = Sanitizer({
@@ -3563,6 +3631,9 @@ _REVIEW_DRAFT_ALLOWED_WARNING_PREFIXES = (
     "company_intro:fingerprint_flatness",
     "company_intro:naturalness_rescue",
 )
+_REVIEW_DRAFT_ALLOWED_WARNING_REASONS = (
+    "contract_alignment_must_cover_reflection_rate<0.50",
+)
 _REVIEW_DRAFT_BLOCKED_REASON_MARKERS = (
     "legal",
     "guarantee",
@@ -3640,6 +3711,8 @@ def _current_mainline_guard_reason_is_reviewable(reason: str) -> bool:
     normalized_reason = str(reason or "").strip()
     lowered = normalized_reason.lower()
     if not normalized_reason:
+        return True
+    if normalized_reason in _REVIEW_DRAFT_ALLOWED_WARNING_REASONS:
         return True
     if any(marker in lowered or marker in normalized_reason for marker in _REVIEW_DRAFT_BLOCKED_REASON_MARKERS):
         return False
@@ -4122,6 +4195,52 @@ def _prepare_current_mainline_legal_postcheck_payload(
         auto_legal_postcheck=auto_legal_postcheck,
         note_body_text=note_body_text,
     )
+
+
+def _prepare_route_0506_post_success_result(
+    *,
+    route_0506_result: Mapping[str, Any],
+    input_contract: Mapping[str, Any],
+) -> Dict[str, Any]:
+    normalized_result = _to_plain_dict(route_0506_result)
+    normalized_contract = dict(input_contract or {})
+    body = str(normalized_result.get("body") or normalized_result.get("full_text") or "")
+    full_text = str(normalized_result.get("full_text") or body)
+    pipeline_check = _to_plain_dict(normalized_result.get("pipeline_check"))
+    pipeline_check.setdefault("input_contract", normalized_contract)
+    result = dict(normalized_result)
+    result.update(
+        {
+            "route_id": str(normalized_result.get("route_id") or ROUTE_0506_ID),
+            "article_type": str(
+                normalized_result.get("article_type")
+                or normalized_contract.get("article_type")
+                or ""
+            ),
+            "semantic_article_key": str(
+                normalized_result.get("semantic_article_key")
+                or normalized_contract.get("semantic_article_key")
+                or ""
+            ),
+            "ui_journey": dict(
+                normalized_result.get("ui_journey")
+                or normalized_contract.get("ui_journey")
+                or {}
+            ),
+            "title": str(normalized_result.get("title") or ""),
+            "lead": str(normalized_result.get("lead") or ""),
+            "body": body,
+            "full_text": full_text,
+            "pipeline_check": pipeline_check,
+            "post_success_downstream": {
+                "source_route_id": ROUTE_0506_ID,
+                "legal_postcheck_eligible": bool(body),
+                "image_generation_eligible": bool(body),
+                "route_a_fallback_used": False,
+            },
+        }
+    )
+    return result
 
 
 def _prepare_current_mainline_cleanup_payload(
@@ -6374,6 +6493,7 @@ def main_page() -> None:
                     comparison_labels=comparison_labels,
                     candidate_target_labels=candidate_targets,
                 )
+                journey_confirm_state["preview_view"] = dict(preview_view)
                 journey_confirm_summary.content = str(preview_view.get("summary_content") or current_summary_content)
                 journey_confirm_source_fit.text = str(preview_view.get("source_fit_text") or "")
                 journey_confirm_grounding.text = str(preview_view.get("grounding_status_text") or "")
@@ -6430,6 +6550,18 @@ def main_page() -> None:
                     return
                 await _refresh_journey_confirm_preview()
                 preview = _to_plain_dict(journey_confirm_state.get("preview"))
+                preview_view = _to_plain_dict(journey_confirm_state.get("preview_view"))
+                if not bool(preview_view.get("allow_confirm")):
+                    _set_journey_confirm_status(
+                        str(
+                            preview_view.get("status_text")
+                            or "足りない材料があります。補ってからもう一度確認してください。"
+                        ),
+                        tone="amber",
+                    )
+                    _refresh_journey_confirmation_cta(force_confirmation_ready=False)
+                    ui.notify("足りない情報があるため、まだ確定できません。", color="warning")
+                    return
                 input_decision = _to_plain_dict(preview.get("input_decision"))
                 if str(input_decision.get("action") or "accept") != "accept":
                     ui.notify("足りない情報があるため、まだ確定できません。", color="warning")
@@ -7280,6 +7412,8 @@ def main_page() -> None:
 
         def _to_user_friendly_progress(progress: Dict[str, Any]) -> str:
             stage = str(progress.get("stage", "") or "").strip().lower()
+            if stage.startswith("route_0506"):
+                return str(build_route_0506_progress_view(stage).get("label_text") or "Route 0506 で処理中...")
             stage_labels = {
                 "validate": "入力を確認中...",
                 "prepare": "現在準備中...",
@@ -7299,6 +7433,9 @@ def main_page() -> None:
             return stage_labels.get(stage, "現在処理中...")
 
         def _generation_phase_progress(phase_key: str) -> int:
+            normalized_phase = str(phase_key or "").strip().lower()
+            if normalized_phase.startswith("route_0506"):
+                return int(build_route_0506_progress_view(normalized_phase).get("percent") or 0)
             phase_progress = {
                 "validate": 3,
                 "prepare": 8,
@@ -7313,7 +7450,7 @@ def main_page() -> None:
                 "complete": 100,
                 "completed": 100,
             }
-            return int(phase_progress.get(str(phase_key or "").strip().lower(), 0))
+            return int(phase_progress.get(normalized_phase, 0))
 
         def _set_generation_phase_ui(phase_key: str, detail: str = "", generation_token: str = "") -> bool:
             nonlocal generation_started_at
@@ -7479,6 +7616,9 @@ def main_page() -> None:
             started_at = time.monotonic()
             phase = "validate"
             outcome = "rejected"
+            if not await _ensure_usage_credit_available("kotomake"):
+                _finish_client_generation(client_key, generation_token)
+                return
 
             def _run_generation_ui_mutation(mutation: Callable[[], None], action_name: str) -> bool:
                 return _run_attached_ui_mutation(
@@ -7496,6 +7636,137 @@ def main_page() -> None:
                     lambda: ui.notify(message, color=color),
                     "generation_notify",
                 )
+
+            async def _run_post_success_downstream_phases(
+                *,
+                result: Dict[str, Any],
+                render_note_body_text: str,
+                article_type_for_image: str,
+            ) -> str:
+                nonlocal image_elapsed_start
+                downstream_phase = "legal_postcheck"
+                if LEGAL_POSTCHECK_AUTO_ENABLED:
+                    _set_generation_phase_for_attempt(downstream_phase)
+                auto_legal_postcheck = await _resolve_current_mainline_auto_legal_postcheck(
+                    result=result,
+                    note_body_text=render_note_body_text,
+                    verified_texts=_current_legal_verified_texts(),
+                    io_bound_runner=run.io_bound,
+                    auto_enabled=LEGAL_POSTCHECK_AUTO_ENABLED,
+                )
+                legal_postcheck_payload = _prepare_current_mainline_legal_postcheck_payload(
+                    auto_legal_postcheck=_to_plain_dict(auto_legal_postcheck),
+                    note_body_text=render_note_body_text,
+                )
+                resolved_legal_result = _to_plain_dict(legal_postcheck_payload.get("legal_result"))
+                _run_generation_ui_mutation(
+                    lambda: (
+                        _render_legal_result(resolved_legal_result) if resolved_legal_result else None,
+                        setattr(
+                            legal_input,
+                            "value",
+                            str(legal_postcheck_payload.get("legal_input_text") or render_note_body_text),
+                        ),
+                        setattr(
+                            legal_status,
+                            "text",
+                            str(legal_postcheck_payload.get("legal_status_text") or ""),
+                        ),
+                    ),
+                    "legal_postcheck_ui",
+                )
+                usage_action = str(legal_postcheck_payload.get("usage_action") or "")
+                if usage_action:
+                    usage_log_extra = _to_plain_dict(legal_postcheck_payload.get("usage_log_extra"))
+                    _log_ui_usage(
+                        "legal_postcheck",
+                        usage_action,
+                        **usage_log_extra,
+                    )
+
+                downstream_phase = "generate_images"
+                _set_generation_phase_for_attempt(downstream_phase)
+                image_pattern_key = IMAGE_PATTERN_LABEL_TO_KEY.get(
+                    str(image_pattern_select.value or ""),
+                    DEFAULT_IMAGE_PATTERN_KEY,
+                )
+                state.generated_images = []
+                state.generated_image_variants = []
+                state.image_generation_status = "running"
+                image_elapsed_start = time.monotonic()
+                _run_generation_ui_mutation(
+                    lambda: (
+                        generated_images_container.refresh(),
+                        setattr(image_spinner, "visible", True),
+                        setattr(image_progress, "visible", True),
+                        setattr(image_progress_note, "visible", True),
+                        setattr(image_elapsed, "visible", True),
+                        setattr(image_elapsed, "text", "経過: 0秒"),
+                        image_elapsed_timer.activate(),
+                    ),
+                    "image_generation_start_ui",
+                )
+                _set_image_progress(0, "画像生成の準備中...", generation_token=generation_token)
+                try:
+                    auto_image_result = await run.io_bound(
+                        lambda: generate_blog_images_for_article(
+                            llm=generator.llm,
+                            title=str(result.get("title") or ""),
+                            lead=str(result.get("lead") or ""),
+                            body=str(result.get("body") or ""),
+                            article_type=article_type_for_image,
+                            pattern_key=image_pattern_key,
+                            model=DEFAULT_IMAGE_MODEL,
+                            size=DEFAULT_IMAGE_SIZE,
+                            plain_quality=DEFAULT_IMAGE_QUALITY,
+                            text_quality=DEFAULT_TEXT_IMAGE_QUALITY,
+                            output_format=DEFAULT_IMAGE_OUTPUT_FORMAT,
+                            background=DEFAULT_IMAGE_BACKGROUND,
+                            moderation=DEFAULT_IMAGE_MODERATION,
+                        )
+                    )
+                    state.generated_image_variants = _to_plain_list(auto_image_result.get("variants"))
+                    state.generated_images = successful_image_paths(auto_image_result)
+                    state.image_generation_status = str(auto_image_result.get("status") or "failed")
+                    if state.image_generation_status == "success":
+                        image_message = "画像を生成しました"
+                    elif state.image_generation_status == "partial":
+                        image_message = "一部の画像を生成しました"
+                    else:
+                        image_message = "画像生成に失敗しました。記事本文はそのまま使えます。"
+                    _set_image_progress(100, image_message, generation_token=generation_token)
+                    _log_ui_usage(
+                        "image_generation",
+                        "auto_complete",
+                        status=state.image_generation_status,
+                        image_count=len(state.generated_images),
+                    )
+                except Exception:
+                    logger.exception("Automatic blog image generation failed open")
+                    state.generated_images = []
+                    state.generated_image_variants = []
+                    state.image_generation_status = "failed"
+                    _run_generation_ui_mutation(
+                        lambda: setattr(image_status, "text", "画像生成に失敗しました。記事本文はそのまま使えます。"),
+                        "image_generation_failed_ui",
+                    )
+                    _log_ui_usage("image_generation", "auto_failed_open")
+                finally:
+                    image_elapsed_timer.deactivate()
+                    image_elapsed_start = None
+                    _run_generation_ui_mutation(
+                        lambda: (
+                            setattr(image_spinner, "visible", False),
+                            setattr(image_progress, "visible", False),
+                            setattr(image_progress, "value", 0.0),
+                            setattr(image_progress_note, "visible", False),
+                            setattr(image_progress_note, "text", ""),
+                            setattr(image_elapsed, "visible", False),
+                            generated_images_container.refresh(),
+                        ),
+                        "image_generation_cleanup_ui",
+                    )
+                return downstream_phase
 
             selection = _resolve_current_ui_selection()
             selected_article_type = str(article_type.value or "")
@@ -8279,6 +8550,137 @@ def main_page() -> None:
                     include_question_generation_owner=True,
                 )
 
+                selected_body_route_id = resolve_ui_body_route_selection(os.getenv(UI_ROUTE_SELECTION_ENV, ""))
+                if selected_body_route_id == ROUTE_0506_ID:
+                    phase = "route_0506_ui_1case"
+                    _set_generation_phase_for_attempt(phase)
+                    _log_ui_usage(
+                        "generation",
+                        "pipeline_invoked",
+                        phase="route_0506_ui_1case",
+                        article_type=type_key,
+                        media="note",
+                    )
+                    route_0506_result = await run.io_bound(
+                        lambda: run_route_0506_ui_onecase(
+                            input_contract,
+                            enforce_onecase_lock=False,
+                        )
+                    )
+                    route_0506_summary = _to_plain_dict(route_0506_result.get("validation_summary"))
+                    state.result = _to_plain_dict(route_0506_result)
+                    route_0506_body = str(
+                        route_0506_result.get("body")
+                        or route_0506_result.get("full_text")
+                        or ""
+                    )
+                    route_0506_artifact_root = str(route_0506_summary.get("artifact_root") or "")
+                    if bool(route_0506_result.get("blocked")):
+                        blocked_view = _to_plain_dict(
+                            route_0506_result.get("user_message_view")
+                            or build_route_0506_user_facing_blocked_view(
+                                route_0506_result,
+                                security_gate=_to_plain_dict(route_0506_result.get("security_gate")),
+                                artifact_root=route_0506_artifact_root,
+                            )
+                        )
+                        blocked_status_text = str(blocked_view.get("status_text") or "Route 0506 は安全に停止しました。")
+                        blocked_source_error_content = str(blocked_view.get("source_error_content") or "")
+                        blocked_progress_note = str(blocked_view.get("generation_progress_note_text") or "")
+                        blocked_reason_code = str(blocked_view.get("reason_code") or route_0506_result.get("reason_code") or "ROUTE_0506_UI_BLOCKED")
+                        outcome = str(blocked_view.get("outcome") or "blocked_route_0506_ui_1case")
+                        _run_generation_ui_mutation(
+                            lambda: (
+                                setattr(status_label, "text", blocked_status_text),
+                                setattr(source_error_area, "content", blocked_source_error_content),
+                                setattr(generation_progress_note, "text", blocked_progress_note),
+                                setattr(generation_progress_note, "visible", bool(blocked_progress_note)),
+                            ),
+                            "route_0506_blocked_ui",
+                        )
+                        _notify_generation(
+                            str(blocked_view.get("notify_text") or blocked_status_text),
+                            str(blocked_view.get("notify_color") or "warning"),
+                        )
+                        _record_current_mainline_generation_event(
+                            telemetry_context=telemetry_context,
+                            event="route_0506_ui_1case_blocked",
+                            phase=phase,
+                            result=route_0506_result,
+                            reason_code=blocked_reason_code,
+                            error_class=str(blocked_view.get("error_class") or "route_0506"),
+                            status_text=blocked_status_text,
+                            extra={
+                                "artifact_root": route_0506_artifact_root,
+                                "blocked_cause_key": str(blocked_view.get("cause_key") or ""),
+                                "route_a_fallback_used": False,
+                            },
+                        )
+                        return
+
+                    route_0506_post_success_result = _prepare_route_0506_post_success_result(
+                        route_0506_result=route_0506_result,
+                        input_contract=input_contract,
+                    )
+                    state.result = route_0506_post_success_result
+                    route_0506_body = str(route_0506_post_success_result.get("body") or route_0506_body)
+
+                    def _apply_route_0506_ui_result() -> None:
+                        title_area.value = str(route_0506_post_success_result.get("title") or "")
+                        lead_area.value = str(route_0506_post_success_result.get("lead") or "")
+                        body_area.value = route_0506_body
+                        references_area.value = ""
+                        hashtags_area.value = ""
+                        full_text_area.value = route_0506_body
+                        note_body_text.value = route_0506_body
+                        preview.content = sanitize_markdown_preview(route_0506_body)
+                        preview.classes(remove="article-preview-placeholder")
+                        linkedin_area.value = ""
+                        linkedin_short_area.value = ""
+                        stats_label.text = f"Route 0506 本文: {len(route_0506_body)}文字"
+                        generation_progress.value = 1.0
+                        status_label.text = "Route 0506 UI 1case の本文生成が完了しました。"
+                        generation_progress_note.text = f"Route 0506 の本文生成が完了しました。 artifact: {route_0506_artifact_root}"
+                        generation_progress_note.visible = True
+
+                    _run_generation_ui_mutation(_apply_route_0506_ui_result, "route_0506_render_ui")
+                    phase = await _run_post_success_downstream_phases(
+                        result=route_0506_post_success_result,
+                        render_note_body_text=route_0506_body,
+                        article_type_for_image=str(
+                            route_0506_post_success_result.get("article_type") or journey_article_type
+                        ),
+                    )
+                    phase = "complete"
+                    _set_generation_phase_for_attempt(phase)
+                    outcome = "success_route_0506_ui_1case"
+                    _record_current_mainline_generation_event(
+                        telemetry_context=telemetry_context,
+                        event="route_0506_ui_1case_completed",
+                        phase=phase,
+                        result=route_0506_post_success_result,
+                        status_text="Route 0506 UI 1case completed.",
+                        extra={
+                            "artifact_root": route_0506_artifact_root,
+                            "body_char_count": len(route_0506_body),
+                            "route_a_fallback_used": False,
+                            "api_send": bool(route_0506_summary.get("api_send")),
+                            "post_success_downstream_evaluated": True,
+                            "image_generation_status": str(getattr(state, "image_generation_status", "") or ""),
+                        },
+                    )
+                    route_0506_credit_debited = await _consume_usage_credit_after_success(
+                        service_key="kotomake",
+                        action_key="generate",
+                        attempt_id=attempt_id,
+                    )
+                    _run_generation_ui_mutation(_scroll_to_generation_result, "scroll_route_0506_result")
+                    if not route_0506_credit_debited:
+                        _notify_generation("生成は完了しましたが、クレジット消費を確認できませんでした。管理者へ連絡してください。", "warning")
+                        return
+                    _notify_generation("Route 0506 UI 1case の本文生成が完了しました。", "positive")
+                    return
+
                 result: Dict[str, Any] = {}
                 phase = "generate_article_newpipeline"
                 _set_generation_phase_for_attempt(phase)
@@ -8657,120 +9059,11 @@ def main_page() -> None:
                     failure_kind="latest_generation",
                 )
 
-                phase = "legal_postcheck"
-                if LEGAL_POSTCHECK_AUTO_ENABLED:
-                    _set_generation_phase_for_attempt(phase)
-                auto_legal_postcheck = await _resolve_current_mainline_auto_legal_postcheck(
+                phase = await _run_post_success_downstream_phases(
                     result=result,
-                    note_body_text=render_note_body_text,
-                    verified_texts=_current_legal_verified_texts(),
-                    io_bound_runner=run.io_bound,
-                    auto_enabled=LEGAL_POSTCHECK_AUTO_ENABLED,
+                    render_note_body_text=render_note_body_text,
+                    article_type_for_image=journey_article_type,
                 )
-                legal_postcheck_payload = _prepare_current_mainline_legal_postcheck_payload(
-                    auto_legal_postcheck=_to_plain_dict(auto_legal_postcheck),
-                    note_body_text=render_note_body_text,
-                )
-                resolved_legal_result = _to_plain_dict(legal_postcheck_payload.get("legal_result"))
-                _run_generation_ui_mutation(
-                    lambda: (
-                        _render_legal_result(resolved_legal_result) if resolved_legal_result else None,
-                        setattr(legal_input, "value", str(legal_postcheck_payload.get("legal_input_text") or render_note_body_text)),
-                        setattr(legal_status, "text", str(legal_postcheck_payload.get("legal_status_text") or "")),
-                    ),
-                    "legal_postcheck_ui",
-                )
-                usage_action = str(legal_postcheck_payload.get("usage_action") or "")
-                if usage_action:
-                    usage_log_extra = _to_plain_dict(legal_postcheck_payload.get("usage_log_extra"))
-                    _log_ui_usage(
-                        "legal_postcheck",
-                        usage_action,
-                        **usage_log_extra,
-                    )
-
-                phase = "generate_images"
-                _set_generation_phase_for_attempt(phase)
-                image_pattern_key = IMAGE_PATTERN_LABEL_TO_KEY.get(
-                    str(image_pattern_select.value or ""),
-                    DEFAULT_IMAGE_PATTERN_KEY,
-                )
-                state.generated_images = []
-                state.generated_image_variants = []
-                state.image_generation_status = "running"
-                image_elapsed_start = time.monotonic()
-                _run_generation_ui_mutation(
-                    lambda: (
-                        generated_images_container.refresh(),
-                        setattr(image_spinner, "visible", True),
-                        setattr(image_progress, "visible", True),
-                        setattr(image_progress_note, "visible", True),
-                        setattr(image_elapsed, "visible", True),
-                        setattr(image_elapsed, "text", "経過: 0秒"),
-                        image_elapsed_timer.activate(),
-                    ),
-                    "image_generation_start_ui",
-                )
-                _set_image_progress(0, "画像生成の準備中...", generation_token=generation_token)
-                try:
-                    auto_image_result = await run.io_bound(
-                        lambda: generate_blog_images_for_article(
-                            llm=generator.llm,
-                            title=str(result.get("title") or ""),
-                            lead=str(result.get("lead") or ""),
-                            body=str(result.get("body") or ""),
-                            article_type=journey_article_type,
-                            pattern_key=image_pattern_key,
-                            model=DEFAULT_IMAGE_MODEL,
-                            size=DEFAULT_IMAGE_SIZE,
-                            plain_quality=DEFAULT_IMAGE_QUALITY,
-                            text_quality=DEFAULT_TEXT_IMAGE_QUALITY,
-                            output_format=DEFAULT_IMAGE_OUTPUT_FORMAT,
-                            background=DEFAULT_IMAGE_BACKGROUND,
-                            moderation=DEFAULT_IMAGE_MODERATION,
-                        )
-                    )
-                    state.generated_image_variants = _to_plain_list(auto_image_result.get("variants"))
-                    state.generated_images = successful_image_paths(auto_image_result)
-                    state.image_generation_status = str(auto_image_result.get("status") or "failed")
-                    if state.image_generation_status == "success":
-                        image_message = "画像を生成しました"
-                    elif state.image_generation_status == "partial":
-                        image_message = "一部の画像を生成しました"
-                    else:
-                        image_message = "画像生成に失敗しました。記事本文はそのまま使えます。"
-                    _set_image_progress(100, image_message, generation_token=generation_token)
-                    _log_ui_usage(
-                        "image_generation",
-                        "auto_complete",
-                        status=state.image_generation_status,
-                        image_count=len(state.generated_images),
-                    )
-                except Exception:
-                    logger.exception("Automatic blog image generation failed open")
-                    state.generated_images = []
-                    state.generated_image_variants = []
-                    state.image_generation_status = "failed"
-                    _run_generation_ui_mutation(
-                        lambda: setattr(image_status, "text", "画像生成に失敗しました。記事本文はそのまま使えます。"),
-                        "image_generation_failed_ui",
-                    )
-                    _log_ui_usage("image_generation", "auto_failed_open")
-                finally:
-                    image_elapsed_timer.deactivate()
-                    image_elapsed_start = None
-                    _run_generation_ui_mutation(
-                        lambda: (
-                            setattr(image_spinner, "visible", False),
-                            setattr(image_progress, "visible", False),
-                            setattr(image_progress, "value", 0.0),
-                            setattr(image_progress_note, "visible", False),
-                            setattr(image_progress_note, "text", ""),
-                            setattr(image_elapsed, "visible", False),
-                            generated_images_container.refresh(),
-                        ),
-                        "image_generation_cleanup_ui",
-                    )
 
                 phase = "complete"
                 _set_generation_phase_for_attempt(phase)
@@ -8839,7 +9132,15 @@ def main_page() -> None:
                     extra=_to_plain_dict(terminal_payload.get("event_extra")),
                     include_question_generation_owner=True,
                 )
+                credit_debited = await _consume_usage_credit_after_success(
+                    service_key="kotomake",
+                    action_key="generate",
+                    attempt_id=attempt_id,
+                )
                 _run_generation_ui_mutation(_scroll_to_generation_result, "scroll_generation_result")
+                if not credit_debited:
+                    _notify_generation("生成は完了しましたが、クレジット消費を確認できませんでした。管理者へ連絡してください。", "warning")
+                    return
                 _notify_generation(
                     str(terminal_payload.get("notify_text") or "生成が完了しました"),
                     str(terminal_payload.get("notify_color") or "positive"),
@@ -9074,15 +9375,17 @@ def main_page() -> None:
             legal_apply_button.on("click", apply_legal_suggestion)
 
 
-def run_app(host: Optional[str] = None, port: Optional[int] = None) -> None:
+def run_app(host: str = "127.0.0.1", port: Optional[int] = None) -> None:
     import socket
-
-    host = host or os.environ.get("HOST") or os.environ.get("NICEGUI_HOST") or "127.0.0.1"
+    
     start_port = port or int(os.environ.get("PORT", "8080"))
+    bind_host = os.environ.get("HOST") or os.environ.get("NICEGUI_HOST") or host
+    if os.environ.get("CONTAINER_ENV"):
+        bind_host = "0.0.0.0"
     
     def is_port_in_use(p):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex((host, p)) == 0
+            return s.connect_ex((bind_host, p)) == 0
 
     final_port = start_port
     while is_port_in_use(final_port):
@@ -9090,13 +9393,22 @@ def run_app(host: Optional[str] = None, port: Optional[int] = None) -> None:
         final_port += 1
         if final_port > start_port + 10:
             break
+
+    from fastapi import Response
+
+    @app.get("/health")
+    def health_check():
+        return Response(content='{"status":"ok"}', media_type="application/json")
             
     headless = os.environ.get("HEADLESS", "").lower() in ("1", "true", "yes")
     ui.run(
-        host=host,
+        host=bind_host,
         port=final_port,
         title="コトメイク | TECHIE",
         favicon=str(STATIC_DIR / "favicon_v2.png"),
+        storage_secret=os.environ.get("NICEGUI_STORAGE_SECRET")
+        or os.environ.get("SESSION_SECRET")
+        or "techie-nicegui-storage-secret",
         reload=False,
         show=not headless,
     )

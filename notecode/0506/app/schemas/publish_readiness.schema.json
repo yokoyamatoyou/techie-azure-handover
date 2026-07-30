@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.bloggen/schemas/publish_readiness.schema.json",
+  "title": "Publish Readiness",
+  "type": "object",
+  "required": ["publish_readiness"],
+  "additionalProperties": false,
+  "properties": {
+    "publish_readiness": {
+      "type": "object",
+      "required": [
+        "score",
+        "auto_publish_allowed",
+        "review_required",
+        "risk_categories",
+        "reasons"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "risk_categories": {
+                "contains": {
+                  "enum": [
+                    "medical",
+                    "legal",
+                    "financial",
+                    "hiring_condition",
+                    "price_sensitive",
+                    "high_compliance_risk"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "auto_publish_allowed": {"const": false},
+              "review_required": {"const": true}
+            }
+          }
+        }
+      ],
+      "properties": {
+        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "auto_publish_allowed": {"type": "boolean"},
+        "review_required": {"type": "boolean"},
+        "risk_categories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "medical",
+              "legal",
+              "financial",
+              "hiring_condition",
+              "price_sensitive",
+              "high_compliance_risk",
+              "none"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

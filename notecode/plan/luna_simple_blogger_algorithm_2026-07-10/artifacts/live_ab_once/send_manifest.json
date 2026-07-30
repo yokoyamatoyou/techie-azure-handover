@@ -1,0 +1,13 @@
+{
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "low",
+  "send_count": 3,
+  "cap": 3,
+  "labels": [
+    "A",
+    "B1",
+    "B2"
+  ],
+  "status": "completed",
+  "retry": false
+}

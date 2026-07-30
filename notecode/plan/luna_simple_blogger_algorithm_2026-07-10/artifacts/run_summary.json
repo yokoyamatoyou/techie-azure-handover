@@ -1,0 +1,12 @@
+{
+  "decision": "conditionally_possible",
+  "api_send_count": 0,
+  "case_count": 9,
+  "arm_a_fixed_calls": 1,
+  "arm_b_fixed_calls": 2,
+  "stage_1_prompt_chars": 268,
+  "stage_2_prompt_chars": 281,
+  "same_role_both_stages": true,
+  "same_blogger_luna_output_present": false,
+  "next_owner": "luna_simple_blogger_live_ab_after_explicit_api_approval"
+}

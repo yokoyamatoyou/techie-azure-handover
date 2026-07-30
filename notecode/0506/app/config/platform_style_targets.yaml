@@ -1,0 +1,21 @@
+platform_style_targets:
+  note_hatena_natural_blog:
+    output_platforms:
+      - "note"
+      - "hatena_blog"
+    intent: "Japanese owned-media blog that stays source-grounded while reading naturally on note and Hatena Blog."
+    preprocessing_rules:
+      - "preserve source spans before style decisions"
+      - "carry headings as structure signals when present"
+      - "do not turn platform guidance into unsupported facts"
+      - "prefer section-ready chunks over one long raw source"
+    structure_signals:
+      - "heading_readability"
+      - "theme_before_body"
+      - "section_navigation"
+      - "paragraph_rhythm"
+    research_refs:
+      - "https://note.com/info/n/nab7ce24947ac"
+      - "https://note.com/help/pg/howto"
+      - "https://help.hatenablog.com/entry/markup/hatena/contents"
+      - "https://help.hatenablog.com/entry/text-hatena"

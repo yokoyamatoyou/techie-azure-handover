@@ -50,18 +50,28 @@ def create_checkout_session(
     price_id: str,
     success_url: str,
     cancel_url: str,
+    mode: str = "subscription",
     metadata: Optional[Dict[str, str]] = None,
+    idempotency_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     stripe = _get_stripe()
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=customer_id,
-        line_items=[{"price": price_id, "quantity": 1}],
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata=metadata or {},
-        allow_promotion_codes=True,
-    )
+    if mode not in {"subscription", "payment"}:
+        raise ValueError("mode must be subscription or payment")
+    metadata = metadata or {}
+    payload: Dict[str, Any] = {
+        "mode": mode,
+        "customer": customer_id,
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "metadata": metadata,
+        "allow_promotion_codes": True,
+    }
+    if mode == "subscription":
+        payload["subscription_data"] = {"metadata": metadata}
+    else:
+        payload["payment_intent_data"] = {"metadata": metadata}
+    session = stripe.checkout.Session.create(**payload, idempotency_key=idempotency_key)
     return {"session_id": session.id, "url": session.url}
 
 
@@ -69,6 +79,16 @@ def create_customer_portal_session(*, customer_id: str, return_url: str) -> Dict
     stripe = _get_stripe()
     session = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
     return {"url": session.url}
+
+
+def list_customer_subscriptions(customer_id: str) -> Dict[str, Any]:
+    stripe = _get_stripe()
+    return stripe.Subscription.list(
+        customer=customer_id,
+        status="all",
+        limit=10,
+        expand=["data.items.data.price"],
+    )
 
 
 def create_subscription(customer_id: str, price_id: str) -> Dict[str, Any]:
@@ -175,6 +195,7 @@ def create_transfer(
     currency: str,
     transfer_group: str,
     metadata: Optional[Dict[str, str]] = None,
+    idempotency_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     stripe = _get_stripe()
     transfer = stripe.Transfer.create(
@@ -183,5 +204,6 @@ def create_transfer(
         destination=connected_account_id,
         transfer_group=transfer_group,
         metadata=metadata or {},
+        idempotency_key=idempotency_key,
     )
     return {"transfer_id": transfer.id, "amount": amount, "currency": currency, "destination": connected_account_id}

@@ -84,6 +84,14 @@ def localize_owner_bucket(owner_bucket: str) -> str:
     }.get(str(owner_bucket or ""), "外部")
 
 
+def localize_url_action_label(status: str) -> str:
+    return {
+        "cited": "優先して見る",
+        "searched_only": "参考程度",
+        "unknown": "確認が必要",
+    }.get(str(status or ""), "参考程度")
+
+
 def localize_status_bucket(status: str) -> str:
     return {
         "cited": "根拠に使われた",
@@ -95,7 +103,8 @@ def localize_status_bucket(status: str) -> str:
 def build_evidence_meaning_label(item: dict[str, Any]) -> str:
     status = str(item.get("status") or "")
     owner_label = localize_owner_bucket(str(item.get("owner_bucket") or ""))
-    return f"{owner_label} / {localize_status_bucket(status)}"
+    action_label = localize_url_action_label(status)
+    return f"{owner_label} / {action_label} ({localize_status_bucket(status)})"
 
 
 def build_evidence_chip_class(item: dict[str, Any]) -> str:

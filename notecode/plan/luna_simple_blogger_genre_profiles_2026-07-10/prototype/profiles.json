@@ -1,0 +1,10 @@
+{
+  "profiles": [
+    {"id":"company_service_intro","intro_source_priority":["仕事","商品","現場"],"reader_arrival_goal":"何を、どの現場へ届ける会社かを具体からつかむ","paragraph_flow":["現場の具体","仕事と商品","支える範囲","source内の継続する動き"],"subject_omission_handling":"会社の行為・責任は段落境界で明示する","major_risk":"外部紹介または理念要約だけになること","body_floor":1400,"cta_mode":"source_optional"},
+    {"id":"announcement","intro_source_priority":["日付","対象","変更点"],"reader_arrival_goal":"必要な変更・対象・時期を迷わず把握する","paragraph_flow":["要点","対象と時期","変更の具体","sourceにある案内先のみ"],"subject_omission_handling":"告知主体、対象、日付と依頼は省略しない","major_risk":"必要情報よりブログ風の長文化が前に出ること","body_floor":900,"cta_mode":"source_optional"},
+    {"id":"case_study","intro_source_priority":["課題","対応","sourceにある変化"],"reader_arrival_goal":"何が起き、何を行い、どこまで分かるかを追える","paragraph_flow":["課題の場面","対応の具体","sourceにある変化","未確認を足さない結び"],"subject_omission_handling":"顧客・当社・協力者が交わるたび主語を明示する","major_risk":"根拠のない成果や顧客感情を補うこと","body_floor":1200,"cta_mode":"none"},
+    {"id":"comparison_guide","intro_source_priority":["source固有の違い","対象物","使われる場面"],"reader_arrival_goal":"source内で確認できる違いと扱う場面を読む","paragraph_flow":["違いの具体","各対象の場面","source内の限界","結論を押し付けない結び"],"subject_omission_handling":"比較する対象と観察者を切り替えるたび明示する","major_risk":"ランキング、おすすめ、一般化した判断軸になること","body_floor":1200,"cta_mode":"none"},
+    {"id":"market_explanation","intro_source_priority":["source上の変化","現場の論点","具体物"],"reader_arrival_goal":"自社が見ている変化と関係する仕事をつかむ","paragraph_flow":["変化の場面","自社の接点","sourceにある論点","第三者要約にしない結び"],"subject_omission_handling":"市場・第三者・当社の観察をまたぐ前に主語を置く","major_risk":"第三者による資料要約の口調になること","body_floor":1200,"cta_mode":"none"},
+    {"id":"daily_activity","intro_source_priority":["場所","道具","動作"],"reader_arrival_goal":"その日の仕事がどの順番で進むかを具体で追う","paragraph_flow":["場面の開始","道具と動作","順番と関係者","sourceにある次の動き"],"subject_omission_handling":"作業者・来訪者・対象物が変わるたび主語を明示する","major_risk":"sourceにない感情や手応えを付け足すこと","body_floor":1200,"cta_mode":"none"}
+  ]
+}

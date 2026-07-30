@@ -914,7 +914,13 @@ def aggregate_legal_check_results(results: Dict) -> Dict:
         for key in ("issues", "items"):
             entries = section.get(key, [])
             if isinstance(entries, list):
-                collected.extend([e for e in entries if isinstance(e, dict)])
+                    collected.extend(
+                        [
+                            e for e in entries
+                            if isinstance(e, dict)
+                            and e.get("legal_decision") != "safe_context"
+                        ]
+                    )
 
         # 2) legal_checks の標準構造（raw/formatted）を再帰走査
         for nested_key in ("raw", "formatted"):
@@ -931,7 +937,8 @@ def aggregate_legal_check_results(results: Dict) -> Dict:
                         continue
                     normalized = dict(entry)
                     normalized.setdefault("category", key)
-                    collected.append(normalized)
+                    if normalized.get("legal_decision") != "safe_context":
+                        collected.append(normalized)
 
         return collected
 

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "robots_timeout_is_unverified",
+    "target_url": "https://example.com/private/article",
+    "robots_status": "unverified",
+    "robots_text": "",
+    "headers": {},
+    "html": "<html><head></head><body>test</body></html>",
+    "expected": {"google": "unverified", "openai_search": "unverified", "perplexity": "unverified", "claude_search": "unverified"}
+  },
+  {
+    "name": "path_specific_rule_and_agent_precedence",
+    "target_url": "https://example.com/private/article",
+    "robots_status": "pass",
+    "robots_text": "User-agent: *\nAllow: /\n\nUser-agent: OAI-SearchBot\nDisallow: /private\nAllow: /private/public\n",
+    "headers": {},
+    "html": "<html><head></head><body>test</body></html>",
+    "expected": {"google": "pass", "openai_search": "fail", "perplexity": "pass", "claude_search": "pass"}
+  },
+  {
+    "name": "provider_scoped_x_robots_tag",
+    "target_url": "https://example.com/article",
+    "robots_status": "pass",
+    "robots_text": "User-agent: *\nAllow: /\n",
+    "headers": {"X-Robots-Tag": "oai-searchbot: noindex"},
+    "html": "<html><head><meta name='robots' content='index, follow'></head><body>test</body></html>",
+    "expected": {"google": "pass", "openai_search": "fail", "perplexity": "pass", "claude_search": "pass"}
+  }
+]

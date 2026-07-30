@@ -283,6 +283,7 @@ def build_budget_guardrail(
     *,
     planned_request_count: int | None = None,
     batch_jobs: list[dict[str, Any]] | None = None,
+    run_guardrail_usd: float | None = None,
 ) -> dict[str, Any]:
     today = dt.datetime.now().date()
     today_rows = [
@@ -387,16 +388,24 @@ def build_budget_guardrail(
         request_count = len(config.keywords) * int(config.repeat_count or 0)
     estimated_run_cost_usd = round(avg_request_cost_usd * request_count, 6)
     daily_budget_usd = float(config.daily_budget_usd or 0.0)
+    effective_run_guardrail_usd = float(
+        config.run_budget_guardrail_usd if run_guardrail_usd is None else run_guardrail_usd
+    )
     projected_total_usd = round(today_committed_usd + estimated_run_cost_usd, 6)
     remaining_budget_usd = round(max(0.0, daily_budget_usd - today_committed_usd), 6) if daily_budget_usd > 0 else 0.0
     projected_remaining_usd = round(max(0.0, daily_budget_usd - projected_total_usd), 6) if daily_budget_usd > 0 else 0.0
     would_exceed_budget = daily_budget_usd > 0 and projected_total_usd > daily_budget_usd
+    would_exceed_run_guardrail = (
+        effective_run_guardrail_usd > 0 and estimated_run_cost_usd > effective_run_guardrail_usd
+    )
+    guardrail_mode = normalize_text(config.budget_guardrail_mode) or "warn"
+    run_guardrail_should_block = would_exceed_run_guardrail and guardrail_mode == "stop"
 
     if daily_budget_usd <= 0:
         status = "unlimited"
         headline = "日次上限は未設定"
         summary = "上限を決めていないため、今回は見積だけ表示します。"
-    elif would_exceed_budget and config.budget_guardrail_mode == "stop":
+    elif would_exceed_budget and guardrail_mode == "stop":
         status = "blocked"
         headline = "停止条件にかかる見込み"
         summary = "この設定のままでは今日の上限を超える見込みです。回数か質問数を先に絞ってください。"
@@ -434,14 +443,17 @@ def build_budget_guardrail(
         "avg_request_cost_usd": avg_request_cost_usd,
         "estimate_basis": estimate_basis,
         "request_count": request_count,
+        "run_guardrail_usd": round(effective_run_guardrail_usd, 6),
+        "would_exceed_run_guardrail": would_exceed_run_guardrail,
+        "run_guardrail_should_block": run_guardrail_should_block,
         "daily_budget_usd": daily_budget_usd,
         "remaining_budget_usd": remaining_budget_usd,
         "projected_total_usd": projected_total_usd,
         "projected_remaining_usd": projected_remaining_usd,
         "would_exceed_budget": would_exceed_budget,
         "should_block": status == "blocked",
-        "budget_guardrail_mode": normalize_text(config.budget_guardrail_mode) or "warn",
-        "guardrail_mode_label": "上限で停止" if normalize_text(config.budget_guardrail_mode) == "stop" else "上限前に警告",
+        "budget_guardrail_mode": guardrail_mode,
+        "guardrail_mode_label": "上限で停止" if guardrail_mode == "stop" else "上限前に警告",
         "cost_per_visible_topic_usd": cost_per_visible_topic_usd,
         "target_visible_count": target_visible_count,
         "effective_prompt_cache_retention": resolve_prompt_cache_retention(config.model, config.prompt_cache_retention),

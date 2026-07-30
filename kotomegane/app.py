@@ -7,7 +7,8 @@ import os
 import time
 from typing import Any, Callable
 
-from fastapi.responses import Response
+from fastapi import HTTPException
+from fastapi.responses import FileResponse, Response
 from nicegui import app as fastapi_app
 from nicegui import background_tasks, context, ui
 
@@ -34,14 +35,18 @@ from config import (
     load_config,
     save_config,
 )
-from export_file_writers import archive_legacy_export_files, write_export_files
+from export_file_writers import archive_legacy_export_files, validate_signed_export_path, write_export_files
 from llmo_client import build_provider_client
+from llmo_core.models import build_batch_item_custom_id
 from query_planning import ExecutionPlan, QueryPlanner, build_execution_plan
 from run_planning import prepare_query_plans_for_run
 from run_policy import resolve_run_policy, should_allow_batch_import
 from runtime import common as runtime_common
+from runtime_mode import READONLY_DEMO_ENV_VAR, is_readonly_demo_mode, readonly_demo_block_message
 from scheduler_runtime import ScheduledMonitorService
+from shared.auth.nicegui_auth import NiceGUIAuthMiddleware
 from shared.usage.api import router as usage_router
+from shared.usage.nicegui import consume_usage_for_current_user, get_usage_summary_for_current_user
 from storage import Storage
 from ui import admin_views, charts, dashboard_refreshers, dashboard_views, detail_views, page_refreshers, styles
 from ui.cluster_brief_builders import build_cluster_brief_save_payload, resolve_cluster_brief_candidate
@@ -101,10 +106,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', () => {});
 """.strip()
 
+READONLY_DEMO_MODE = is_readonly_demo_mode()
+
 db = Storage()
-scheduler_service = ScheduledMonitorService(db)
+scheduler_service = ScheduledMonitorService(db, readonly_demo=READONLY_DEMO_MODE)
 query_planner = QueryPlanner()
 fastapi_app.include_router(usage_router)
+fastapi_app.add_middleware(NiceGUIAuthMiddleware)
+
+HUB_URL = os.environ.get("HUB_URL") or os.environ.get("HUB_BASE_URL") or "https://app.techie.jp"
+KOTOMAKE_URL = os.environ.get("KOTOMAKE_URL", "https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io")
+KOTOMIGAKI_URL = os.environ.get("KOTOMIGAKI_URL", "https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io")
 
 LOOPBACK_UI_HOSTS = frozenset({"localhost"})
 
@@ -130,12 +142,63 @@ def _load_budget_guardrail(config: AppConfig, *, planned_request_count: int | No
     )
 
 
+async def _ensure_usage_credit_available(service_key: str, *, units: int = 1) -> bool:
+    try:
+        summary = await get_usage_summary_for_current_user(service_key=service_key)
+    except Exception as exc:
+        print(f"[usage] credit check failed service_key={service_key}: {exc}", flush=True)
+        ui.notify("クレジット確認に失敗しました。時間をおいて再度お試しください。", color="negative")
+        return False
+    if int(summary.get("remaining_credits") or 0) < units:
+        ui.notify("クレジットが不足しています。契約管理画面で残高をご確認ください。", color="warning")
+        return False
+    return True
+
+
+async def _consume_usage_credit_after_success(
+    *,
+    service_key: str,
+    action_key: str,
+    attempt_id: str,
+    units: int = 1,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    try:
+        summary = await consume_usage_for_current_user(
+            service_key=service_key,
+            action_key=action_key,
+            units=units,
+            idempotency_key=f"{service_key}:{action_key}:{attempt_id}",
+            metadata={"trigger": "post_success", **(metadata or {})},
+        )
+        print(
+            "[usage] credit debited "
+            f"service_key={service_key} action_key={action_key} units={units} "
+            f"event_id={summary.get('usage_event_id')} "
+            f"remaining={summary.get('remaining_credits')} "
+            f"replay={summary.get('idempotent_replay')}",
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        print(f"[usage] credit debit failed service_key={service_key} action_key={action_key}: {exc}", flush=True)
+        ui.notify("処理は完了しましたが、クレジット消費の記録に失敗しました。管理者へ連絡してください。", color="negative")
+        return False
+
+
+def _kotomegane_credit_units(provider_key: str) -> int:
+    # Client rule: OpenAI single observation = 1 credit, Gemini/Claude or cross-provider observation = 2 credits.
+    return 1 if str(provider_key or "").strip().lower() == "openai" else 2
+
+
 def _validate_startup_host_or_raise(raw_host: str) -> None:
     if _is_loopback_ui_host(raw_host):
         return
-    auth_mode = str(os.getenv("AUTH_IDENTITY_MODE", "") or "").strip().lower()
-    auth_dev_mode = str(os.getenv("AUTH_DEV_MODE", "") or "").strip().lower()
-    if auth_mode and auth_mode not in {"none", "dev", "disabled"} and auth_dev_mode not in {"1", "true", "yes"}:
+    auth_required = str(os.environ.get("AUTH_ENFORCE_SERVICES") or "").strip().lower() in {"1", "true", "yes", "on"}
+    environment_name = str(
+        os.environ.get("ENVIRONMENT") or os.environ.get("CONTAINER_ENV") or ""
+    ).strip().lower()
+    if auth_required and environment_name in {"prod", "production", "staging"}:
         return
     raise RuntimeError(
         (
@@ -154,8 +217,20 @@ archive_legacy_export_files(EXPORTS_DIR, DATA_DIR / "legacy_export_archive")
 
 if ASSETS_DIR.exists():
     fastapi_app.add_static_files("/branding", str(ASSETS_DIR))
-if EXPORTS_DIR.exists():
-    fastapi_app.add_static_files("/exports", str(EXPORTS_DIR))
+
+
+@fastapi_app.get("/exports/{bundle_id}/{filename}")
+def download_export_file(bundle_id: str, filename: str, expires: str = "", token: str = "") -> FileResponse:
+    path = validate_signed_export_path(
+        EXPORTS_DIR,
+        bundle_id,
+        filename,
+        expires=expires,
+        token=token,
+    )
+    if path is None:
+        raise HTTPException(status_code=403, detail="export link is invalid or expired")
+    return FileResponse(path=str(path), filename=filename)
 
 
 async def _run_startup_result_enrichment_maintenance() -> None:
@@ -166,6 +241,13 @@ async def _run_startup_result_enrichment_maintenance() -> None:
 
 
 def _start_background_services() -> None:
+    if READONLY_DEMO_MODE:
+        print(
+            f"[kotomegane] read-only/demo mode active: {READONLY_DEMO_ENV_VAR}=1. "
+            "startup scheduler and result enrichment maintenance skipped.",
+            flush=True,
+        )
+        return
     scheduler_service.start()
     background_tasks.create(
         _run_startup_result_enrichment_maintenance(),
@@ -202,20 +284,17 @@ TABLE_BASE_PROPS = 'flat wrap-cells rows-per-page-label="表示件数" no-data-l
 
 
 def load_runtime_config_state() -> AppConfig:
-    config_updates: dict[str, Any] = {
-        "analysis_mode": ANALYSIS_MODE_MARKET,
-        "repeat_count": 20,
-    }
-    env_host = str(os.getenv("HOST", "") or os.getenv("KOTOMEGANE_HOST", "")).strip()
-    env_port = str(os.getenv("PORT", "") or os.getenv("KOTOMEGANE_PORT", "")).strip()
-    if env_host:
-        config_updates["ui_host"] = env_host
+    updates: dict[str, Any] = {"analysis_mode": ANALYSIS_MODE_MARKET, "repeat_count": 20}
+    env_port = str(os.getenv("PORT") or os.getenv("KOTOMEGANE_PORT") or "").strip()
     if env_port:
         try:
-            config_updates["ui_port"] = int(env_port)
+            updates["ui_port"] = int(env_port)
         except ValueError:
-            pass
-    return load_config().model_copy(update=config_updates)
+            print(f"[kotomegane] ignored invalid PORT={env_port!r}", flush=True)
+    env_host = str(os.getenv("HOST") or os.getenv("KOTOMEGANE_HOST") or "").strip()
+    if env_host:
+        updates["ui_host"] = env_host
+    return load_config().model_copy(update=updates)
 
 
 def render_page() -> None:
@@ -239,6 +318,17 @@ def render_page() -> None:
             event.preventDefault();
             event.stopImmediatePropagation();
           }
+        }, true);
+        window.addEventListener('click', (event) => {
+          const shortcut = event.target?.closest?.('[data-km-shortcut-target]');
+          if (!shortcut) return;
+          const targetId = shortcut.getAttribute('data-km-shortcut-target');
+          if (!targetId) return;
+          const scrollTarget = () => {
+            document.getElementById(targetId)?.scrollIntoView({behavior: 'smooth', block: 'start'});
+          };
+          setTimeout(scrollTarget, 650);
+          setTimeout(scrollTarget, 1150);
         }, true);
         (async () => {
           if (!('serviceWorker' in navigator)) return;
@@ -270,7 +360,33 @@ def render_page() -> None:
     periodic_refresh_signature: tuple[Any, ...] = ()
     latest_dashboard_payload: dict[str, Any] | None = None
     analysis_plots_mounted = False
+    question_set_admin_refreshed = False
+    batch_admin_refreshed = False
+    schedule_admin_refreshed = False
+    export_panel_refreshed = False
     inputs: dict[str, Any] = {}
+
+    class WeekdayCheckboxGroup:
+        def __init__(self) -> None:
+            self.checkboxes: dict[str, Any] = {}
+
+        @property
+        def value(self) -> list[str]:
+            return [key for key, control in self.checkboxes.items() if bool(control.value)]
+
+        @value.setter
+        def value(self, weekdays: list[Any]) -> None:
+            selected = {str(day) for day in weekdays}
+            for key, control in self.checkboxes.items():
+                control.value = key in selected
+
+        def add(self, key: str, control: Any) -> None:
+            self.checkboxes[key] = control
+
+        def update(self) -> None:
+            for control in self.checkboxes.values():
+                control.update()
+
     schedule_manage_select: ui.select | None = None
     compare_mode_select: ui.select | None = None
     compare_target_select: ui.select | None = None
@@ -298,6 +414,8 @@ def render_page() -> None:
     support_analysis_tab: Any | None = None
     support_research_tab: Any | None = None
     support_settings_tab: Any | None = None
+    batch_settings_expansion: Any | None = None
+    schedule_settings_expansion: Any | None = None
     provider_buttons: dict[str, ui.button] = {}
     keyword_inputs: list[Any] = []
     keyword_rows: list[Any] = []
@@ -326,6 +444,34 @@ def render_page() -> None:
                 return False
             raise
         return True
+
+    def readonly_demo_ui_block_message(action: str) -> str:
+        return f"確認用モードのため{action}できません。"
+
+    def block_readonly_demo_ui_action(action: str) -> bool:
+        if not READONLY_DEMO_MODE:
+            return False
+        message = readonly_demo_ui_block_message(action)
+        ui.notify(message, color="warning")
+        print(f"[kotomegane] {message}", flush=True)
+        return True
+
+    def readonly_button_classes(base_classes: str) -> str:
+        return f"{base_classes} readonly-disabled-action" if READONLY_DEMO_MODE else base_classes
+
+    def readonly_button_style(base_style: str) -> str:
+        if not READONLY_DEMO_MODE:
+            return base_style
+        return (
+            f"{base_style};"
+            "background:#E7E0D8 !important;"
+            "border-color:rgba(116,102,88,0.28) !important;"
+            "color:#75695F !important;"
+            "box-shadow:none !important;"
+            "filter:saturate(0.24) grayscale(0.18) !important;"
+            "opacity:1 !important;"
+            "cursor:not-allowed !important;"
+        )
 
     def build_dashboard_payload(current_run_id: str = "") -> dict[str, Any]:
         return dashboard_views.build_dashboard_refresh_payload(
@@ -365,20 +511,59 @@ def render_page() -> None:
         if runtime_micro_label is not None and cost_policy_label is not None:
             refresh_runtime_panels(state["config"], runtime_micro_label, cost_policy_label)
 
-    def open_support_surface(target_tab: Any | None = None) -> None:
+    def open_support_surface(target_tab: Any | None = None, target_section: str = "") -> None:
         if support_result_expansion is not None:
             support_result_expansion.value = True
             support_result_expansion.update()
         if support_tabs is not None and target_tab is not None:
             support_tabs.value = target_tab
             support_tabs.update()
+        try:
+            ensure_support_target_ready(target_tab, target_section)
+        except NameError:
+            pass
+        if target_section == "batch" and batch_settings_expansion is not None:
+            batch_settings_expansion.value = True
+            batch_settings_expansion.update()
+        if target_section == "schedule" and schedule_settings_expansion is not None:
+            schedule_settings_expansion.value = True
+            schedule_settings_expansion.update()
         if target_tab is not None and target_tab == support_analysis_tab:
             mount_analysis_plots()
+        target_id = {
+            "saved": "saved-condition-section",
+            "batch": "batch-settings-section",
+            "schedule": "schedule-settings-section",
+        }.get(target_section, "detail-stage")
         ui.run_javascript(
+            f"""
+            const scrollKotomeganeTarget = () => {{
+              document.getElementById({json.dumps(target_id)})?.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+            }};
+            requestAnimationFrame(() => {{
+              requestAnimationFrame(() => {{
+                scrollKotomeganeTarget();
+              }});
+            }});
+            setTimeout(scrollKotomeganeTarget, 160);
+            setTimeout(scrollKotomeganeTarget, 420);
             """
-            requestAnimationFrame(() => {
-              document.getElementById('detail-stage')?.scrollIntoView({behavior: 'smooth', block: 'start'});
-            });
+        )
+
+    def scroll_to_support_section(target_id: str) -> None:
+        ui.run_javascript(
+            f"""
+            window.__kotomeganeLastShortcutTarget = {json.dumps(target_id)};
+            var scrollKotomeganeSupportTarget = () => {{
+              document.getElementById({json.dumps(target_id)})?.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+            }};
+            requestAnimationFrame(() => {{
+              requestAnimationFrame(() => {{
+                scrollKotomeganeSupportTarget();
+              }});
+            }});
+            setTimeout(scrollKotomeganeSupportTarget, 180);
+            setTimeout(scrollKotomeganeSupportTarget, 520);
             """
         )
 
@@ -438,7 +623,7 @@ def render_page() -> None:
                         latest_rate_ref.update()
                     if hint_ref is not None:
                         hint_ref.text = (
-                            f"直近の定期分析 {len(tracked_rows)} 件を表示しています。"
+                            f"直近の自動チェック {len(tracked_rows)} 件を表示しています。"
                         )
                         hint_ref.update()
                 else:
@@ -446,7 +631,7 @@ def render_page() -> None:
                         latest_rate_ref.text = "--"
                         latest_rate_ref.update()
                     if hint_ref is not None:
-                        hint_ref.text = "まだ定期分析の履歴がありません。"
+                        hint_ref.text = "まだ自動チェックの履歴がありません。"
                         hint_ref.update()
             except Exception:
                 pass
@@ -473,6 +658,17 @@ def render_page() -> None:
     styles.render_top_nav()
 
     with ui.column().classes("w-full max-w-7xl mx-auto px-5 pb-12 gap-8"):
+        if READONLY_DEMO_MODE:
+            with ui.card().classes("w-full px-4 py-3 mt-4").style(
+                "background:#FFF7E8;border:1px solid rgba(217,107,31,0.38);box-shadow:none;"
+            ):
+                with ui.row().classes("w-full items-start gap-3 flex-wrap"):
+                    ui.icon("visibility").classes("text-[20px] text-orange-8 mt-1")
+                    with ui.column().classes("gap-1 flex-1 min-w-[260px]"):
+                        ui.label("確認用モード（保存・送信は行われません）").classes("summary-eyebrow")
+                        ui.label(
+                            "今は画面の確認だけができるモードです。AIへの質問送信や、内容の保存・更新は行われません。"
+                        ).classes("text-[14px] leading-6 text-main")
         with ui.card().classes("hero-card w-full px-5 py-4 mt-4"):
             with ui.row().classes("w-full items-start justify-between gap-4 flex-wrap"):
                 with ui.column().classes("hero-copy-card gap-2 justify-center flex-1 min-w-[320px]"):
@@ -488,15 +684,11 @@ def render_page() -> None:
                         "AIが誰を引用し、何を根拠にしたかを観測します。"
                     ).classes("hero-summary text-wrap-anywhere mt-2")
                     with ui.row().classes("gap-2 flex-wrap mt-2"):
-                        ui.link("サイト改善へ (コトミガキ)", "http://127.0.0.1:8081", new_tab=True).classes(
-                            "nav-link text-[13px]"
-                        ).style(
-                            "padding:4px 10px;border:1px solid var(--border);border-radius:8px;"
+                        ui.link("サイト改善へ (コトミガキ)", KOTOMIGAKI_URL, new_tab=True).classes(
+                            "hero-context-link text-[13px]"
                         )
-                        ui.link("発信作成へ (コトメイク)", "http://127.0.0.1:8080", new_tab=True).classes(
-                            "nav-link text-[13px]"
-                        ).style(
-                            "padding:4px 10px;border:1px solid var(--border);border-radius:8px;"
+                        ui.link("発信作成へ (コトメイク)", KOTOMAKE_URL, new_tab=True).classes(
+                            "hero-context-link text-[13px]"
                         )
                 with ui.row().classes("gap-3 flex-wrap items-start w-full mt-4"):
                     with ui.column().classes("input-field-card hero-status-card gap-1 min-w-[180px] flex-1"):
@@ -505,12 +697,12 @@ def render_page() -> None:
                             "section-font text-[18px] font-bold hero-status-value mt-2 text-wrap-anywhere"
                         )
                     with ui.column().classes("input-field-card hero-status-card gap-1 min-w-[180px] flex-1"):
-                        ui.label("最終更新").classes("ui-tone-chip")
+                        ui.label("最後に結果を保存").classes("ui-tone-chip")
                         hero_status_refs["updated"] = ui.label("まだありません").classes(
                             "section-font text-[18px] font-bold hero-status-value mt-2 text-wrap-anywhere"
                         )
                     with ui.column().classes("input-field-card hero-status-card gap-1 min-w-[180px] flex-1"):
-                        ui.label("前回比").classes("ui-tone-chip")
+                        ui.label("前回の自動チェックとの差").classes("ui-tone-chip")
                         hero_status_refs["delta"] = ui.label("まだありません").classes(
                             "section-font text-[18px] font-bold hero-status-value mt-2 text-wrap-anywhere"
                         )
@@ -521,7 +713,22 @@ def render_page() -> None:
 
         with ui.card().classes("section-card input-shell p-6 w-full").props("id=input-stage"):
                 initial_keywords = list(state["config"].keywords[:3]) or [""]
-                visible_keyword_count = max(1, min(3, len([item for item in initial_keywords if str(item).strip()]) or 1))
+                visible_keyword_count = 1
+                current_input_boundary_label: ui.label | None = None
+
+                def refresh_current_input_boundary_note() -> None:
+                    if current_input_boundary_label is None:
+                        return
+                    active_rows = max(1, visible_keyword_count)
+                    if active_rows > 1:
+                        current_input_boundary_label.text = (
+                            f"現在{active_rows}件の質問を使って分析します（最大3件）。保存済み条件にすると再利用できます。"
+                        )
+                    else:
+                        current_input_boundary_label.text = (
+                            "主質問と自社URLだけで始められます。質問追加や比較対象は詳細条件にあります。"
+                        )
+                    current_input_boundary_label.update()
 
                 def refresh_keyword_input_visibility() -> None:
                     active_rows = 0
@@ -532,6 +739,16 @@ def render_page() -> None:
                             active_rows += 1
                     add_keyword_button.visible = active_rows < 3
                     remove_keyword_button.visible = active_rows > 1
+                    try:
+                        summary_label.text = (
+                            f"この{active_rows}質問を今回だけ分析します。対象AIへ送信するのは下の「1回だけ分析」を押したときです。"
+                            if active_rows > 1
+                            else "主質問と自社URLを入れると、AI検索で自社が表示されるかを、合計20回答を目安に確認します。"
+                        )
+                        summary_label.update()
+                    except NameError:
+                        pass
+                    refresh_current_input_boundary_note()
 
                 def add_keyword_input() -> None:
                     nonlocal visible_keyword_count
@@ -593,45 +810,112 @@ def render_page() -> None:
                                     values = inferred_terms.get(category) or []
                                     if not values:
                                         continue
-                                    with ui.row().classes("w-full gap-2 flex-wrap items-center"):
-                                        ui.label(market_context_category_label(category)).classes("text-[12px] tracking-[0.18em] soft-label")
+                                    with ui.row().classes("market-context-candidate-row w-full gap-2 flex-wrap items-center"):
+                                        ui.label(market_context_category_label(category)).classes("market-context-category-label text-[12px] tracking-[0.18em] soft-label")
                                         for value in values:
                                             ui.button(
-                                                f"{value} を反映",
+                                                f"重点テーマに「{value}」を追加",
                                                 on_click=lambda _=None, selected=value: apply_market_context_terms(selected),
-                                            ).props("outline color=brown-8").classes("secondary-button text-[13px]").style(SUITE_SECONDARY_BUTTON_STYLE)
+                                            ).props("outline color=brown-8").classes("market-context-candidate-button secondary-button text-[13px]").style(SUITE_SECONDARY_BUTTON_STYLE)
                                     if len(values) > 1:
                                         ui.button(
-                                            f"{market_context_category_label(category)}をまとめて反映",
+                                            "重点テーマ候補をまとめて追加",
                                             on_click=lambda _=None, selected=list(values): apply_market_context_terms(*selected),
-                                        ).props("outline color=brown-8").classes("secondary-button text-[13px] mt-1").style(SUITE_SECONDARY_BUTTON_STYLE)
+                                        ).props("outline color=brown-8").classes("market-context-candidate-button secondary-button text-[13px] mt-1").style(SUITE_SECONDARY_BUTTON_STYLE)
 
-                with ui.row().classes("w-full gap-5 mt-5 flex-wrap items-start"):
-                    with ui.column().classes("flex-[1.35] min-w-[440px] gap-4"):
-                        with ui.column().classes("input-field-card gap-0 w-full"):
-                            ui.label("質問").classes("ui-tone-chip")
-                            for index in range(3):
-                                default_value = initial_keywords[index] if index < len(initial_keywords) else ""
-                                row = ui.row().classes("w-full gap-3 mt-3 items-start")
-                                with row:
-                                    ui.label(f"{index + 1}.").classes("metric-font text-[18px] font-bold text-brand mt-3 w-[20px]")
-                                    keyword_input = ui.input(
-                                        "質問 *" if index == 0 else f"追加質問 {index + 1} (任意)",
-                                        value=default_value,
-                                        placeholder="例: 東京の製造業でAI検索に見える会社を知りたい",
-                                    ).props("outlined").classes("flex-1 min-w-[280px]")
-                                keyword_rows.append(row)
-                                keyword_inputs.append(keyword_input)
-                            with ui.row().classes("w-full gap-3 mt-3 flex-wrap"):
-                                add_keyword_button = ui.button("＋追加質問を作る", on_click=add_keyword_input).props("outline color=brown-8").classes(
-                                    "secondary-button text-[15px]"
-                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                remove_keyword_button = ui.button("追加分を減らす", on_click=remove_keyword_input).props("outline color=brown-8").classes(
-                                    "secondary-button text-[15px]"
-                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
+                with ui.row().classes("w-full items-start justify-between gap-3 flex-wrap mb-2"):
+                    with ui.column().classes("gap-1"):
+                        ui.label("QUICK SETUP").classes("summary-eyebrow")
+                        ui.label("市場観測を作る").classes("section-font section-title text-[22px] font-bold")
+                    current_input_boundary_label = ui.label(
+                        "主質問と自社URLだけで始められます。質問追加や比較対象は詳細条件にあります。"
+                    ).classes("text-[13px] leading-6 text-helper max-w-[560px]")
+
+                with ui.row().classes("input-main-grid w-full gap-5 mt-3 flex-wrap items-start"):
+                    with ui.column().classes("input-main-column flex-[1.15] min-w-[440px] gap-4"):
+                        with ui.column().classes("input-field-card gap-3 w-full"):
+                            with ui.row().classes("w-full items-start gap-3 flex-wrap"):
+                                ui.label("1").classes("workflow-step-pill workflow-step-pill-active")
+                                with ui.column().classes("gap-1 flex-1 min-w-[260px]"):
+                                    ui.label("何を観測するか").classes("section-font text-[20px] font-bold text-main")
+                                    ui.label("AI検索で見え方を確認したい質問を1つ入れます。").classes("text-[13px] leading-5 text-helper")
+                            default_value = initial_keywords[0] if initial_keywords else ""
+                            row = ui.row().classes("w-full gap-3 mt-1 items-start")
+                            with row:
+                                ui.label("1.").classes("metric-font text-[18px] font-bold text-brand mt-3 w-[20px]")
+                                keyword_input = ui.input(
+                                    "観測したい質問 *",
+                                    value=default_value,
+                                    placeholder="例: 東京の製造業でAI検索に見える会社を知りたい",
+                                ).props("outlined").classes("flex-1 min-w-[280px]")
+                            keyword_rows.append(row)
+                            keyword_inputs.append(keyword_input)
+                            with ui.expansion("詳細条件").classes("w-full mt-1 panel-card"):
+                                with ui.column().classes("p-4 gap-3 w-full"):
+                                    ui.label("質問を増やす（最大3件まで） / 観測条件を絞る").classes("summary-eyebrow")
+                                    for index in range(1, 3):
+                                        default_value = initial_keywords[index] if index < len(initial_keywords) else ""
+                                        detail_row = ui.row().classes("w-full gap-3 items-start")
+                                        with detail_row:
+                                            ui.label(f"{index + 1}.").classes("metric-font text-[18px] font-bold text-brand mt-3 w-[20px]")
+                                            keyword_input = ui.input(
+                                                f"追加質問 {index + 1} (任意)",
+                                                value=default_value,
+                                                placeholder="例: 比較したい地域や業界を変えた質問",
+                                            ).props("outlined").classes("flex-1 min-w-[260px]")
+                                        keyword_rows.append(detail_row)
+                                        keyword_inputs.append(keyword_input)
+                                    with ui.row().classes("w-full gap-3 flex-wrap"):
+                                        add_keyword_button = ui.button("追加質問を表示", on_click=add_keyword_input).props("outline color=brown-8").classes(
+                                            "secondary-button text-[15px]"
+                                        ).style(SUITE_SECONDARY_BUTTON_STYLE)
+                                        remove_keyword_button = ui.button("追加質問を1件減らす", on_click=remove_keyword_input).props("outline color=brown-8").classes(
+                                            "secondary-button text-[15px]"
+                                        ).style(SUITE_SECONDARY_BUTTON_STYLE)
+                                    inputs["market_context"] = ui.input(
+                                        "重点テーマ (任意)",
+                                        value=join_csv(state["config"].market_context_terms),
+                                        placeholder="例: 東京, 製造業, 導入事例",
+                                    ).props("outlined").classes("w-full")
+                                    ui.label("業界・用途・地域を絞りたいときだけ使います。").classes("text-[12px] leading-5 text-helper")
+                                    market_context_candidate_container = ui.column().classes("w-full gap-2")
+                                    inputs["competitor_terms"] = ui.input(
+                                        "比較対象 (任意)",
+                                        value=join_csv(state["config"].competitor_terms),
+                                        placeholder="例: 比較したい会社名, サービス名",
+                                    ).props("outlined").classes("w-full")
+                                    with ui.expansion("入力例を見る").classes("w-full mt-1 panel-card"):
+                                        with ui.column().classes("p-4 gap-2 w-full"):
+                                            ui.label("入力例").classes("summary-eyebrow")
+                                            ui.markdown(build_onboarding_markdown()).classes("text-[14px] leading-6 text-support")
+
+                    with ui.column().classes("input-side-column flex-[0.95] min-w-[320px] gap-4"):
+                        with ui.column().classes("input-field-card gap-3 w-full"):
+                            with ui.row().classes("w-full items-start gap-3 flex-wrap"):
+                                ui.label("2").classes("workflow-step-pill workflow-step-pill-muted")
+                                with ui.column().classes("gap-1 flex-1 min-w-[220px]"):
+                                    ui.label("自社をどう照合するか").classes("section-font text-[20px] font-bold text-main")
+                                    ui.label("自社URLと名称を、結果の照合に使います。").classes("text-[13px] leading-5 text-helper")
+                            inputs["target_domain"] = ui.input(
+                                "自社URL *",
+                                value=state["config"].target_domain,
+                                placeholder="example.com",
+                            ).props("outlined").classes("w-full")
+                            inputs["brand_terms"] = ui.input(
+                                "名称 (任意)",
+                                value=join_csv(state["config"].brand_terms),
+                                placeholder="会社名、サービス名、屋号など",
+                            ).props("outlined").classes("w-full")
+                            ui.label("自社名やサービス名の揺れを見つけるために使います。").classes("text-[12px] leading-5 text-helper")
 
                         with ui.column().classes("input-action-card w-full gap-3"):
-                            ui.label("実行").classes("ui-tone-chip")
+                            with ui.row().classes("w-full items-start gap-3 flex-wrap"):
+                                ui.label("3").classes("workflow-step-pill workflow-step-pill-muted")
+                                with ui.column().classes("gap-1 flex-1 min-w-[220px]"):
+                                    ui.label("結果を見る").classes("section-font text-[20px] font-bold text-main")
+                                    ui.label("今回だけ確認するか、保存済み条件の結果へ進みます。").classes("text-[13px] leading-5 text-helper")
+                            run_progress_percent_label = ui.label("").classes("text-[13px] font-semibold text-main").props("aria-live=polite")
+                            run_progress_percent_label.visible = False
                             progress = ui.linear_progress(value=0).props("color=deep-orange-7 track-color=amber-1 rounded").classes("w-full")
                             progress.visible = False
                             with ui.row().classes("w-full items-center gap-2 min-h-[22px]") as run_activity_row:
@@ -639,52 +923,16 @@ def render_page() -> None:
                                 run_activity_phase_label = ui.label("").classes("text-[13px] text-helper")
                             run_activity_row.visible = False
                             with ui.column().classes("w-full gap-1") as run_copy_container:
-                                step_label = ui.label("まずは1回だけ確認").classes("text-[18px] font-bold text-main")
+                                step_label = ui.label("まずは合計20回答を確認").classes("text-[18px] font-bold text-main")
                                 summary_label = ui.label(
-                                    "質問と自社URLを入れると、生成AI検索で自社が表示されるかを今回だけ確認します。"
+                                    "主質問と自社URLを入れると、AI検索で自社が表示されるかを、合計20回答を目安に確認します。"
                                 ).classes("text-[14px] text-helper mt-1")
                                 recovery_hint_label = ui.label("").classes("text-[13px] leading-6 text-support mt-2")
                             action_button_row = ui.column().classes("w-full gap-3 mt-2")
 
-                    with ui.column().classes("flex-[0.95] min-w-[320px] gap-4"):
-                        with ui.column().classes("input-field-card gap-3 w-full"):
-                            ui.label("自社URLと補足").classes("ui-tone-chip")
-                            inputs["target_domain"] = ui.input(
-                                "自社URL *",
-                                value=state["config"].target_domain,
-                                placeholder="example.com",
-                            ).props("outlined").classes("w-full")
-                            with ui.row().classes("w-full gap-3 flex-wrap"):
-                                inputs["brand_terms"] = ui.input(
-                                    "名称 (任意)",
-                                    value=join_csv(state["config"].brand_terms),
-                                    placeholder="会社名、サービス名、屋号など",
-                                ).props("outlined").classes("w-[220px] flex-1")
-                                inputs["market_context"] = ui.input(
-                                    "重点テーマ",
-                                    value=join_csv(state["config"].market_context_terms),
-                                    placeholder="例: 東京, 製造業, 導入事例",
-                                ).props("outlined").classes("w-[220px] flex-1")
-                            ui.label(
-                                "この欄はローカル照合用です。質問から候補が出たら下で反映できます。"
-                            ).classes(
-                                "text-[12px] leading-5 text-helper"
-                            )
-                            market_context_candidate_container = ui.column().classes("w-full gap-2")
-                            with ui.expansion("比較対象を入れる").classes("w-full mt-1 panel-card"):
-                                with ui.column().classes("p-4 gap-2 w-full"):
-                                    inputs["competitor_terms"] = ui.input(
-                                        "比較対象 (任意)",
-                                        value=join_csv(state["config"].competitor_terms),
-                                        placeholder="例: 比較したい会社名, サービス名",
-                                    ).props("outlined").classes("w-full")
-                            with ui.expansion("入力例を見る").classes("w-full mt-1 panel-card"):
-                                with ui.column().classes("p-4 gap-2 w-full"):
-                                    ui.label("入力例").classes("summary-eyebrow")
-                                    ui.markdown(build_onboarding_markdown()).classes("text-[14px] leading-6 text-support")
-
                 inputs["keyword_inputs"] = keyword_inputs
                 inputs["keywords"] = keyword_inputs[0]
+                inputs["visible_keyword_count"] = lambda: visible_keyword_count
                 refresh_keyword_input_visibility()
                 refresh_market_context_candidates()
                 run_progress_tracker = {
@@ -716,9 +964,11 @@ def render_page() -> None:
 
                 def set_progress_visibility(visible: bool) -> None:
                     progress.visible = visible
+                    run_progress_percent_label.visible = visible
                     run_activity_row.visible = visible
                     safely_update_controls(
                         progress,
+                        run_progress_percent_label,
                         run_activity_row,
                         run_copy_container,
                     )
@@ -755,7 +1005,12 @@ def render_page() -> None:
                     activity_text = " / ".join(part for part in [current_label.strip(), phase_label.strip()] if part and part.strip())
                     run_activity_phase_label.text = activity_text
                     progress.value = ratio
-                    safely_update_controls(progress, run_activity_phase_label)
+                    percent = int(ratio * 100)
+                    if safe_total:
+                        run_progress_percent_label.text = f"進捗: {percent}%（{safe_completed}/{safe_total}回答）"
+                    else:
+                        run_progress_percent_label.text = f"進捗: {percent}%（準備中）"
+                    safely_update_controls(progress, run_progress_percent_label, run_activity_phase_label)
 
                 def apply_config_to_inputs(cfg: AppConfig) -> None:
                     next_keywords = list(cfg.keywords[:3])
@@ -772,7 +1027,7 @@ def render_page() -> None:
                     inputs["market_context"].value = join_csv(cfg.market_context_terms)
                     inputs["competitor_terms"].value = join_csv(cfg.competitor_terms)
                     for control in inputs.values():
-                        if isinstance(control, list):
+                        if isinstance(control, list) or not hasattr(control, "update"):
                             continue
                         control.update()
                     refresh_market_context_candidates()
@@ -890,6 +1145,8 @@ def render_page() -> None:
                     render_active_cluster_and_outcome_panels()
 
                 async def on_save() -> None:
+                    if block_readonly_demo_ui_action("画面の入力を保存"):
+                        return
                     state["config"] = build_config_from_inputs(inputs, state["config"])
                     save_config(state["config"])
                     refresh_runtime_panels_if_visible()
@@ -897,12 +1154,14 @@ def render_page() -> None:
                     ui.notify("設定を保存しました", color="positive")
                     refresh_result_sections()
 
-                async def on_question_set_save() -> None:
-                    cfg = build_config_from_inputs(inputs, state["config"])
-                    if notify_missing_required_fields(cfg, context="確認内容保存"):
+                async def on_question_set_save(*, force_new: bool = False) -> None:
+                    if block_readonly_demo_ui_action("保存済み条件を保存・更新"):
                         return
-                    name = question_set_name_input.value.strip() or f"確認内容 {time.strftime('%Y-%m-%d %H:%M')}"
-                    selected_id = question_set_select.value if question_set_select.value else None
+                    cfg = build_config_from_inputs(inputs, state["config"])
+                    if notify_missing_required_fields(cfg, context="保存済み条件保存"):
+                        return
+                    name = question_set_name_input.value.strip() or f"保存条件 {time.strftime('%Y-%m-%d %H:%M')}"
+                    selected_id = None if force_new else (question_set_select.value if question_set_select.value else None)
                     saved_id = db.upsert_question_set(
                         question_set_id=selected_id,
                         name=name,
@@ -917,18 +1176,23 @@ def render_page() -> None:
                         selected_question_set_id=str(saved_id),
                         selected_schedule_question_set_id=str(saved_id),
                     )
+                    sync_question_set_name_from_selection()
                     refresh_cluster_and_outcome_sections()
                     render_active_cluster_and_outcome_panels()
-                    ui.notify("確認内容を保存しました", color="positive")
+                    refresh_saved_condition_helpers()
+                    ui.notify("保存済み条件を保存しました", color="positive")
+
+                async def on_question_set_new_save() -> None:
+                    await on_question_set_save(force_new=True)
 
                 async def on_question_set_load() -> None:
                     question_set_id = question_set_select.value
                     if not question_set_id:
-                        ui.notify("読み込む確認内容を選択してください。", color="warning")
+                        ui.notify("読み込む保存済み条件を選択してください。", color="warning")
                         return
                     question_set = db.get_question_set(question_set_id)
                     if not question_set:
-                        ui.notify("確認内容が見つかりません。", color="warning")
+                        ui.notify("保存済み条件が見つかりません。", color="warning")
                         return
                     cfg = AppConfig.model_validate_json(question_set["config_json"]).model_copy(
                         update={"analysis_mode": ANALYSIS_MODE_MARKET, "repeat_count": 20}
@@ -938,18 +1202,21 @@ def render_page() -> None:
                     schedule_question_set_select.value = question_set_id
                     apply_config_to_inputs(cfg)
                     refresh_runtime_panels_if_visible()
-                    mark_results_stale("確認内容を読み込んだため、前回の「今回の結果」は隠しています。もう一度分析してください。")
+                    mark_results_stale("保存済み条件を読み込んだため、前回の「今回の結果」は隠しています。もう一度分析してください。")
                     refresh_result_sections()
-                    ui.notify("確認内容を読み込みました", color="positive")
+                    refresh_saved_condition_helpers()
+                    ui.notify("保存済み条件を読み込みました", color="positive")
 
                 async def on_question_set_archive_toggle() -> None:
+                    if block_readonly_demo_ui_action("保存済み条件をアーカイブ・再開"):
+                        return
                     question_set_id = str(question_set_select.value or "")
                     if not question_set_id:
-                        ui.notify("状態変更する確認内容を選択してください。", color="warning")
+                        ui.notify("状態変更する保存済み条件を選択してください。", color="warning")
                         return
                     question_set = db.get_question_set(question_set_id)
                     if not question_set:
-                        ui.notify("確認内容が見つかりません。", color="warning")
+                        ui.notify("保存済み条件が見つかりません。", color="warning")
                         return
                     next_archived = not bool(question_set.get("is_archived"))
                     db.set_question_set_archived(question_set_id, next_archived)
@@ -962,30 +1229,105 @@ def render_page() -> None:
                     )
                     sync_question_set_name_from_selection()
                     action_label = "アーカイブ" if next_archived else "再開"
-                    ui.notify(f"確認内容を{action_label}しました", color="positive")
+                    refresh_saved_condition_helpers()
+                    ui.notify(f"保存済み条件を{action_label}しました", color="positive")
+
+                schedule_weekday_summary_label: ui.label | None = None
+                schedule_save_time_label: ui.label | None = None
+                schedule_setting_status_label: ui.label | None = None
+                schedule_enabled_helper_label: ui.label | None = None
+                schedule_week_count_label: ui.label | None = None
+                question_set_detail_label: ui.label | None = None
+                schedule_target_summary_label: ui.label | None = None
+
+                def refresh_saved_condition_helpers() -> None:
+                    if question_set_detail_label is not None:
+                        selected_question_set = (
+                            db.get_question_set(str(question_set_select.value or ""))
+                            if question_set_select is not None and question_set_select.value
+                            else None
+                        )
+                        question_set_detail_label.text = admin_views.build_question_set_detail_text(selected_question_set)
+                        question_set_detail_label.update()
+                    if schedule_target_summary_label is not None:
+                        selected_schedule_set = (
+                            db.get_question_set(str(schedule_question_set_select.value or ""))
+                            if schedule_question_set_select is not None and schedule_question_set_select.value
+                            else None
+                        )
+                        if selected_schedule_set:
+                            target_name = admin_views.sanitize_saved_scope_label(
+                                selected_schedule_set.get("name"),
+                                fallback="保存済み条件",
+                            )
+                            schedule_target_summary_label.text = (
+                                f"対象: {target_name} / "
+                                f"{admin_views.build_question_set_detail_text(selected_schedule_set)}"
+                            )
+                        else:
+                            schedule_target_summary_label.text = (
+                                "自動チェックは、上の「保存済み条件」から選んだ内容を曜日と時刻で実行します。"
+                            )
+                        schedule_target_summary_label.update()
+
+                def refresh_schedule_form_summary() -> None:
+                    if schedule_weekday_summary_label is None:
+                        return
+                    selected_weekdays = list(schedule_weekdays_select.value or [])
+                    selection_text, save_text = admin_views.build_schedule_weekday_summary(
+                        selected_weekdays,
+                        time_of_day=str(schedule_time_input.value or "09:00"),
+                    )
+                    schedule_weekday_summary_label.text = selection_text
+                    if schedule_week_count_label is not None:
+                        schedule_week_count_label.text = (
+                            f"週あたり回数: {len(set(selected_weekdays)) or 0}回（曜日選択から自動計算）"
+                        )
+                    schedule_save_time_label.text = save_text
+                    if schedule_setting_status_label is not None:
+                        schedule_setting_status_label.text = admin_views.build_schedule_setting_status_text(
+                            bool(schedule_enabled_switch.value)
+                        )
+                    if schedule_enabled_helper_label is not None:
+                        schedule_enabled_helper_label.text = (
+                            "ON: 予定時刻に自動チェック"
+                            if bool(schedule_enabled_switch.value)
+                            else "OFF: 保存だけして実行しない"
+                        )
+                    for label in (
+                        schedule_weekday_summary_label,
+                        schedule_save_time_label,
+                        schedule_setting_status_label,
+                        schedule_enabled_helper_label,
+                        schedule_week_count_label,
+                    ):
+                        if label is not None:
+                            label.update()
 
                 async def on_schedule_save() -> None:
+                    if block_readonly_demo_ui_action("自動チェックを保存"):
+                        return
                     question_set_id = schedule_question_set_select.value or question_set_select.value
                     if not question_set_id:
-                        ui.notify("先に保存済みの確認内容を選択してください。", color="warning")
+                        ui.notify("先に保存済み条件を選択してください。", color="warning")
                         return
-                    requested_weekly_runs = max(1, int(schedule_weekly_runs_input.value or 1))
+                    selected_weekday_values = list(schedule_weekdays_select.value or [])
                     weekdays = normalize_schedule_weekdays(
-                        schedule_weekdays_select.value or [],
-                        requested_weekly_runs,
+                        selected_weekday_values,
+                        max(1, len(set(selected_weekday_values)) or 1),
                     )
                     if not weekdays:
                         ui.notify("曜日を1つ以上選択してください。", color="warning")
                         return
-                    effective_weekly_runs = min(requested_weekly_runs, len(set(schedule_weekdays_select.value or [])) or len(weekdays))
+                    effective_weekly_runs = len(weekdays)
                     question_set = db.get_question_set(question_set_id)
                     if not question_set:
-                        ui.notify("選択した確認内容が見つかりません。", color="warning")
+                        ui.notify("選択した保存済み条件が見つかりません。", color="warning")
                         return
                     question_set_cfg = AppConfig.model_validate_json(question_set["config_json"]).model_copy(
                         update={"analysis_mode": ANALYSIS_MODE_MARKET, "repeat_count": 20}
                     )
-                    if notify_missing_required_fields(question_set_cfg, context="定期分析保存"):
+                    if notify_missing_required_fields(question_set_cfg, context="自動チェック保存"):
                         return
                     schedule_name = schedule_name_input.value.strip() or f"{question_set['name']} 定期監視"
                     existing_schedule = next(
@@ -1032,9 +1374,10 @@ def render_page() -> None:
                         compare_mode_select,
                         selected_schedule_id=str(saved_id),
                     )
+                    refresh_schedule_form_summary()
                     refresh_cluster_and_outcome_sections()
                     render_active_cluster_and_outcome_panels()
-                    ui.notify("定期分析を保存しました", color="positive")
+                    ui.notify("自動チェックを保存しました", color="positive")
 
                 def load_schedule_into_form(schedule: dict[str, Any]) -> None:
                     schedule_question_set_select.value = str(schedule.get("question_set_id") or "")
@@ -1046,33 +1389,35 @@ def render_page() -> None:
                     schedule_timezone_input.value = str(schedule.get("timezone") or state["config"].timezone)
                     schedule_timezone_input.update()
                     weekdays = parse_weekdays_csv(schedule.get("weekdays_csv"))
-                    schedule_weekdays_select.value = weekdays
+                    schedule_weekdays_select.value = [str(day) for day in weekdays]
                     schedule_weekdays_select.update()
-                    schedule_weekly_runs_input.value = int(schedule.get("weekly_run_count") or max(1, len(weekdays) or 1))
-                    schedule_weekly_runs_input.update()
                     schedule_enabled_switch.value = bool(schedule.get("enabled"))
                     schedule_enabled_switch.update()
+                    refresh_schedule_form_summary()
 
                 async def on_schedule_load() -> None:
                     if schedule_manage_select is None or not schedule_manage_select.value:
-                        ui.notify("読み込む定期分析を選択してください。", color="warning")
+                        ui.notify("読み込む自動チェックを選択してください。", color="warning")
                         return
                     schedule = db.get_schedule(str(schedule_manage_select.value))
                     if not schedule:
-                        ui.notify("選択した定期分析が見つかりません。", color="warning")
+                        ui.notify("選択した自動チェックが見つかりません。", color="warning")
                         return
                     load_schedule_into_form(schedule)
-                    ui.notify("定期分析をフォームへ読み込みました。", color="positive")
+                    refresh_saved_condition_helpers()
+                    ui.notify("自動チェックをフォームへ読み込みました。", color="positive")
 
                 async def on_schedule_duplicate() -> None:
+                    if block_readonly_demo_ui_action("自動チェックを複製"):
+                        return
                     if schedule_manage_select is None or not schedule_manage_select.value:
-                        ui.notify("複製する定期分析を選択してください。", color="warning")
+                        ui.notify("複製する自動チェックを選択してください。", color="warning")
                         return
                     schedule = db.get_schedule(str(schedule_manage_select.value))
                     if not schedule:
-                        ui.notify("選択した定期分析が見つかりません。", color="warning")
+                        ui.notify("選択した自動チェックが見つかりません。", color="warning")
                         return
-                    duplicate_name = f"{str(schedule.get('name') or '定期分析')} 複製"
+                    duplicate_name = f"{str(schedule.get('name') or '自動チェック')} 複製"
                     duplicate_id = db.save_schedule(
                         question_set_id=str(schedule.get("question_set_id") or ""),
                         name=duplicate_name,
@@ -1108,16 +1453,19 @@ def render_page() -> None:
                     duplicate_schedule = db.get_schedule(duplicate_id)
                     if duplicate_schedule:
                         load_schedule_into_form(duplicate_schedule)
+                        refresh_saved_condition_helpers()
                     refresh_cluster_and_outcome_sections()
                     render_active_cluster_and_outcome_panels()
-                    ui.notify("定期分析を複製し、停止状態で保存しました。", color="positive")
+                    ui.notify("自動チェックを複製し、停止状態で保存しました。", color="positive")
 
                 async def confirm_schedule_delete() -> None:
+                    if block_readonly_demo_ui_action("自動チェックを削除"):
+                        return
                     if schedule_manage_select is None or not schedule_manage_select.value:
                         return
                     schedule = db.get_schedule(str(schedule_manage_select.value))
                     if not schedule:
-                        ui.notify("削除対象の定期分析が見つかりません。", color="warning")
+                        ui.notify("削除対象の自動チェックが見つかりません。", color="warning")
                         if schedule_delete_dialog is not None:
                             schedule_delete_dialog.close()
                         return
@@ -1140,8 +1488,10 @@ def render_page() -> None:
                     ui.notify(f"{schedule.get('name')} を削除しました。", color="positive")
 
                 async def on_schedule_delete() -> None:
+                    if block_readonly_demo_ui_action("自動チェックを削除"):
+                        return
                     if schedule_manage_select is None or not schedule_manage_select.value:
-                        ui.notify("削除する定期分析を選択してください。", color="warning")
+                        ui.notify("削除する自動チェックを選択してください。", color="warning")
                         return
                     if schedule_delete_dialog is not None:
                         schedule_delete_dialog.open()
@@ -1158,6 +1508,8 @@ def render_page() -> None:
                     )
 
                 async def on_cluster_brief_generate() -> None:
+                    if block_readonly_demo_ui_action("クラスタ下書きを保存"):
+                        return
                     if (
                         cluster_kind_select is None
                         or cluster_target_select is None
@@ -1238,20 +1590,20 @@ def render_page() -> None:
                     )
 
                 async def on_export() -> None:
+                    if block_readonly_demo_ui_action("出力ファイルを更新"):
+                        return
                     cfg = build_config_from_inputs(inputs, state["config"])
                     rows = dashboard_views.filter_rows_for_active_scope(db.list_recent_results(limit=2000), cfg)
                     state["export_rows"], state["report_preview"] = write_export_files(rows, cfg, EXPORTS_DIR, db.list_sources)
-                    page_refreshers.refresh_export_panel(
-                        export_table,
-                        export_status_label,
-                        state["export_rows"],
-                        report_preview_label,
-                        state["report_preview"],
-                    )
+                    refresh_export_panel_if_ready(force=True)
                     ui.notify("出力ファイルを更新しました", color="positive")
 
                 async def on_run() -> None:
                     if state["busy"] or state["batch_busy"]:
+                        return
+                    if READONLY_DEMO_MODE:
+                        ui.notify(readonly_demo_block_message("manual LLM/API send"), color="warning")
+                        print(f"[kotomegane] {readonly_demo_block_message('manual LLM/API send')}", flush=True)
                         return
                     manual_cfg = state["config"]
                     total_steps = 0
@@ -1270,6 +1622,9 @@ def render_page() -> None:
                             return
                         if not api_key_status.present:
                             ui.notify(f"{api_key_status.env_var} が未設定です。.env または環境変数に設定してください。", color="negative")
+                            return
+                        credit_units = _kotomegane_credit_units(manual_cfg.provider)
+                        if not await _ensure_usage_credit_available("kotomegane", units=credit_units):
                             return
                         budget_guardrail = _load_budget_guardrail(manual_cfg)
                         if budget_guardrail["should_block"]:
@@ -1299,7 +1654,7 @@ def render_page() -> None:
                         )
                         set_run_status(
                             "分析中です",
-                            f"手動スポット確認は 1 質問あたり {manual_cfg.repeat_count} 回で軽く確認しています。",
+                            f"1回だけ確認は 1 質問あたり {manual_cfg.repeat_count} 回で軽く確認しています。",
                             "数十秒から数分かかることがあります。進捗が止まって見えても、まずは完了か失敗の表示が出るまで待ってください。2分以上変化がなければ再実行を検討してください。",
                         )
                         safely_run_ui(lambda: set_run_button_busy(True))
@@ -1313,6 +1668,7 @@ def render_page() -> None:
                         canceled_by_user = False
                         run_blocked_message = ""
                         run_error_message = ""
+                        last_request_error_message = ""
                         current_question_set = db.get_question_set(question_set_select.value) if question_set_select.value else None
                         run_id = db.create_run_session(
                             manual_cfg.repeat_count,
@@ -1345,10 +1701,7 @@ def render_page() -> None:
                                     manual_cfg,
                                     planned_request_count=execution_plan.total_request_count,
                                 )
-                                if (
-                                    manual_cfg.run_budget_guardrail_usd > 0
-                                    and budget_guardrail["estimated_run_cost_usd"] > manual_cfg.run_budget_guardrail_usd
-                                ):
+                                if budget_guardrail["run_guardrail_should_block"]:
                                     run_blocked_message = (
                                         "今回の分析は実際の送信件数ベースで 1 回の実行上限を超える見込みです。"
                                         " 質問数か回数を絞ってください。"
@@ -1358,6 +1711,11 @@ def render_page() -> None:
                                     summary_label.update()
                                     recovery_hint_label.update()
                                     raise RunGuardrailBlockedError(run_blocked_message)
+                                if budget_guardrail["would_exceed_run_guardrail"]:
+                                    ui.notify(
+                                        "1 回の実行上限を超える見込みです。現在の設定は「上限を超えても止めずに続ける」ため、このまま分析を続行します。",
+                                        color="warning",
+                                    )
                                 query_plan_position_map = {
                                     str(plan.get("query_plan_id") or ""): index
                                     for index, plan in enumerate(query_plans, start=1)
@@ -1378,8 +1736,8 @@ def render_page() -> None:
                                     minimum_ratio=0.14,
                                 )
                                 summary_label.text = (
-                                    f"元質問 {len(query_plans)} 件を、内部では {execution_plan.total_unique_queries} 件の拡張質問に広げ、"
-                                    f" 各 {manual_cfg.repeat_count} 回ずつ確認します。手動スポット確認では各回の拡張質問を並列で送ります。合計 {total_steps} 回答です。"
+                                    f"元質問 {len(query_plans)} 件を、内部では {execution_plan.total_unique_queries} 件の拡張質問（同じ意味の言い換え文）に広げ、"
+                                    f" 各 {manual_cfg.repeat_count} 回ずつ確認します。表現を変えて複数回試すことで、AIの回答の傾向を安定して確認できます。合計 {total_steps} 回答です。"
                                 )
                                 summary_label.update()
                                 recovery_hint_label.text = "途中で閉じずに待つと、そのまま今回の結果へ切り替わります。長く止まる場合だけ再実行を検討してください。"
@@ -1540,6 +1898,7 @@ def render_page() -> None:
                                                 run_spend_usd += result.estimated_cost_usd
                                             else:
                                                 failures += 1
+                                                last_request_error_message = safe_error
                                                 error_result = runtime_common.build_error_result(
                                                     latest_query,
                                                     safe_error,
@@ -1703,6 +2062,38 @@ def render_page() -> None:
                             safely_run_ui(lambda: set_action_button_states(True))
                             return
 
+                        if total_steps > 0 and failures >= total_steps and completed == 0:
+                            all_failed_message = (
+                                last_request_error_message
+                                or "すべてのAI接続が失敗しました。接続状況とAPIキーを確認してから再実行してください。"
+                            )
+                            set_progress_state(
+                                0,
+                                total_steps,
+                                question_index=current_question_total,
+                                question_total=current_question_total,
+                                expansion_index=0,
+                                expansion_total=max(1, current_expansion_total),
+                                repeat_index=0,
+                                repeat_total=max(1, manual_cfg.repeat_count),
+                                current_label="現在: 全件失敗を反映しています",
+                                phase_label="状態: 分析失敗",
+                            )
+                            set_run_status(
+                                "分析に失敗しました",
+                                f"送信した {failures} 件すべてが失敗しました。{all_failed_message}",
+                                "接続状況とAPIキーを確認し、時間をおいて再実行してください。",
+                            )
+                            state["cancel_requested"] = False
+                            state["show_primary_results"] = False
+                            state["current_result_run_id"] = ""
+                            safely_run_ui(refresh_result_sections)
+                            set_progress_visibility(False)
+                            safely_run_ui(lambda: set_run_button_busy(False))
+                            safely_run_ui(lambda: set_action_button_states(True))
+                            safe_notify(f"分析に失敗しました: {all_failed_message}", color="negative")
+                            return
+
                         set_progress_state(
                             total_steps,
                             total_steps,
@@ -1729,6 +2120,23 @@ def render_page() -> None:
                         set_progress_visibility(False)
                         safely_run_ui(lambda: set_run_button_busy(False))
                         safely_run_ui(lambda: set_action_button_states(True))
+                        successful_results = max(0, completed - failures)
+                        if successful_results > 0:
+                            credit_debited = await _consume_usage_credit_after_success(
+                                service_key="kotomegane",
+                                action_key="manual_observation",
+                                attempt_id=str(run_id),
+                                units=credit_units,
+                                metadata={
+                                    "provider": manual_cfg.provider,
+                                    "run_mode": "manual",
+                                    "successful_results": successful_results,
+                                    "failed_results": failures,
+                                },
+                            )
+                            if not credit_debited:
+                                safe_notify("分析は完了しましたが、クレジット消費を確認できませんでした。管理者へ連絡してください。", color="warning")
+                                return
                         if failures:
                             safe_notify(f"分析完了。ただし {failures} 件は失敗しました", color="warning")
                         else:
@@ -1791,36 +2199,40 @@ def render_page() -> None:
                 async def on_batch_submit() -> None:
                     if state["busy"] or state["batch_busy"]:
                         return
+                    if READONLY_DEMO_MODE:
+                        ui.notify(readonly_demo_block_message("provider batch submit"), color="warning")
+                        print(f"[kotomegane] {readonly_demo_block_message('provider batch submit')}", flush=True)
+                        return
                     cfg = build_config_from_inputs(inputs, state["config"])
-                    if notify_missing_required_fields(cfg, context="定期分析"):
+                    if notify_missing_required_fields(cfg, context="まとめて分析"):
                         return
                     batch_policy = resolve_run_policy(cfg, "batch")
                     provider = get_provider_option(cfg.provider)
                     api_key_status = get_api_key_status(cfg.provider)
                     if not batch_policy.allowed:
-                        ui.notify(batch_policy.blocked_reason or "定期分析は現在この接続先では未対応です。", color="warning")
+                        ui.notify(batch_policy.blocked_reason or "まとめて分析は現在この接続先では未対応です。", color="warning")
                         return
                     if not api_key_status.present:
                         ui.notify(f"{api_key_status.env_var} が未設定です。.env または環境変数に設定してください。", color="negative")
                         return
+                    credit_units = _kotomegane_credit_units(cfg.provider)
+                    if not await _ensure_usage_credit_available("kotomegane", units=credit_units):
+                        return
                     budget_guardrail = _load_budget_guardrail(cfg)
                     if budget_guardrail["should_block"]:
                         ui.notify(
-                            "日次上限を超える見込みのため、定期分析を止めました。質問数、回数、または上限設定を見直してください。",
+                            "日次上限を超える見込みのため、まとめて分析を止めました。質問数、回数、または上限設定を見直してください。",
                             color="negative",
                         )
                         return
                     if budget_guardrail["status"] == "warning" and budget_guardrail["daily_budget_usd"] > 0:
                         ui.notify(
-                            "今回の定期分析は日次上限に近いか超える見込みです。必要なら回数を絞ってください。",
+                            "今回のまとめて分析は日次上限に近いか超える見込みです。必要なら回数を絞ってください。",
                             color="warning",
                         )
-                    if (
-                        cfg.run_budget_guardrail_usd > 0
-                        and budget_guardrail["estimated_run_cost_usd"] > cfg.run_budget_guardrail_usd
-                    ):
+                    if budget_guardrail["run_guardrail_should_block"]:
                         ui.notify(
-                            "今回の定期分析は 1 回の実行あたりの内部上限を超える見込みです。質問数か回数を絞ってください。",
+                            "今回のまとめて分析は 1 回の実行あたりの内部上限を超える見込みです。質問数か回数を絞ってください。",
                             color="negative",
                         )
                         return
@@ -1832,7 +2244,7 @@ def render_page() -> None:
                     page_refreshers.update_batch_status_panel(
                         batch_status_label,
                         batch_summary_label,
-                        "定期分析を開始しています",
+                        "まとめて分析を開始しています",
                         "質問ごとにまとめた順で処理を作成しています。",
                     )
                     set_action_button_states(False)
@@ -1865,33 +2277,35 @@ def render_page() -> None:
                             page_refreshers.update_batch_status_panel(
                                 batch_status_label,
                                 batch_summary_label,
-                                "定期分析を開始しませんでした",
+                                "まとめて分析を開始しませんでした",
                                 "実際の送信件数で見積もると日次上限を超える見込みのため、投入を止めました。",
                             )
                             set_action_button_states(True)
                             ui.notify(
-                                "実際の送信件数で見積もると日次上限を超える見込みのため、定期分析を止めました。",
+                                "実際の送信件数で見積もると日次上限を超える見込みのため、まとめて分析を止めました。",
                                 color="negative",
                             )
                             return
-                        if (
-                            cfg.run_budget_guardrail_usd > 0
-                            and budget_guardrail["estimated_run_cost_usd"] > cfg.run_budget_guardrail_usd
-                        ):
+                        if budget_guardrail["run_guardrail_should_block"]:
                             db.finish_run_session(run_id)
                             state["batch_busy"] = False
                             page_refreshers.update_batch_status_panel(
                                 batch_status_label,
                                 batch_summary_label,
-                                "定期分析を開始しませんでした",
+                                "まとめて分析を開始しませんでした",
                                 "実際の送信件数で見積もると 1 回の実行上限を超える見込みのため、投入を止めました。",
                             )
                             set_action_button_states(True)
                             ui.notify(
-                                "今回の定期分析は実際の送信件数ベースで 1 回の実行上限を超える見込みです。質問数か回数を絞ってください。",
+                                "今回のまとめて分析は実際の送信件数ベースで 1 回の実行上限を超える見込みです。質問数か回数を絞ってください。",
                                 color="negative",
                             )
                             return
+                        if budget_guardrail["would_exceed_run_guardrail"]:
+                            ui.notify(
+                                "実際の送信件数では 1 回の実行上限を超える見込みです。現在の設定は「上限を超えても止めずに続ける」ため、このまま投入を続行します。",
+                                color="warning",
+                            )
                         batch_cfg = cfg.model_copy(
                             update={
                                 "keywords": [request.executed_query for request in execution_plan.requests],
@@ -1900,13 +2314,18 @@ def render_page() -> None:
                         )
                         request_contexts = [
                             {
+                                "custom_id": build_batch_item_custom_id(
+                                    run_id,
+                                    request_index,
+                                    request.iteration_index,
+                                ),
                                 "query_plan_id": request.query_plan_id,
                                 "user_query_raw": request.user_query_raw,
                                 "executed_query": request.executed_query,
                                 "executed_query_index": request.executed_query_index,
                                 "iteration_index": request.iteration_index,
                             }
-                            for request in execution_plan.requests
+                            for request_index, request in enumerate(execution_plan.requests, start=1)
                         ]
                         provider_client = build_provider_client(cfg.provider)
                         batch_handle, request_items = await asyncio.to_thread(
@@ -1966,17 +2385,36 @@ def render_page() -> None:
                                 str(current_question_set.get("question_set_id") or ""),
                                 run_mode="batch",
                             )
-                        ui.notify("定期分析を開始しました。進み具合を更新するか、結果を反映してください。", color="positive")
+                        batch_credit_debited = await _consume_usage_credit_after_success(
+                            service_key="kotomegane",
+                            action_key="batch_submit",
+                            attempt_id=str(batch_handle.batch_job_id),
+                            units=credit_units,
+                            metadata={
+                                "provider": cfg.provider,
+                                "run_mode": "batch",
+                                "provider_batch_id": str(batch_handle.batch_job_id),
+                            },
+                        )
+                        if not batch_credit_debited:
+                            page_refreshers.update_batch_status_panel(
+                                batch_status_label,
+                                batch_summary_label,
+                                "まとめて分析を投入しましたが、クレジット消費を確認できませんでした",
+                                "管理者へ連絡してください。",
+                            )
+                            return
+                        ui.notify("まとめて分析を開始しました。進み具合を更新するか、完了結果を反映してください。", color="positive")
                     except Exception as exc:
                         db.finish_run_session(run_id)
                         safe_error = runtime_common.sanitize_runtime_error_message(exc)
                         page_refreshers.update_batch_status_panel(
                             batch_status_label,
                             batch_summary_label,
-                            "定期分析の開始に失敗しました",
+                            "まとめて分析の開始に失敗しました",
                             safe_error,
                         )
-                        ui.notify(f"定期分析の開始に失敗しました: {safe_error}", color="negative")
+                        ui.notify(f"まとめて分析の開始に失敗しました: {safe_error}", color="negative")
                     finally:
                         state["batch_busy"] = False
                         set_action_button_states(True)
@@ -1984,13 +2422,17 @@ def render_page() -> None:
                 async def on_batch_refresh() -> None:
                     if state["busy"] or state["batch_busy"]:
                         return
+                    if READONLY_DEMO_MODE:
+                        ui.notify(readonly_demo_block_message("provider batch retrieve"), color="warning")
+                        print(f"[kotomegane] {readonly_demo_block_message('provider batch retrieve')}", flush=True)
+                        return
                     batch_job_id = batch_job_select.value
                     if not batch_job_id:
                         ui.notify("進み具合を見る対象を選択してください。", color="warning")
                         return
                     batch_job = db.get_batch_job(batch_job_id)
                     if not batch_job:
-                        ui.notify("選択した定期分析がローカルDBにありません。", color="warning")
+                        ui.notify("選択したまとめて分析がローカルDBにありません。", color="warning")
                         return
 
                     state["batch_busy"] = True
@@ -1999,7 +2441,7 @@ def render_page() -> None:
                         batch_status_label,
                         batch_summary_label,
                         f"{provider_label} の進み具合を更新しています",
-                        "選択した定期分析の進み具合を確認しています。",
+                        "選択したまとめて分析の進み具合を確認しています。",
                     )
                     set_action_button_states(False)
                     try:
@@ -2027,7 +2469,7 @@ def render_page() -> None:
                             batch_status_label,
                             batch_summary_label,
                         )
-                        ui.notify("定期分析の進み具合を更新しました。", color="positive")
+                        ui.notify("まとめて分析の進み具合を更新しました。", color="positive")
                     except Exception as exc:
                         safe_error = runtime_common.sanitize_runtime_error_message(exc)
                         page_refreshers.update_batch_status_panel(
@@ -2044,13 +2486,17 @@ def render_page() -> None:
                 async def on_batch_import() -> None:
                     if state["busy"] or state["batch_busy"]:
                         return
+                    if READONLY_DEMO_MODE:
+                        ui.notify(readonly_demo_block_message("provider batch retrieve/import"), color="warning")
+                        print(f"[kotomegane] {readonly_demo_block_message('provider batch retrieve/import')}", flush=True)
+                        return
                     batch_job_id = batch_job_select.value
                     if not batch_job_id:
                         ui.notify("結果を反映する対象を選択してください。", color="warning")
                         return
                     batch_job = db.get_batch_job(batch_job_id)
                     if not batch_job:
-                        ui.notify("選択した定期分析がローカルDBにありません。", color="warning")
+                        ui.notify("選択したまとめて分析がローカルDBにありません。", color="warning")
                         return
 
                     state["batch_busy"] = True
@@ -2211,11 +2657,11 @@ def render_page() -> None:
                         expand_current_result_surface()
                         if new_successes or new_errors:
                             ui.notify(
-                                f"定期分析の結果を反映しました。成功 {new_successes} 件 / エラー {new_errors} 件。",
+                                f"まとめて分析の結果を反映しました。成功 {new_successes} 件 / エラー {new_errors} 件。",
                                 color="positive" if new_errors == 0 else "warning",
                             )
                         else:
-                            ui.notify("新しく反映できる定期分析の結果はありませんでした。", color="warning")
+                            ui.notify("新しく反映できるまとめて分析の結果はありませんでした。", color="warning")
                     except Exception as exc:
                         safe_error = runtime_common.sanitize_runtime_error_message(exc)
                         page_refreshers.update_batch_status_panel(
@@ -2235,33 +2681,67 @@ def render_page() -> None:
                 save_button = None
                 run_button = None
                 cancel_run_button = None
+                quick_saved_open_button = None
                 quick_batch_open_button = None
                 quick_schedule_open_button = None
+                question_set_new_save_button = None
+                question_set_save_button = None
+                question_set_archive_button = None
+                schedule_save_button = None
+                schedule_duplicate_button = None
+                schedule_delete_button = None
+                schedule_delete_confirm_button = None
+                cluster_brief_generate_button = None
+                export_button = None
 
                 with action_button_row:
                     with ui.row().classes("w-full items-center justify-start gap-3 flex-wrap"):
-                        run_button = ui.button("1回だけ分析", on_click=on_run).props("unelevated no-caps color=orange-8 text-color=white").classes("accent-button primary-run-button text-[18px] font-bold").style(SUITE_ACCENT_BUTTON_STYLE)
+                        run_button = ui.button("合計20回答を確認", on_click=on_run).props("unelevated no-caps color=orange-8 text-color=white").classes(
+                            readonly_button_classes("accent-button primary-run-button text-[18px] font-bold")
+                        ).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
+                        ui.label(
+                            "確認用モードのため実行できません。"
+                            if READONLY_DEMO_MODE
+                            else "このボタンで対象AIへ、合計20回答を目安に質問を送信します。"
+                        ).classes(
+                            "readonly-demo-helper text-[13px] leading-5"
+                            if READONLY_DEMO_MODE
+                            else "text-[13px] leading-5 text-helper"
+                        )
                         cancel_run_button = ui.button("分析を停止", on_click=on_run_cancel).props("outline no-caps color=brown-8").classes("text-[16px] font-bold")
                         cancel_run_button.visible = False
                     with ui.column().classes("followup-cta-panel w-full gap-2"):
                         with ui.row().classes("w-full items-center gap-2 flex-wrap"):
                             ui.icon("timeline").classes("text-[18px] text-support")
-                            ui.label("継続的に見るなら定期分析").classes("followup-cta-title")
-                            ui.label("初回確認のあとに使う導線です").classes("followup-cta-note")
+                            ui.label("保存済み条件から見る").classes("followup-cta-title")
+                            ui.label("画面を開くだけです。対象AIへ送信する操作ではありません。").classes("followup-cta-note")
                         with ui.row().classes("w-full items-center gap-2 flex-wrap"):
+                            quick_saved_open_button = ui.button(
+                                "保存済み条件を見る",
+                                on_click=lambda _=None: (
+                                    open_support_surface(support_settings_tab, "saved"),
+                                ),
+                            ).props("outline no-caps color=brown-8 href=#saved-condition-section data-km-shortcut-target=saved-condition-section").classes("secondary-button followup-button text-[14px] font-bold").style(SUITE_SECONDARY_BUTTON_STYLE)
+                            quick_saved_open_button.tooltip("保存しておいた質問条件を確認・編集します。ここではAIへの送信は行いません。")
                             quick_batch_open_button = ui.button(
-                                "定期分析を実行",
-                                on_click=lambda: open_support_surface(support_settings_tab),
-                            ).props("outline no-caps color=brown-8").classes("secondary-button followup-button text-[14px] font-bold").style(SUITE_SECONDARY_BUTTON_STYLE)
+                                "まとめて分析を見る",
+                                on_click=lambda _=None: (
+                                    open_support_surface(support_settings_tab, "batch"),
+                                ),
+                            ).props("outline no-caps color=brown-8 href=#batch-settings-section data-km-shortcut-target=batch-settings-section").classes("secondary-button followup-button text-[14px] font-bold").style(SUITE_SECONDARY_BUTTON_STYLE)
+                            quick_batch_open_button.tooltip("保存済み条件の複数質問を、今回1回だけまとめて実行したいときに使います。")
                             quick_schedule_open_button = ui.button(
-                                "自動定期分析を設定",
-                                on_click=lambda: open_support_surface(support_settings_tab),
-                            ).props("outline no-caps color=brown-8").classes("secondary-button followup-button text-[14px] font-bold").style(SUITE_SECONDARY_BUTTON_STYLE)
+                                "曜日を決めて自動チェック",
+                                on_click=lambda _=None: (
+                                    open_support_surface(support_settings_tab, "schedule"),
+                                ),
+                            ).props("outline no-caps color=brown-8 href=#schedule-settings-section data-km-shortcut-target=schedule-settings-section").classes("secondary-button followup-button text-[14px] font-bold").style(SUITE_SECONDARY_BUTTON_STYLE)
+                            quick_schedule_open_button.tooltip("保存済み条件を、指定した曜日・時刻に継続して自動実行したいときに使います。")
 
                 def set_run_button_busy(is_busy: bool) -> None:
                     if run_button is None:
                         return
-                    run_button.set_text("分析中..." if is_busy else "1回だけ分析")
+                    run_button.set_text("分析中..." if is_busy else "合計20回答を確認")
                     run_button.update()
 
                 def set_action_button_states(enabled: bool) -> None:
@@ -2271,7 +2751,7 @@ def render_page() -> None:
                             controls.append(save_button)
                         controls.extend(
                             control
-                            for control in [quick_batch_open_button, quick_schedule_open_button]
+                            for control in [quick_saved_open_button, quick_batch_open_button, quick_schedule_open_button]
                             if control is not None
                         )
                         controls.extend(
@@ -2279,8 +2759,39 @@ def render_page() -> None:
                             for control in [batch_submit_button, batch_status_button, batch_import_button]
                             if control is not None
                         )
+                        readonly_blocked_controls = [
+                            control
+                            for control in [
+                                run_button,
+                                batch_submit_button,
+                                batch_status_button,
+                                batch_import_button,
+                                save_button,
+                                question_set_new_save_button,
+                                question_set_save_button,
+                                question_set_archive_button,
+                                schedule_save_button,
+                                schedule_duplicate_button,
+                                schedule_delete_button,
+                                schedule_delete_confirm_button,
+                                cluster_brief_generate_button,
+                                export_button,
+                            ]
+                            if control is not None
+                        ]
+                        if READONLY_DEMO_MODE:
+                            controls.extend(readonly_blocked_controls)
+                        unique_controls = []
+                        seen_control_ids: set[int] = set()
                         for control in controls:
-                            if enabled:
+                            if control is None or id(control) in seen_control_ids:
+                                continue
+                            seen_control_ids.add(id(control))
+                            unique_controls.append(control)
+                        for control in unique_controls:
+                            if READONLY_DEMO_MODE and control in readonly_blocked_controls:
+                                control.disable()
+                            elif enabled:
                                 control.enable()
                             else:
                                 control.disable()
@@ -2329,25 +2840,25 @@ def render_page() -> None:
             ).classes("w-full h-[240px] mt-2")
             with ui.row().classes("w-full gap-3 mt-2 flex-wrap items-center"):
                 hero_trend_refs["hint"] = ui.label(
-                    "まだ定期分析の履歴がありません。"
+                    "まだ自動チェックの履歴がありません。"
                 ).classes("text-[12px] leading-5 text-helper flex-1")
-            ui.label("下部で定期分析をセットすると時系列分析が可能になります。").classes(
+            ui.label("下部で自動チェックをセットすると時系列分析が可能になります。").classes(
                 "text-[12px] leading-5 text-helper mt-1"
             )
         with ui.column().classes("w-full order-40").props("id=detail-stage"):
             pass
         with ui.card().classes("section-card p-5 w-full order-41"):
-            with ui.expansion("今回の結果 / 定期分析の推移 / 定期分析 / 設定を見る").classes("w-full panel-card") as support_result_expansion:
+            with ui.expansion("詳細と設定を開く").classes("w-full panel-card semantic-settings-expansion") as support_result_expansion:
                 with ui.column().classes("p-4 gap-5 w-full"):
                     with ui.tabs().classes("detail-tabs-shell w-full") as support_tabs:
                         support_result_tab = ui.tab("今回の結果")
-                        support_analysis_tab = ui.tab("定期分析の推移")
-                        support_research_tab = ui.tab("定期分析")
+                        support_analysis_tab = ui.tab("自動チェックの推移")
+                        support_research_tab = ui.tab("まとめて分析")
                         support_settings_tab = ui.tab("設定")
                     with ui.tab_panels(support_tabs, value=support_result_tab).classes("detail-tab-panels w-full mt-4"):
                         with ui.tab_panel(support_settings_tab).classes("px-0 py-2"):
-                            with ui.row().classes("w-full gap-5 flex-wrap items-start"):
-                                with ui.card().classes("section-card p-5 flex-1 min-w-[320px]"):
+                            with ui.row().classes("settings-overview-row w-full gap-5 flex-wrap items-start"):
+                                with ui.card().classes("section-card settings-provider-card p-5 flex-1 min-w-[260px]"):
                                     with ui.expansion("対象AIを設定").classes("w-full panel-card"):
                                         with ui.column().classes("p-4 gap-3 w-full"):
                                             ui.label("分析対象として使うAIを選びます。ここは結果の見え方とは分けて置いています。").classes(
@@ -2361,25 +2872,50 @@ def render_page() -> None:
                                                     ).props("unelevated no-caps").classes("provider-chip-button")
                                                     provider_buttons[provider.key] = button
                                             refresh_provider_ui(update_hero=False)
-                                with ui.card().classes("section-card p-5 flex-1 min-w-[360px]"):
-                                    with ui.expansion("保存した条件").classes("w-full panel-card"):
+                                with ui.card().classes("section-card settings-saved-card p-5 flex-1 min-w-[620px] semantic-saved-panel").props("id=saved-condition-section"):
+                                    with ui.expansion("保存済み条件", value=True).classes("w-full panel-card"):
                                         with ui.column().classes("p-4 gap-3 w-full"):
-                                            ui.label("よく使う質問と条件を名前つきで保存して、あとで呼び出します。").classes("text-[13px] leading-6 soft-label")
-                                            question_set_name_input = ui.input("確認内容の名前", value="").props("outlined").classes("w-full")
+                                            ui.label(
+                                                "今の入力を再利用したいときは、ここで保存済み条件に登録します。"
+                                                " まとめて分析と自動チェックは、この保存済み条件から対象を選びます。"
+                                            ).classes("text-[13px] leading-6 soft-label")
+                                            with ui.row().classes("w-full gap-3 flex-wrap"):
+                                                with ui.column().classes("input-field-card flex-1 min-w-[220px] gap-1"):
+                                                    ui.label("今の入力 -> 保存済み条件").classes("summary-eyebrow")
+                                                    ui.label("入力内容を保存して、あとで再利用します。").classes("text-[13px] leading-5 text-helper")
+                                                with ui.column().classes("input-field-card flex-1 min-w-[220px] gap-1"):
+                                                    ui.label("保存済み条件 -> 今回だけ").classes("summary-eyebrow")
+                                                    ui.label("まとめて分析で、保存した複数質問を今回だけ送信します。").classes("text-[13px] leading-5 text-helper")
+                                                with ui.column().classes("input-field-card flex-1 min-w-[220px] gap-1"):
+                                                    ui.label("保存済み条件 -> 自動チェック").classes("summary-eyebrow")
+                                                    ui.label("曜日と時刻を決め、同じ条件を継続的に確認します。").classes("text-[13px] leading-5 text-helper")
+                                            if READONLY_DEMO_MODE:
+                                                ui.label(
+                                                    "確認用モードのため保存・更新・アーカイブ・再開はできません。"
+                                                ).classes("readonly-demo-helper text-[13px] leading-5")
+                                            question_set_name_input = ui.input("保存名", value="").props("outlined").classes("w-full")
                                             with ui.row().classes("w-full gap-3 mt-1 flex-wrap"):
-                                                question_set_select = ui.select({}, value=None, label="保存済みの確認内容").props("outlined").classes(
+                                                question_set_select = ui.select({}, value=None, label="保存済み条件").props("outlined").classes(
                                                     "w-[280px] flex-1"
                                                 )
-                                                ui.button("保存 / 更新", on_click=on_question_set_save).props("unelevated no-caps color=orange-8 text-color=white").classes("accent-button text-[16px] font-bold").style(SUITE_ACCENT_BUTTON_STYLE)
-                                                ui.button("読み込み", on_click=on_question_set_load).props("outline color=brown-8").classes(
+                                                question_set_new_save_button = ui.button("今の入力を保存", on_click=on_question_set_new_save).props(
+                                                    "unelevated no-caps color=orange-8 text-color=white"
+                                                ).classes(readonly_button_classes("accent-button text-[16px] font-bold")).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
+                                                question_set_save_button = ui.button("選択中の保存済み条件を更新", on_click=on_question_set_save).props("outline color=brown-8").classes(
+                                                    readonly_button_classes("secondary-button text-[16px]")
+                                                ).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                                ui.button("保存済みを読み込む", on_click=on_question_set_load).props("outline color=brown-8").classes(
                                                     "secondary-button text-[16px]"
                                                 ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                ui.button("アーカイブ / 再開", on_click=on_question_set_archive_toggle).props("outline color=brown-8").classes(
-                                                    "secondary-button text-[16px]"
-                                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                save_button = ui.button("入力内容を保持", on_click=on_save).props("outline color=brown-8").classes(
-                                                    "secondary-button text-[16px]"
-                                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
+                                                question_set_archive_button = ui.button("アーカイブ / 再開", on_click=on_question_set_archive_toggle).props("outline color=brown-8").classes(
+                                                    readonly_button_classes("secondary-button text-[16px]")
+                                                ).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                                save_button = ui.button("画面の入力だけ保持", on_click=on_save).props("outline color=brown-8").classes(
+                                                    readonly_button_classes("secondary-button text-[16px]")
+                                                ).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                            question_set_detail_label = ui.label(
+                                                "保存済み条件を選ぶと、質問数・対象AI・最後の結果保存時刻をここに表示します。"
+                                            ).classes("text-[12px] leading-5 text-helper")
                                             question_set_table = ui.table(
                                                 columns=admin_views.build_question_set_table_columns(),
                                                 rows=[],
@@ -2389,35 +2925,61 @@ def render_page() -> None:
 
                             with ui.row().classes("w-full gap-5 mt-5 flex-wrap items-start"):
                                 with ui.card().classes("section-card p-5 w-full"):
-                                    with ui.expansion("定期分析｜複数質問をまとめて実行", value=True).classes("w-full panel-card"):
+                                    with ui.expansion("今回だけまとめて分析｜保存済み条件を今回だけ実行").classes("w-full panel-card").props("id=batch-settings-section") as batch_settings_expansion:
                                         with ui.column().classes("p-4 gap-3 w-full"):
                                             ui.label(
-                                                "保存した質問セットをまとめて実行し、継続的に比較するための機能です。"
-                                                "1件だけなら上の「1回だけ分析」で十分、ここは複数質問を定期的に見たいときに使います。"
+                                                "上の保存済み条件を入力へ読み込んでから、複数質問を今回だけ実行します。"
+                                                "1件だけなら上の「1回だけ分析」で十分です。"
                                             ).classes("text-[13px] leading-6 soft-label")
+                                            if READONLY_DEMO_MODE:
+                                                ui.label("確認用モードのため実行できません。").classes(
+                                                    "readonly-demo-helper text-[13px] leading-5"
+                                                )
+                                            ui.label(
+                                                "手順: 保存済み条件を選ぶ -> 保存済みを読み込む -> まとめて分析を開始。"
+                                                " 下の一覧は過去のまとめて分析・自動チェック履歴です。"
+                                            ).classes("text-[13px] leading-6 text-helper")
                                             ui.label("ここで出す割合はバッチジョブ数ではなく、対象質問数を分母にして読みます。").classes(
                                                 "text-[13px] leading-6 text-helper"
                                             )
-                                            batch_status_label = ui.label("まだ定期分析はありません").classes(
+                                            batch_status_label = ui.label("まだまとめて分析の履歴はありません").classes(
                                                 "text-[15px] font-bold text-main mt-1"
                                             )
                                             batch_summary_label = ui.label(
-                                                "保存した質問セットから複数質問をまとめて投げ、定期分析の推移タブで傾向を読みます。"
+                                                "保存済み条件を入力へ読み込み、複数質問をまとめて対象AIへ送信します。"
                                             ).classes("text-[13px] text-helper mt-1")
-                                            with ui.row().classes("gap-3 mt-3 flex-wrap"):
-                                                batch_submit_button = ui.button("今すぐ実行", on_click=on_batch_submit).props(
+                                            with ui.row().classes("w-full gap-3 mt-3 flex-wrap"):
+                                                batch_submit_button = ui.button("まとめて分析を開始", on_click=on_batch_submit).props(
                                                     "unelevated no-caps color=orange-8 text-color=white"
-                                                ).classes("accent-button text-[16px] font-bold").style(SUITE_ACCENT_BUTTON_STYLE)
+                                                ).classes(readonly_button_classes("accent-button text-[16px] font-bold")).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
+                                                ui.label(
+                                                    "確認用モードのため実行できません。"
+                                                    if READONLY_DEMO_MODE
+                                                    else "今の入力に読み込んだ保存済み条件を対象AIへまとめて送信します。"
+                                                ).classes(
+                                                    "readonly-demo-helper text-[13px] leading-5 self-center"
+                                                    if READONLY_DEMO_MODE
+                                                    else "text-[13px] leading-5 text-helper self-center"
+                                                )
                                                 batch_status_button = ui.button("進み具合を更新", on_click=on_batch_refresh).props(
                                                     "outline color=brown-8"
-                                                ).classes("secondary-button text-[16px]").style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                batch_import_button = ui.button("結果を反映", on_click=on_batch_import).props(
+                                                ).classes(readonly_button_classes("secondary-button text-[16px]")).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                                batch_import_button = ui.button("完了結果を反映", on_click=on_batch_import).props(
                                                     "outline color=brown-8"
-                                                ).classes("secondary-button text-[16px]").style(SUITE_SECONDARY_BUTTON_STYLE)
+                                                ).classes(readonly_button_classes("secondary-button text-[16px]")).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                                ui.label(
+                                                    "確認用モードのため状態確認・結果反映はできません。"
+                                                    if READONLY_DEMO_MODE
+                                                    else "完了した外部AI結果をこの画面へ反映します。"
+                                                ).classes(
+                                                    "readonly-demo-helper text-[13px] leading-5 self-center"
+                                                    if READONLY_DEMO_MODE
+                                                    else "text-[13px] leading-5 text-helper self-center"
+                                                )
                                             batch_job_select = ui.select(
                                                 {},
                                                 value=None,
-                                                label="対象の定期分析",
+                                                label="過去のまとめて分析・自動チェック履歴",
                                                 on_change=lambda _: admin_views.refresh_batch_job_views(
                                                     db,
                                                     batch_job_select,
@@ -2434,30 +2996,79 @@ def render_page() -> None:
                                             ).props(TABLE_BASE_PROPS).classes("w-full mt-2")
 
                             with ui.row().classes("w-full gap-5 mt-5 flex-wrap items-start"):
-                                with ui.card().classes("section-card p-5 flex-1 min-w-[420px]"):
-                                    with ui.expansion("定期分析｜自動で継続（スケジュール）").classes("w-full panel-card"):
+                                with ui.card().classes("section-card p-5 flex-1 min-w-[420px] semantic-schedule-panel"):
+                                    with ui.expansion("曜日を決めて自動チェック").classes("w-full panel-card").props("id=schedule-settings-section") as schedule_settings_expansion:
                                         with ui.column().classes("p-4 gap-3 w-full"):
-                                            ui.label("曜日と時刻を決めて、定期分析を自動で回し続けます。継続観測で推移を見たいときに使います。").classes("text-[13px] leading-6 soft-label")
-                                            scheduler_status_label = ui.label(admin_views.build_scheduler_status_text(scheduler_service)).classes("text-[14px] leading-6 text-helper mt-1")
-                                            schedule_question_set_select = ui.select({}, value=None, label="対象の確認内容").props("outlined").classes(
-                                                "w-full mt-2"
-                                            )
-                                            with ui.row().classes("w-full gap-3 mt-1 flex-wrap"):
-                                                schedule_name_input = ui.input("スケジュール名", value="").props("outlined").classes("w-[240px] flex-1")
-                                                schedule_time_input = ui.input("時刻", value="09:00").props("outlined").classes("w-[120px]")
-                                                schedule_timezone_input = ui.input("タイムゾーン", value=state["config"].timezone).props("outlined").classes("w-[180px]")
-                                            with ui.row().classes("w-full gap-3 mt-1 flex-wrap items-end"):
-                                                schedule_weekdays_select = ui.select(
-                                                    {0: "月", 1: "火", 2: "水", 3: "木", 4: "金", 5: "土", 6: "日"},
-                                                    value=[0],
-                                                    label="曜日",
-                                                ).props("multiple outlined use-chips").classes("w-[280px] flex-1")
-                                                schedule_weekly_runs_input = ui.number("週あたり回数", value=1, min=1, max=7).props("outlined").classes(
-                                                    "w-[140px]"
+                                            ui.label(
+                                                "保存済み条件を、指定した曜日と時刻に自動チェックします。"
+                                                " 順番は「対象 -> 曜日 -> 時刻 -> 有効 -> 保存」です。"
+                                            ).classes("text-[13px] leading-6 soft-label")
+                                            if READONLY_DEMO_MODE:
+                                                ui.label("確認用モードのため自動チェックの保存・複製・削除はできません。").classes(
+                                                    "readonly-demo-helper text-[13px] leading-5"
                                                 )
-                                                schedule_enabled_switch = ui.switch("有効", value=True)
+                                            with ui.row().classes("w-full gap-2 flex-wrap"):
+                                                scheduler_status_label = ui.label(admin_views.build_scheduler_status_text(scheduler_service)).classes(
+                                                    "signal-chip signal-neutral"
+                                                )
+                                                schedule_setting_status_label = ui.label("この予定: 有効").classes("signal-chip signal-neutral")
+                                            ui.label(
+                                                "アプリ側の監視が停止中でも、保存した予定の有効/停止は別状態です。"
+                                                " 停止中の予定はため込まず、次回起動後に直近1回分だけ実行します。"
+                                            ).classes("text-[12px] leading-5 text-helper")
+                                            with ui.column().classes("input-field-card w-full gap-2 mt-1"):
+                                                ui.label("1. 対象").classes("summary-eyebrow")
+                                                schedule_question_set_select = ui.select({}, value=None, label="自動チェックの対象").props("outlined").classes(
+                                                    "w-full"
+                                                )
+                                                schedule_target_summary_label = ui.label(
+                                                    "自動チェックは保存済み条件から選びます。"
+                                                ).classes("text-[12px] leading-5 text-helper")
+                                                schedule_name_input = ui.input("自動チェック名", value="").props("outlined").classes("w-full")
+                                                ui.label("空欄なら対象の保存名から自動で名前を付けます。").classes("text-[12px] leading-5 text-helper")
+                                            with ui.row().classes("w-full gap-3 mt-1 flex-wrap items-start"):
+                                                with ui.column().classes("input-field-card flex-[1.2] min-w-[280px] gap-2"):
+                                                    ui.label("2. 曜日").classes("summary-eyebrow")
+                                                    schedule_weekdays_select = WeekdayCheckboxGroup()
+                                                    with ui.row().classes("weekday-checkbox-row w-full gap-2 flex-wrap"):
+                                                        for weekday_key, weekday_label in (
+                                                            ("0", "月"),
+                                                            ("1", "火"),
+                                                            ("2", "水"),
+                                                            ("3", "木"),
+                                                            ("4", "金"),
+                                                            ("5", "土"),
+                                                            ("6", "日"),
+                                                        ):
+                                                            checkbox = ui.checkbox(weekday_label, value=weekday_key == "0").props("dense").classes(
+                                                                "weekday-checkbox"
+                                                            )
+                                                            checkbox.on_value_change(lambda _=None: refresh_schedule_form_summary())
+                                                            schedule_weekdays_select.add(weekday_key, checkbox)
+                                                    schedule_week_count_label = ui.label("週あたり回数: 1回（曜日選択から自動計算）").classes(
+                                                        "text-[13px] leading-5 text-main font-bold"
+                                                    )
+                                                with ui.column().classes("input-field-card flex-1 min-w-[220px] gap-2"):
+                                                    ui.label("3. 時刻").classes("summary-eyebrow")
+                                                    with ui.row().classes("w-full gap-3 flex-wrap"):
+                                                        schedule_time_input = ui.input("時刻", value="09:00").props("outlined").classes("w-[120px] flex-1")
+                                                        schedule_timezone_input = ui.input("タイムゾーン", value=state["config"].timezone).props("outlined").classes("w-[180px] flex-1")
+                                                    schedule_save_time_label = ui.label("保存後の予定: 09:00 に自動チェック").classes(
+                                                        "text-[13px] leading-5 text-helper"
+                                                    )
+                                                with ui.column().classes("input-field-card flex-1 min-w-[200px] gap-2"):
+                                                    ui.label("4. 有効").classes("summary-eyebrow")
+                                                    schedule_enabled_switch = ui.switch("有効", value=True)
+                                                    schedule_enabled_switch.on_value_change(lambda _=None: refresh_schedule_form_summary())
+                                                    schedule_enabled_helper_label = ui.label("ON: 予定時刻に自動チェック").classes("text-[12px] leading-5 text-helper")
+                                            schedule_weekday_summary_label = ui.label("曜日: 月 / 週1回").classes("text-[14px] leading-6 text-main font-bold mt-1")
+                                            schedule_time_input.on_value_change(lambda _=None: refresh_schedule_form_summary())
                                             with ui.row().classes("w-full gap-3 mt-2 flex-wrap"):
-                                                ui.button("自動定期分析を保存", on_click=on_schedule_save).props("unelevated no-caps color=orange-8 text-color=white").classes("accent-button text-[16px] font-bold").style(SUITE_ACCENT_BUTTON_STYLE)
+                                                schedule_save_button = ui.button("自動チェックを保存", on_click=on_schedule_save).props(
+                                                    "unelevated no-caps color=orange-8 text-color=white"
+                                                ).classes(readonly_button_classes("accent-button text-[16px] font-bold")).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
+                                                ui.label("5. 保存して、下の一覧で予定を確認します。").classes("text-[13px] leading-5 text-helper self-center")
+                                            ui.label("保存済み自動チェック").classes("summary-eyebrow mt-3")
                                             schedule_table = ui.table(
                                                 columns=admin_views.build_schedule_table_columns(),
                                                 rows=[],
@@ -2465,19 +3076,19 @@ def render_page() -> None:
                                                 pagination=6,
                                             ).props(TABLE_BASE_PROPS).classes("w-full mt-2")
                                             ui.label("複製直後は停止状態で保存します。").classes("text-[13px] leading-6 text-helper mt-2")
-                                            schedule_manage_select = ui.select({}, value=None, label="操作する定期分析").props("outlined").classes("w-full mt-2")
+                                            schedule_manage_select = ui.select({}, value=None, label="保存済み自動チェックを管理").props("outlined").classes("w-full mt-2")
                                             with ui.row().classes("w-full gap-3 mt-2 flex-wrap"):
                                                 ui.button("フォームに読み込み", on_click=on_schedule_load).props("outline color=brown-8").classes(
                                                     "secondary-button text-[15px]"
                                                 ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                ui.button("複製して AB 用に作る", on_click=on_schedule_duplicate).props("outline color=brown-8").classes(
-                                                    "secondary-button text-[15px]"
-                                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                ui.button("削除", on_click=on_schedule_delete).props("outline color=brown-8").classes(
-                                                    "secondary-button text-[15px]"
-                                                ).style(SUITE_SECONDARY_BUTTON_STYLE)
+                                                schedule_duplicate_button = ui.button("複製して AB 用に作る", on_click=on_schedule_duplicate).props("outline color=brown-8").classes(
+                                                    readonly_button_classes("secondary-button text-[15px]")
+                                                ).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
+                                                schedule_delete_button = ui.button("削除", on_click=on_schedule_delete).props("outline color=brown-8").classes(
+                                                    readonly_button_classes("secondary-button text-[15px]")
+                                                ).style(readonly_button_style(SUITE_SECONDARY_BUTTON_STYLE))
                                             compare_mode_select = ui.select(
-                                                {"schedule": "別の定期分析と比較", "question_set": "別の確認内容と比較"},
+                                                {"schedule": "別の自動チェックと比較", "question_set": "別の保存済み条件と比較"},
                                                 value="schedule",
                                                 label="何と比べるか",
                                                 on_change=lambda _: page_refreshers.refresh_schedule_admin_views(
@@ -2497,7 +3108,7 @@ def render_page() -> None:
                                                 ).style(SUITE_SECONDARY_BUTTON_STYLE)
                                             schedule_diff_container = ui.column().classes("w-full mt-3 gap-3")
                                         with ui.dialog() as schedule_delete_dialog, ui.card().classes("card-detail p-5 w-[420px] max-w-full"):
-                                            ui.label("この定期分析を削除しますか").classes("section-font section-title text-[22px] font-bold")
+                                            ui.label("この自動チェックを削除しますか").classes("section-font section-title text-[22px] font-bold")
                                             ui.label("定期設定だけを削除し、既存の実行履歴は残します。").classes(
                                                 "text-[14px] leading-6 text-support mt-2"
                                             )
@@ -2505,17 +3116,23 @@ def render_page() -> None:
                                                 ui.button("キャンセル", on_click=schedule_delete_dialog.close).props("outline color=brown-8").classes(
                                                     "secondary-button text-[15px]"
                                                 ).style(SUITE_SECONDARY_BUTTON_STYLE)
-                                                ui.button("削除する", on_click=confirm_schedule_delete).props("unelevated no-caps color=orange-8 text-color=white").classes("accent-button text-[15px] font-bold").style(SUITE_ACCENT_BUTTON_STYLE)
+                                                schedule_delete_confirm_button = ui.button("削除する", on_click=confirm_schedule_delete).props(
+                                                    "unelevated no-caps color=orange-8 text-color=white"
+                                                ).classes(readonly_button_classes("accent-button text-[15px] font-bold")).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
 
                             with ui.row().classes("w-full gap-5 mt-5 flex-wrap items-start"):
                                 with ui.card().classes("section-card p-5 w-full"):
                                     with ui.expansion("レポート出力").classes("w-full panel-card"):
                                         with ui.column().classes("p-4 gap-3 w-full"):
                                             ui.label("共有したいときだけ CSV / JSON / 報告用Markdown を更新します。").classes("text-[13px] leading-6 soft-label")
+                                            if READONLY_DEMO_MODE:
+                                                ui.label("確認用モードのため出力ファイルは更新できません。").classes(
+                                                    "readonly-demo-helper text-[13px] leading-5"
+                                                )
                                             with ui.row().classes("w-full gap-3 mt-1 flex-wrap"):
-                                                ui.button("レポートを更新", on_click=on_export).props("unelevated no-caps color=orange-8 text-color=white").classes(
-                                                    "accent-button text-[16px] font-bold"
-                                                ).style(SUITE_ACCENT_BUTTON_STYLE)
+                                                export_button = ui.button("レポートを更新", on_click=on_export).props("unelevated no-caps color=orange-8 text-color=white").classes(
+                                                    readonly_button_classes("accent-button text-[16px] font-bold")
+                                                ).style(readonly_button_style(SUITE_ACCENT_BUTTON_STYLE))
                                             export_status_label = ui.label("まだ export を生成していません。").classes(
                                                 "text-[14px] text-helper mt-1"
                                             )
@@ -2532,14 +3149,14 @@ def render_page() -> None:
                         with ui.tab_panel(support_research_tab).classes("px-0 py-2"):
                             with ui.column().classes("w-full gap-5"):
                                 with ui.card().classes("section-card p-5 w-full"):
-                                    ui.label("定期分析").classes("section-font section-title text-[26px] font-bold")
+                                    ui.label("まとめて分析と自動チェック").classes("section-font section-title text-[26px] font-bold")
                                     ui.label(
                                         "LLMの見え方は日々揺れます。"
-                                        "定期分析は保存した質問セットを繰り返し観測し、自社と競合の引用率がどう推移するかを継続的に追う仕組みです。"
+                                        "まとめて分析は保存済み条件を今回だけ確認し、自動チェックは曜日を決めて継続的に追う仕組みです。"
                                     ).classes("text-[14px] leading-6 soft-label mt-2")
                                     with ui.row().classes("w-full gap-4 mt-4 flex-wrap"):
                                         with ui.column().classes("input-field-card flex-1 min-w-[260px] gap-2"):
-                                            ui.label("単発の「分析を実行」").classes("ui-tone-chip")
+                                            ui.label("1回だけ確認").classes("ui-tone-chip")
                                             ui.label("1 問だけ、いま 1 回観測").classes(
                                                 "section-font text-[16px] font-bold text-main"
                                             )
@@ -2547,37 +3164,39 @@ def render_page() -> None:
                                                 "text-[13px] leading-6 text-support"
                                             )
                                         with ui.column().classes("input-field-card flex-1 min-w-[260px] gap-2"):
-                                            ui.label("定期分析｜今すぐ").classes("ui-tone-chip")
+                                            ui.label("まとめて分析").classes("ui-tone-chip")
                                             ui.label("保存した複数質問を、まとめて観測").classes(
                                                 "section-font text-[16px] font-bold text-main"
                                             )
-                                            ui.label("保存した質問セットを一度に回し、いまの全体像を確認したいときに使います。").classes(
+                                            ui.label("保存済み条件を一度に回し、いまの全体像を確認したいときに使います。").classes(
                                                 "text-[13px] leading-6 text-support"
                                             )
                                         with ui.column().classes("input-field-card flex-1 min-w-[260px] gap-2"):
-                                            ui.label("定期分析｜自動").classes("ui-tone-chip")
+                                            ui.label("自動チェック").classes("ui-tone-chip")
                                             ui.label("曜日と時刻で、継続観測").classes(
                                                 "section-font text-[16px] font-bold text-main"
                                             )
-                                            ui.label("週次などの定点で自動実行し、定期分析の推移タブで履歴を読むときに使います。").classes(
+                                            ui.label("週次などの定点で予定し、自動チェックの推移タブで履歴を読むときに使います。").classes(
                                                 "text-[13px] leading-6 text-support"
                                             )
                                     with ui.row().classes("w-full gap-3 mt-4 flex-wrap"):
                                         ui.button(
-                                            "設定タブで定期分析を開く",
-                                            on_click=lambda: open_support_surface(support_settings_tab),
-                                        ).props("unelevated no-caps color=orange-8 text-color=white").classes(
+                                            "設定タブでまとめて分析を開く",
+                                            on_click=lambda _=None: (
+                                                open_support_surface(support_settings_tab, "batch"),
+                                            ),
+                                        ).props("unelevated no-caps color=orange-8 text-color=white href=#batch-settings-section data-km-shortcut-target=batch-settings-section").classes(
                                             "accent-button text-[16px] font-bold"
                                         ).style(SUITE_ACCENT_BUTTON_STYLE)
                                         ui.button(
-                                            "定期分析の推移を見る",
+                                            "自動チェックの推移を見る",
                                             on_click=lambda: open_support_surface(support_analysis_tab),
                                         ).props("outline color=brown-8").classes(
                                             "secondary-button text-[16px]"
                                         ).style(SUITE_SECONDARY_BUTTON_STYLE)
                                     ui.label(
-                                        "定期分析の操作は設定タブの「複数質問をまとめて実行」「自動で継続」に集約しています。"
-                                        " 実行後の推移は定期分析の推移タブのグラフに反映されます。"
+                                        "まとめて分析と自動チェックの操作は設定タブに集約しています。"
+                                        " 自動チェックの推移は専用タブのグラフに反映されます。"
                                     ).classes("text-[13px] leading-6 text-helper mt-4")
                         with ui.tab_panel(support_result_tab).classes("px-0 py-2"):
                             with ui.column().classes("w-full gap-5"):
@@ -2588,7 +3207,7 @@ def render_page() -> None:
                                             ui.label("今回だけの整理").classes("section-font section-title text-[26px] font-bold")
                                         summary_refs["current_scope_status"] = ui.label("今の入力では未分析").classes("scope-status-chip current-status-chip")
                                     summary_refs["current_scope_note"] = ui.label(
-                                        "今の入力ではまだ分析していません。保存済み結果は下の累積傾向と履歴だけに置いています。"
+                                        "今の入力ではまだ分析していません。これはエラーではありません。保存済み結果は下の累積傾向と履歴だけに置いています。"
                                     ).classes(
                                         "current-scope-note text-[13px] leading-5 mt-3"
                                     )
@@ -2617,11 +3236,11 @@ def render_page() -> None:
                                             ui.label("過去データ").classes("saved-scope-label")
                                             ui.label("保存済みの累積傾向").classes("section-font section-title text-[24px] font-bold")
                                         ui.label("今回の入力とは別集計").classes("scope-status-chip saved-status-chip")
-                                    ui.label("ここから下は今回 1 問の結果ではなく、保存済み質問をまとめた累積集計です。上の「今回の結果」とは粒度が違います。").classes(
+                                    ui.label("ここから下は今の入力で実行した結果ではなく、保存済み条件をまとめた累積集計です。上の「今回の結果」と混ぜずに読めます。").classes(
                                         "text-[13px] leading-5 soft-label mt-2"
                                     )
                                     summary_refs["saved_scope"] = charts.insight_card(
-                                        "保存済み質問の累積集計",
+                                        "保存済み条件の累積集計",
                                         portfolio_story["overall_label"],
                                         portfolio_story["overall_summary"],
                                     )
@@ -2632,8 +3251,8 @@ def render_page() -> None:
                                         f"弱い質問タイプ {(intent_rows[0]['intent_label'] if intent_rows else '-')} | "
                                         f"不足情報 {(page_gap_rows[0]['page_type_label'] if page_gap_rows else '-')}"
                                     ).classes("text-[15px] text-helper")
-                                    ui.label("保存済み質問ごとの結論").classes("section-font section-title text-[28px] font-bold mt-4")
-                                    ui.label("ここは最新の 1 問ではなく、保存済み質問を横に並べて見比べる一覧です。").classes(
+                                    ui.label("保存済みの結果").classes("section-font section-title text-[28px] font-bold mt-4")
+                                    ui.label("ここは今の入力の結果一覧ではなく、保存済みの結果を横に並べて見比べる一覧です。").classes(
                                         "text-[14px] leading-6 soft-label mt-2"
                                     )
                                     rows_table = ui.table(
@@ -2642,15 +3261,17 @@ def render_page() -> None:
                                                 row_key="result_id",
                                                 pagination=10,
                                     ).props(TABLE_BASE_PROPS).classes("w-full mt-4")
-                                    detail_select = ui.select({}, value=None, label="詳細を見る質問").props("outlined").classes("w-full mt-4")
-                                    detail_container = ui.column().classes("w-full mt-4")
+                                    ui.label("質問一覧").classes("summary-eyebrow mt-4")
+                                    detail_select = ui.select({}, value=None, label="下に表示する質問を選ぶ").props("outlined").classes("w-full mt-2")
+                                    ui.label("選択中の質問の詳細").classes("summary-eyebrow mt-3")
+                                    detail_container = ui.column().classes("w-full mt-2")
                         with ui.tab_panel(support_analysis_tab).classes("px-0 py-2"):
                             with ui.column().classes("w-full gap-5"):
                                 with ui.column().classes("w-full gap-5") as summary_container:
                                     with ui.card().classes("section-card p-5 w-full"):
-                                        ui.label("定期分析の推移").classes("section-font section-title text-[26px] font-bold")
+                                        ui.label("自動チェックの推移").classes("section-font section-title text-[26px] font-bold")
                                         summary_refs["tracking_note"] = ui.label(
-                                            "ここでは定期分析の結果だけを集計します。手動スポット確認は今回の結果と履歴、質問別推移で見ます。"
+                                            "ここでは自動チェックの結果だけを集計します。1回だけ確認は今回の結果と履歴、質問別推移で見ます。"
                                         ).classes("text-[14px] leading-6 soft-label mt-2")
                                         with ui.row().classes("w-full gap-4 mt-4 flex-wrap"):
                                             summary_refs["kpis"]["target_hit_rate"] = charts.metric_card(
@@ -2668,7 +3289,7 @@ def render_page() -> None:
                                                 "--",
                                                 "観測した試行のうち外部サイトが先行した割合",
                                             )
-                                            summary_refs["kpis"]["delta"] = charts.metric_card("前回比", "--", "前回の定期分析との差")
+                                            summary_refs["kpis"]["delta"] = charts.metric_card("前回の自動チェックとの差", "--", "前回の自動チェックとの差")
                                         with ui.row().classes("w-full gap-5 flex-wrap"):
                                             with ui.card().classes("section-card p-5 flex-1 min-w-[430px] chart-shell"):
                                                 ui.label("見え方の推移").classes("section-font section-title text-[24px] font-bold")
@@ -2694,7 +3315,7 @@ def render_page() -> None:
                                                         f" この質問タイプはまだ弱めです。"
                                                     )
                                                     if weakest_intent
-                                                    else "定期分析の結果が保存されると、どの質問タイプで弱いかをここに出します。"
+                                                    else "自動チェックの結果が保存されると、どの質問タイプで弱いかをここに出します。"
                                                 ).classes("text-[14px] leading-6 text-support mt-3")
                                                 decision_refs["intent"]["table"] = ui.table(
                                                     columns=admin_views.build_intent_table_columns(),
@@ -2714,7 +3335,7 @@ def render_page() -> None:
                                                         f"観測した {top_gap['total_trial_count']} 試行のうち {top_gap['needs_fix_count']} 回でこの情報タイプが見えにくい状態です。"
                                                     )
                                                     if top_gap
-                                                    else "定期分析の結果が保存されると、どの情報タイプが不足しているかをここに出します。"
+                                                    else "自動チェックの結果が保存されると、どの情報タイプが不足しているかをここに出します。"
                                                 ).classes("text-[14px] leading-6 text-support mt-3")
                                                 decision_refs["gap"]["table"] = ui.table(
                                                     columns=admin_views.build_gap_table_columns(),
@@ -2725,14 +3346,14 @@ def render_page() -> None:
 
                                         with ui.row().classes("w-full gap-5 flex-wrap"):
                                             with ui.card().classes("section-card p-5 flex-1 min-w-[430px] chart-shell"):
-                                                ui.label("定期分析の質問ごとの結果").classes("section-font section-title text-[28px] font-bold")
-                                                ui.label("見えにくい質問が上に並びます。このヒートマップには定期分析だけを入れ、手動スポット確認は混ぜません。").classes("text-[14px] leading-6 soft-label mt-2")
-                                                ui.label("セルを押すと、今回の結果タブの詳細を見る質問が切り替わります。").classes("text-[13px] leading-6 text-helper mt-1")
+                                                ui.label("自動チェックの質問ごとの結果").classes("section-font section-title text-[28px] font-bold")
+                                                ui.label("見えにくい質問が上に並びます。このヒートマップには自動チェックだけを入れ、1回だけ確認は混ぜません。").classes("text-[14px] leading-6 soft-label mt-2")
+                                                ui.label("セルを押すと、今回の結果タブの「下に表示する質問を選ぶ」が切り替わります。").classes("text-[13px] leading-6 text-helper mt-1")
                                                 with ui.column().classes("w-full min-h-[420px] mt-3") as question_heatmap_plot_container:
                                                     ui.label("タブを開いたときにグラフを読み込みます。").classes("text-[13px] text-helper")
                                             with ui.card().classes("section-card p-5 flex-1 min-w-[430px] chart-shell"):
                                                 ui.label("質問別の履歴推移").classes("section-font section-title text-[28px] font-bold")
-                                                ui.label("ここは定期分析に加えて、手動スポット確認も折れ線で確認できます。hover で実行種別を見分けます。").classes("text-[14px] leading-6 soft-label mt-2")
+                                                ui.label("ここは自動チェックに加えて、1回だけ確認も折れ線で確認できます。hover で実行種別を見分けます。").classes("text-[14px] leading-6 soft-label mt-2")
                                                 query_select = ui.select({}, value=None, label="質問を選択").props("outlined").classes("w-full mt-3")
                                                 with ui.column().classes("w-full min-h-[320px] mt-3") as query_drilldown_plot_container:
                                                     ui.label("タブを開いたときにグラフを読み込みます。").classes("text-[13px] text-helper")
@@ -2747,8 +3368,8 @@ def render_page() -> None:
                                                 with ui.column().classes("w-full min-h-[360px] mt-3") as page_gap_trend_plot_container:
                                                     ui.label("タブを開いたときにグラフを読み込みます。").classes("text-[13px] text-helper")
                                 with ui.card().classes("section-card p-5 w-full"):
-                                    ui.label("履歴").classes("section-font section-title text-[26px] font-bold")
-                                    ui.label("手動スポット確認と定期分析をまとめて振り返ります。大きな推移グラフは定期分析だけを使い、質問別推移だけ手動も表示します。").classes(
+                                    ui.label("全実行履歴").classes("section-font section-title text-[26px] font-bold")
+                                    ui.label("1回だけ確認と自動チェックをまとめて振り返ります。大きな推移グラフは自動チェックだけを使い、質問別推移だけ1回だけ確認も表示します。").classes(
                                         "text-[14px] leading-6 soft-label mt-2"
                                     )
                                     run_table = ui.table(
@@ -2758,27 +3379,36 @@ def render_page() -> None:
                                         pagination=8,
                                     ).props(TABLE_BASE_PROPS).classes("w-full mt-4")
 
-        page_refreshers.refresh_question_set_admin_views(
-            db,
-            question_set_select,
-            question_set_table,
-            schedule_question_set_select,
-        )
-        page_refreshers.refresh_schedule_admin_views(
-            db,
-            scheduler_service,
-            schedule_table,
-            scheduler_status_label,
-            schedule_manage_select,
-            compare_target_select,
-            compare_mode_select,
-        )
-        if (
-            batch_job_select is not None
-            and batch_job_table is not None
-            and batch_status_label is not None
-            and batch_summary_label is not None
-        ):
+        def refresh_question_set_admin_views_if_ready(*, force: bool = False) -> None:
+            nonlocal question_set_admin_refreshed
+            if (
+                question_set_select is None
+                or question_set_table is None
+                or schedule_question_set_select is None
+            ):
+                return
+            if question_set_admin_refreshed and not force:
+                return
+            page_refreshers.refresh_question_set_admin_views(
+                db,
+                question_set_select,
+                question_set_table,
+                schedule_question_set_select,
+            )
+            refresh_saved_condition_helpers()
+            question_set_admin_refreshed = True
+
+        def refresh_batch_job_admin_views_if_ready(*, force: bool = False) -> None:
+            nonlocal batch_admin_refreshed
+            if (
+                batch_job_select is None
+                or batch_job_table is None
+                or batch_status_label is None
+                or batch_summary_label is None
+            ):
+                return
+            if batch_admin_refreshed and not force:
+                return
             page_refreshers.refresh_batch_job_admin_views(
                 db,
                 batch_job_select,
@@ -2786,8 +3416,47 @@ def render_page() -> None:
                 batch_status_label,
                 batch_summary_label,
             )
-        if schedule_diff_container is not None:
-            admin_views.render_schedule_diff(db, "", str(compare_mode_select.value or "schedule"), "", schedule_diff_container)
+            batch_admin_refreshed = True
+
+        def refresh_schedule_admin_views_if_ready(*, force: bool = False) -> None:
+            nonlocal schedule_admin_refreshed
+            if (
+                schedule_table is None
+                or scheduler_status_label is None
+                or schedule_manage_select is None
+                or compare_target_select is None
+                or compare_mode_select is None
+            ):
+                return
+            if schedule_admin_refreshed and not force:
+                return
+            page_refreshers.refresh_schedule_admin_views(
+                db,
+                scheduler_service,
+                schedule_table,
+                scheduler_status_label,
+                schedule_manage_select,
+                compare_target_select,
+                compare_mode_select,
+            )
+            if schedule_diff_container is not None:
+                admin_views.render_schedule_diff(db, "", str(compare_mode_select.value or "schedule"), "", schedule_diff_container)
+            schedule_admin_refreshed = True
+
+        def refresh_export_panel_if_ready(*, force: bool = False) -> None:
+            nonlocal export_panel_refreshed
+            if export_table is None or export_status_label is None or report_preview_label is None:
+                return
+            if export_panel_refreshed and not force:
+                return
+            page_refreshers.refresh_export_panel(
+                export_table,
+                export_status_label,
+                state["export_rows"],
+                report_preview_label,
+                state["report_preview"],
+            )
+            export_panel_refreshed = True
 
         def sync_question_set_name_from_selection() -> None:
             page_refreshers.sync_question_set_name_from_selection(
@@ -2796,8 +3465,41 @@ def render_page() -> None:
                 question_set_name_input,
                 schedule_question_set_select,
             )
+            refresh_saved_condition_helpers()
+            question_set_save_button.set_text("選択中の保存済み条件を更新")
+            if READONLY_DEMO_MODE:
+                question_set_save_button.disable()
+            elif question_set_select.value:
+                question_set_save_button.enable()
+            else:
+                question_set_save_button.disable()
+            question_set_save_button.update()
+
+        def support_tab_matches(target_tab: Any | None, tab: Any | None, label: str) -> bool:
+            if target_tab is tab or target_tab == tab:
+                return True
+            return str(target_tab or "").strip() == label
+
+        def ensure_settings_tab_ready(*, force: bool = False) -> None:
+            refresh_question_set_admin_views_if_ready(force=force)
+            sync_question_set_name_from_selection()
+            refresh_saved_condition_helpers()
+            refresh_export_panel_if_ready(force=force)
+
+        def ensure_support_target_ready(target_tab: Any | None = None, target_section: str = "") -> None:
+            if support_tab_matches(target_tab, support_settings_tab, "設定"):
+                ensure_settings_tab_ready()
+                if target_section == "batch":
+                    refresh_batch_job_admin_views_if_ready()
+                elif target_section == "schedule":
+                    refresh_schedule_admin_views_if_ready()
+            elif support_tab_matches(target_tab, support_analysis_tab, "自動チェックの推移"):
+                mount_analysis_plots()
 
         sync_question_set_name_from_selection()
+        refresh_saved_condition_helpers()
+        refresh_current_input_boundary_note()
+        refresh_schedule_form_summary()
 
         def refresh_detail_from_payload(payload: dict[str, Any] | None = None) -> None:
             effective_payload = payload or latest_dashboard_payload or build_dashboard_payload()
@@ -3021,7 +3723,11 @@ def render_page() -> None:
                     latest_dashboard_payload = payload
                     periodic_refresh_signature = next_signature
                     refresh_hero_status(payload)
-                    if analysis_plots_mounted and support_tabs is not None and support_tabs.value == support_analysis_tab:
+                    if (
+                        analysis_plots_mounted
+                        and support_tabs is not None
+                        and support_tab_matches(support_tabs.value, support_analysis_tab, "自動チェックの推移")
+                    ):
                         mount_analysis_plots(payload)
                 else:
                     refresh_hero_status(payload)
@@ -3063,19 +3769,20 @@ def render_page() -> None:
         refresh_dashboard_surface()
         refresh_cluster_and_outcome_sections()
         render_active_cluster_and_outcome_panels()
-        page_refreshers.refresh_export_panel(
-            export_table,
-            export_status_label,
-            state["export_rows"],
-            report_preview_label,
-            state["report_preview"],
-        )
+        if READONLY_DEMO_MODE:
+            set_action_button_states(True)
         query_select.on("update:model-value", lambda _: refresh_query_drilldown())
-        support_tabs.on(
-            "update:model-value",
-            lambda _: mount_analysis_plots() if support_tabs.value == support_analysis_tab else None,
-        )
+        support_tabs.on("update:model-value", lambda _: ensure_support_target_ready(support_tabs.value))
+        if batch_settings_expansion is not None:
+            batch_settings_expansion.on_value_change(
+                lambda _=None: refresh_batch_job_admin_views_if_ready() if batch_settings_expansion.value else None
+            )
+        if schedule_settings_expansion is not None:
+            schedule_settings_expansion.on_value_change(
+                lambda _=None: refresh_schedule_admin_views_if_ready() if schedule_settings_expansion.value else None
+            )
         question_set_select.on("update:model-value", lambda _: sync_question_set_name_from_selection())
+        schedule_question_set_select.on("update:model-value", lambda _: refresh_saved_condition_helpers())
         detail_select.on(
             "update:model-value",
             lambda _: refresh_detail_from_payload(),

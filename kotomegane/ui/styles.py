@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from nicegui import ui
 
 THEME_TEXT_MAIN = "#3E2C22"
@@ -14,6 +16,11 @@ THEME_SERIES_TEAL = "#6F8B67"
 THEME_SERIES_AMBER = "#C29246"
 THEME_SERIES_CORAL = "#BE6B4A"
 THEME_SERIES_SLATE = "#8B776A"
+
+
+def _runtime_url(env_name: str, fallback: str) -> str:
+    value = str(os.environ.get(env_name, "")).strip()
+    return value or fallback
 
 
 def add_global_style() -> None:
@@ -72,6 +79,8 @@ def add_global_style() -> None:
           }
           html, body {
             font-size: 16px;
+            max-width: 100%;
+            overflow-x: hidden;
           }
           body {
             font-family: "Noto Sans JP", sans-serif;
@@ -80,6 +89,13 @@ def add_global_style() -> None:
               radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.80), transparent 24%),
               linear-gradient(160deg, var(--bg) 0%, var(--bg-deep) 50%, var(--bg) 100%);
             color: var(--text);
+          }
+          #app,
+          .q-layout,
+          .q-page-container,
+          .q-page {
+            max-width: 100%;
+            overflow-x: hidden;
           }
           .brand-font,
           .metric-font,
@@ -151,6 +167,26 @@ def add_global_style() -> None:
           .nav-link-active {
             color: #fff8f1 !important;
             background: rgba(255, 248, 241, 0.14);
+          }
+          .hero-context-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 7px 12px;
+            border: 1px solid rgba(154, 52, 18, 0.34);
+            border-radius: 10px;
+            background: #FFF7ED;
+            color: #9A3412 !important;
+            font-weight: 800;
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 3px;
+          }
+          .hero-context-link:hover,
+          .hero-context-link:focus-visible {
+            border-color: rgba(154, 52, 18, 0.62);
+            background: #FFEDD5;
+            color: #7C2D12 !important;
           }
           .drawer-toggle {
             color: var(--nav-text);
@@ -388,6 +424,44 @@ def add_global_style() -> None:
           }
           .input-shell {
             border-top: 4px solid var(--accent);
+            background: rgba(255, 255, 255, 0.92);
+          }
+          .semantic-saved-panel {
+            background: linear-gradient(180deg, rgba(248, 244, 238, 0.96) 0%, rgba(241, 236, 228, 0.92) 100%);
+            border-left: 4px solid rgba(107, 90, 77, 0.28);
+          }
+          .semantic-schedule-panel {
+            background: linear-gradient(180deg, rgba(255, 248, 240, 0.96) 0%, rgba(255, 241, 228, 0.92) 100%);
+            border-left: 4px solid rgba(217, 107, 31, 0.24);
+          }
+          .semantic-settings-expansion .q-expansion-item__container {
+            border-radius: 18px;
+          }
+          .q-btn.readonly-disabled-action,
+          .q-btn.readonly-disabled-action.disabled,
+          .q-btn.readonly-disabled-action.q-btn--disabled {
+            background: #E7E0D8 !important;
+            border-color: rgba(116, 102, 88, 0.28) !important;
+            color: #75695F !important;
+            box-shadow: none !important;
+            filter: saturate(0.24) grayscale(0.18) !important;
+            opacity: 1 !important;
+            cursor: not-allowed !important;
+          }
+          .q-btn.readonly-disabled-action .q-btn__content {
+            color: #75695F !important;
+          }
+          .readonly-demo-helper {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            max-width: 100%;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(231, 224, 216, 0.78);
+            border: 1px solid rgba(116, 102, 88, 0.18);
+            color: #6F6259;
+            font-weight: 700;
           }
           .input-field-card {
             background: rgba(255, 255, 255, 0.78);
@@ -646,7 +720,7 @@ def add_global_style() -> None:
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 249, 253, 0.94) 100%);
           }
           .current-scope-card {
-            background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(249, 242, 234, 0.96) 100%);
+            background: linear-gradient(180deg, rgba(255, 253, 251, 0.98) 0%, rgba(245, 250, 254, 0.94) 100%);
             border-top: 4px solid rgba(217, 107, 31, 0.52);
           }
           .current-empty-card {
@@ -760,6 +834,8 @@ def add_global_style() -> None:
           }
           .q-btn.accent-button .q-btn__content {
             color: white !important;
+            white-space: nowrap;
+            word-break: keep-all;
           }
           .q-btn.accent-button::before,
           .q-btn.accent-button .q-focus-helper {
@@ -801,6 +877,8 @@ def add_global_style() -> None:
           }
           .q-btn.secondary-button .q-btn__content {
             color: var(--accent-deep) !important;
+            white-space: nowrap;
+            word-break: keep-all;
           }
           .q-btn.text-primary .q-btn__content,
           .q-btn[class*="text-primary"] .q-btn__content {
@@ -1654,6 +1732,45 @@ def add_global_style() -> None:
           .detail-tab-panels {
             background: transparent;
           }
+          .settings-provider-card {
+            flex: 1 1 auto !important;
+            width: 100%;
+            max-width: 100%;
+          }
+          .settings-saved-card {
+            flex: 1 1 auto !important;
+            width: 100%;
+            min-width: 0 !important;
+          }
+          .settings-overview-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          @media (min-width: 761px) {
+            .input-main-grid {
+              display: grid !important;
+              grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.95fr);
+              align-items: start !important;
+            }
+            .input-main-grid > .input-main-column {
+              grid-column: 1;
+              grid-row: 1;
+              min-width: 0 !important;
+            }
+            .input-main-grid > .input-side-column {
+              display: contents;
+            }
+            .input-main-grid > .input-side-column > .input-field-card {
+              grid-column: 2;
+              grid-row: 1;
+            }
+            .input-main-grid > .input-side-column > .input-action-card {
+              grid-column: 1 / -1;
+              grid-row: 2;
+              width: 100%;
+              min-width: 0;
+            }
+          }
           .signal-chip {
             border-radius: 999px;
             padding: 7px 11px;
@@ -1790,9 +1907,20 @@ def add_global_style() -> None:
           .chart-shell > div {
             width: 100% !important;
           }
+          .q-table__container {
+            max-width: 100%;
+            overflow-x: auto;
+          }
           @media (max-width: 1100px) {
             .nav-link {
               font-size: 1.1rem !important;
+            }
+            .settings-provider-card,
+            .settings-saved-card {
+              flex: 1 1 100% !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
             }
             .hero-card {
               border-radius: 22px;
@@ -1812,8 +1940,166 @@ def add_global_style() -> None:
             }
           }
           @media (max-width: 760px) {
+            body,
+            #app,
+            .q-layout,
+            .q-page-container,
+            .q-page {
+              width: 100%;
+              max-width: 100%;
+              overflow-x: hidden !important;
+            }
             .nav-link {
               font-size: 1rem !important;
+            }
+            .top-nav-shell {
+              padding: 6px 8px !important;
+            }
+            .top-nav-layout {
+              flex-wrap: nowrap !important;
+              gap: 5px !important;
+            }
+            .top-logo-link {
+              flex: 0 0 auto;
+              gap: 0;
+            }
+            .top-nav-links {
+              flex: 1 1 auto;
+              min-width: 0;
+              flex-wrap: nowrap !important;
+              justify-content: flex-end;
+              gap: 1px !important;
+            }
+            .top-nav-links .nav-link {
+              flex: 0 1 auto;
+              min-width: 0;
+              min-height: 40px;
+              padding: 0 4px;
+              border-radius: 9px;
+              font-size: 11px !important;
+              letter-spacing: 0;
+              white-space: nowrap;
+            }
+            .top-hub-wordmark {
+              display: none;
+            }
+            .top-nav-layout .top-logo-lockup {
+              min-height: 34px;
+              padding: 4px 6px;
+              border-radius: 11px;
+            }
+            .top-nav-layout .top-logo-wordmark-image {
+              width: 72px;
+              height: 16px;
+            }
+            .q-page [class*="min-w-"],
+            .q-page [class*="w-["],
+            .q-dialog [class*="min-w-"],
+            .q-dialog [class*="w-["] {
+              min-width: 0 !important;
+              max-width: 100% !important;
+            }
+            .q-field,
+            .q-select,
+            .q-input,
+            .q-textarea {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+            }
+            .q-field__control,
+            .q-field__native,
+            .q-field__input,
+            .q-field__inner {
+              min-width: 0 !important;
+              max-width: 100% !important;
+            }
+            .q-btn {
+              max-width: 100% !important;
+              min-width: 0 !important;
+            }
+            .q-btn.accent-button,
+            .q-btn.secondary-button,
+            .q-btn.followup-button {
+              width: auto;
+              min-width: 216px !important;
+              justify-content: center;
+              padding-left: 14px !important;
+              padding-right: 14px !important;
+            }
+            .q-btn .q-btn__content {
+              white-space: nowrap !important;
+              word-break: keep-all !important;
+              overflow-wrap: normal !important;
+              min-width: max-content;
+            }
+            .q-page .row {
+              max-width: 100%;
+            }
+            .q-page .section-card,
+            .q-page .card-primary,
+            .q-page .card-secondary,
+            .q-page .input-field-card,
+            .q-page .panel-card,
+            .q-page .chart-shell,
+            .q-page .q-expansion-item {
+              flex: 1 1 100% !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+            }
+            .q-page .chart-shell {
+              overflow: hidden;
+            }
+            .input-main-grid {
+              align-items: stretch !important;
+            }
+            .input-main-grid > .input-main-column,
+            .input-main-grid > .input-side-column {
+              flex: 1 1 100% !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+            }
+            .market-context-candidate-row {
+              align-items: stretch !important;
+            }
+            .market-context-category-label {
+              flex: 1 1 100% !important;
+              width: 100% !important;
+            }
+            .q-btn.market-context-candidate-button {
+              width: 100% !important;
+              min-width: 0 !important;
+              justify-content: center;
+            }
+            .q-btn.market-context-candidate-button .q-btn__content {
+              min-width: 0 !important;
+              white-space: normal !important;
+              overflow-wrap: anywhere !important;
+              word-break: keep-all !important;
+              line-height: 1.35;
+            }
+            .js-plotly-plot .modebar {
+              display: none !important;
+            }
+            .js-plotly-plot,
+            .plot-container,
+            .svg-container,
+            .main-svg {
+              max-width: 100% !important;
+            }
+            .q-tabs {
+              max-width: 100%;
+              overflow-x: auto;
+            }
+            .detail-tabs-shell .q-tab {
+              min-width: max-content;
+              flex: 0 0 auto;
+            }
+            .q-table__container {
+              max-width: 100%;
+              overflow-x: auto;
             }
             .top-logo-lockup {
               min-height: 38px;
@@ -1909,23 +2195,39 @@ def add_global_style() -> None:
               padding: 10px 12px !important;
             }
           }
+          @media (max-width: 600px) {
+            .q-page .brand-context-grid.row {
+              flex-direction: column !important;
+              flex-wrap: nowrap !important;
+              align-items: stretch !important;
+            }
+            .q-page .brand-context-grid.row > .brand-context-field.column {
+              flex: 1 1 100% !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+            }
+          }
         </style>
         """
     )
 
 
 def render_top_nav() -> None:
-    with ui.header().classes("top-shell items-center px-5 py-3"):
-        with ui.row().classes("w-full max-w-7xl mx-auto items-center justify-between gap-4 flex-wrap"):
-            with ui.link("", "http://127.0.0.1:8090", new_tab=True).classes("top-logo-link"):
+    hub_url = _runtime_url("HUB_URL", "http://127.0.0.1:8090/")
+    kotomake_url = _runtime_url("KOTOMAKE_URL", "http://127.0.0.1:8080/")
+    kotomigaki_url = _runtime_url("KOTOMIGAKI_URL", "http://127.0.0.1:8081/")
+    with ui.header().classes("top-shell top-nav-shell items-center px-5 py-3"):
+        with ui.row().classes("top-nav-layout w-full max-w-7xl mx-auto items-center justify-between gap-4 flex-wrap"):
+            with ui.link("", hub_url, new_tab=True).classes("top-logo-link"):
                 with ui.element("span").classes("top-logo-lockup"):
                     ui.image("/branding/kotomegane-logo.svg").classes("top-logo-wordmark-image")
                 ui.label("TECHIE HUB").classes("brand-font top-hub-wordmark")
-            with ui.row().classes("items-center gap-3 flex-wrap"):
-                ui.link("HOME", "http://127.0.0.1:8090", new_tab=True).classes("nav-link text-[17px]")
-                ui.link("発信作成", "http://127.0.0.1:8080", new_tab=True).classes("nav-link text-[17px]")
-                ui.label("見え方観測").classes("nav-link nav-link-active text-[17px]")
-                ui.link("サイト改善", "http://127.0.0.1:8081", new_tab=True).classes("nav-link text-[17px]")
+            with ui.row().classes("top-nav-links items-center gap-3 flex-wrap"):
+                ui.link("HOME", hub_url, new_tab=True).classes("nav-link text-[17px]")
+                ui.link("コトメイク", kotomake_url, new_tab=True).classes("nav-link text-[17px]")
+                ui.label("コトメガネ").classes("nav-link nav-link-active text-[17px]")
+                ui.link("コトミガキ", kotomigaki_url, new_tab=True).classes("nav-link text-[17px]")
 
 
 def render_dashboard_drawer(nav_actions: dict[str, callable] | None = None) -> None:

@@ -1618,6 +1618,7 @@ class Storage:
                     b.input_file_id,
                     b.output_file_id,
                     b.error_file_id,
+                    b.config_json,
                     b.submitted_at,
                     b.created_at,
                     b.updated_at,

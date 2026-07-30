@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Citation snippets tab rendering logic (AI予測は削除)."""
 
+import json
 from typing import Any, Dict, Optional
 
 from nicegui import ui
@@ -12,7 +13,10 @@ def render_simulation_tab(results: Dict[str, Any], state: Optional[object] = Non
     citation_snippets = results.get("citation_snippets", {})
 
     ui.label("引用スニペット候補").classes("card-title")
-    ui.label("AIに引用されやすい文章候補です。コピーしてそのまま使えます。").classes("card-hint text-sm")
+    ui.label(
+        "AIに引用されやすい文章候補です。コピーしてそのまま使えます。"
+        "スコアが高いほど、AIの回答にそのまま引用されやすい書き方になっています。"
+    ).classes("card-hint text-sm")
 
     snippets = citation_snippets.get("snippets", [])
     if snippets:
@@ -32,8 +36,7 @@ def render_simulation_tab(results: Dict[str, Any], state: Optional[object] = Non
                         original_text = btn.text
                         btn.set_text("✓ コピー完了")
                         btn.classes(replace="text-green-600 font-bold")
-                        escaped_t = t.replace('"', '\\"').replace("'", "\\'")
-                        await ui.run_javascript(f'navigator.clipboard.writeText("{escaped_t}")')
+                        await ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(t)})")
                         await ui.sleep(2.0)
                         btn.set_text(original_text)
                         btn.classes(remove="text-green-600 font-bold")
@@ -52,8 +55,7 @@ def render_simulation_tab(results: Dict[str, Any], state: Optional[object] = Non
 
                 async def copy_speakable_code(markup=speakable_markup, btn=None):
                     ui.notify("マークアップをコピーしました！", type='positive', icon='content_copy')
-                    escaped = markup.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-                    await ui.run_javascript(f'navigator.clipboard.writeText("{escaped}")')
+                    await ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(markup)})")
                     if btn:
                         btn.set_text("✓ コピー完了")
                         await ui.sleep(2.0)

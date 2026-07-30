@@ -1,0 +1,36 @@
+[
+  {
+    "source_id": "manual_17c129b87b1f",
+    "source_type": "manual",
+    "title": "manual source",
+    "published_or_updated_at": null,
+    "reliability": "user_uploaded",
+    "main_topics": [
+      "manual source"
+    ],
+    "facts": [
+      {
+        "fact_id": "F001",
+        "claim": "Alpha plan includes source-backed setup support. The source explains this near a",
+        "category": "source_claim",
+        "importance": 5,
+        "source_span": "manual:1",
+        "usable_in_article": true,
+        "confidence": "medium",
+        "risk_flags": []
+      }
+    ],
+    "quotes_or_phrases": [],
+    "warnings": [],
+    "metadata": {
+      "source_label": "manual source",
+      "url": null,
+      "canonical_url": null,
+      "author": null,
+      "retrieved_at": "2026-06-20T05:21:37.945626+00:00",
+      "source_priority": 1,
+      "extraction_method": "manual_text",
+      "extraction_confidence": "medium"
+    }
+  }
+]

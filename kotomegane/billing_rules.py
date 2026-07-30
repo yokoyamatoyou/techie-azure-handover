@@ -121,10 +121,11 @@ def describe_run_mode_billing_policy(service_key: str, run_mode: str) -> str:
 
 
 def build_billing_policy_microcopy(service_key: str) -> str:
-    return " / ".join(
+    joined = " / ".join(
         [
             describe_run_mode_billing_policy(service_key, "manual"),
             describe_run_mode_billing_policy(service_key, "batch"),
             describe_run_mode_billing_policy(service_key, "scheduled"),
         ]
     )
+    return f"{joined}（「クレジット」と「単位」は別々の残数として管理されています）"

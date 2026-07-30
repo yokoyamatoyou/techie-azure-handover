@@ -31,6 +31,7 @@ from note.image_config import (
     NO_TEXT_IN_IMAGE,
     NOTE_IMAGE_SIZE,
 )
+from note.env_keys import resolve_env_var
 from note.prompt_sanitizer import sanitize_untrusted_text, to_prompt_json_string
 
 LLM_CONFIG = get_llm_config()
@@ -81,7 +82,7 @@ class LLMClient:
         self.task_models = dict(TASK_MODELS)
         self._last_call_metadata: Dict[str, Any] = self._default_call_metadata(primary_model=model)
         
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = resolve_env_var("OPENAI_API_KEY")
         if not api_key:
             logger.error("OPENAI_API_KEY not found in environment variables.")
             raise ValueError(

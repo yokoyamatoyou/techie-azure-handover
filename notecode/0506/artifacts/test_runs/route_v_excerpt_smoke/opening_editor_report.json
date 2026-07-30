@@ -1,0 +1,12 @@
+{
+  "editor_profile_id": "note_hatena_opening_editor",
+  "focus": "front_half_opening_naturalness",
+  "changed": true,
+  "checks": {
+    "implementation_meta_removed": true,
+    "opening_uses_narrator": true,
+    "source_grounding_policy_changed": false,
+    "qa_threshold_changed": false
+  },
+  "opening": "???の取り組みを、少し具体的に紹介します。"
+}

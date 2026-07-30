@@ -1,0 +1,23 @@
+[
+  {
+    "excerpt_id": "E001",
+    "source_id": "manual_dbbf3a870a33",
+    "source_type": "manual",
+    "title": "????",
+    "chunk_id": "manual_dbbf3a870a33_chunk_001",
+    "source_span_ids": [
+      "manual_001"
+    ],
+    "source_locations": [
+      "manual:1"
+    ],
+    "claim_ids": [
+      "C001"
+    ],
+    "section_ids": [
+      "s1"
+    ],
+    "usage": "route_v_writer_context",
+    "text": "????2018????????????????????????????????????"
+  }
+]

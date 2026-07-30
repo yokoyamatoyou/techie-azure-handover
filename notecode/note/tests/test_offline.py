@@ -690,6 +690,31 @@ def test_generate_interview_questions_announcement_uses_fallback_without_llm_mix
     assert len([opt for opt in perspective_options if opt != "指定しない"]) >= 3
 
 
+def test_generate_interview_questions_force_questions_bypasses_policy_skip():
+    generator = ArticleGenerator(llm_client=DummyLLM())
+    contexts = [
+        FetchedContent(
+            title="会社概要",
+            content="京都工業は1964年創業で、データ入力業務を中心に支援しています。",
+            source_type="url",
+        ),
+        FetchedContent(
+            title="強み",
+            content="長年の確認体制とスキャニング運用を強みとしています。",
+            source_type="url",
+        ),
+    ]
+    questions = generator.generate_interview_questions(
+        contexts,
+        "noteに初めて投稿するので、自社説明を事務的な口調になりすぎないように表示してください。",
+        "branding",
+        force_questions=True,
+    )
+
+    assert questions
+    assert generator._last_interview_mode != "policy_skip"
+
+
 def test_dynamic_interview_fallback_uses_citation_signals_without_fixed_defaults():
     generator = ArticleGenerator(llm_client=DummyLLM())
     contexts = [
@@ -861,6 +886,131 @@ def test_interview_normalize_strips_yes_no_prefix_in_target_options():
     assert all(not opt.startswith(("はい、", "いいえ、")) for opt in target_options)
     assert any("一般ユーザー向け" in opt for opt in target_options)
     assert any("AI研究者や開発者向け" in opt for opt in target_options)
+
+
+def test_interview_normalize_target_rejects_value_proposition_options():
+    generator = ArticleGenerator(llm_client=DummyLLM())
+    contexts = [
+        FetchedContent(
+            title="サービス紹介",
+            content="導入初期の支援体制と活用イメージを説明するページ。",
+            source_type="url",
+        )
+    ]
+    fallback_questions = generator._build_dynamic_interview_fallback(
+        contexts,
+        "企業紹介記事を作成",
+        "branding",
+    )
+    llm_like = [
+        {
+            "id": "perspective",
+            "question": "どの視点を補強しますか？",
+            "options": ["記者の視点を混ぜる", "教育者の知見を混ぜる"],
+        },
+        {
+            "id": "target",
+            "question": "誰に読んでほしいですか？",
+            "options": [
+                "業務効率化によるコスト削減効果",
+                "専門知識がなくても相談できる安心感",
+                "一般読者",
+            ],
+        },
+        {"id": "message", "question": "核心メッセージは？", "options": None},
+    ]
+
+    normalized = generator._normalize_interview_questions(llm_like, fallback_questions)
+
+    assert normalized is not None
+    target_options = next(q["options"] for q in normalized if q["id"] == "target")
+    assert "業務効率化によるコスト削減効果" not in target_options
+    assert "専門知識がなくても相談できる安心感" not in target_options
+    assert "導入を検討する担当者" in target_options
+    assert "比較検討中の読者" in target_options
+    assert "一般読者" in target_options
+
+
+def test_interview_normalize_perspective_rejects_target_like_options():
+    generator = ArticleGenerator(llm_client=DummyLLM())
+    contexts = [
+        FetchedContent(
+            title="ブランド方針",
+            content="導入時の迷いを減らす価値を整理した資料。",
+            source_type="url",
+        )
+    ]
+    fallback_questions = generator._build_dynamic_interview_fallback(
+        contexts,
+        "ブランド記事を作成",
+        "branding",
+    )
+    llm_like = [
+        {
+            "id": "perspective",
+            "question": "どの視点で書きますか？",
+            "options": [
+                "経営者・意思決定者",
+                "一般読者",
+                "導入初期の迷いを減らす視点で整理する",
+            ],
+        },
+        {
+            "id": "target",
+            "question": "主に誰に向けて書きますか？",
+            "options": ["導入を検討する担当者", "一般読者"],
+        },
+        {"id": "message", "question": "核心メッセージは？", "options": None},
+    ]
+
+    normalized = generator._normalize_interview_questions(llm_like, fallback_questions)
+
+    assert normalized is not None
+    perspective_options = next(q["options"] for q in normalized if q["id"] == "perspective")
+    assert "経営者・意思決定者" not in perspective_options
+    assert "一般読者" not in perspective_options
+    assert "指定しない" in perspective_options
+    assert any("価値" in opt or "利用シーン" in opt for opt in perspective_options)
+
+
+def test_branding_interview_fallback_message_uses_generic_template():
+    generator = ArticleGenerator(llm_client=DummyLLM())
+    contexts = [
+        FetchedContent(
+            title="会社紹介",
+            content="導入背景や支援姿勢を紹介するページです。",
+            source_type="url",
+        )
+    ]
+
+    fallback_questions = generator._build_dynamic_interview_fallback(
+        contexts,
+        "会社紹介記事を作成",
+        "branding",
+    )
+
+    message_question = next(q for q in fallback_questions if q["id"] == "message")
+    assert "この記事で読後に最も残したい核心メッセージ" in message_question["question"]
+    assert "「" not in message_question["question"]
+
+
+def test_perspective_options_prioritize_use_case_axis_over_generic_value_phrase():
+    generator = ArticleGenerator(llm_client=DummyLLM())
+
+    options = generator._select_interview_options(
+        qid="perspective",
+        llm_options=[
+            "価値の違いを具体化する",
+            "利用シーンから価値を伝える",
+            "企業ブランディング担当の知見を混ぜる",
+        ],
+        fallback_options=["指定しない", "利用シーンから価値を伝える", "価値の違いを具体化する"],
+    )
+
+    assert "利用シーンから価値を伝える" in options
+    assert "企業ブランディング担当の知見を混ぜる" in options
+    if "価値の違いを具体化する" in options:
+        assert options.index("利用シーンから価値を伝える") < options.index("価値の違いを具体化する")
 
 
 def test_select_interview_options_falls_back_when_binary_only():
@@ -3804,7 +3954,10 @@ def test_zero_base_semantic_dedupe_observe_only_keeps_body(monkeypatch):
     def _fake_semantic_dedupe_text(text, contract, config, embedder=None):  # type: ignore[no-untyped-def]
         return text + "\n削除候補文。", {"duplicate_pairs": 2, "merged_pairs": 1}
 
-    monkeypatch.setattr("note.article_generator.semantic_dedupe_text", _fake_semantic_dedupe_text)
+    monkeypatch.setattr(
+        "note.legacy_current.zero_base_postprocess_guard_mixin.semantic_dedupe_text",
+        _fake_semantic_dedupe_text,
+    )
     body = "## 見出し\n\n本文です。"
     deduped, audit = generator._zero_base_semantic_dedupe(body=body, contract={})
     assert deduped == body
@@ -3824,7 +3977,10 @@ def test_zero_base_semantic_dedupe_rewrite_enabled_applies_body_change(monkeypat
     def _fake_semantic_dedupe_text(text, contract, config, embedder=None):  # type: ignore[no-untyped-def]
         return text + "\n削除候補文。", {"duplicate_pairs": 2, "merged_pairs": 1}
 
-    monkeypatch.setattr("note.article_generator.semantic_dedupe_text", _fake_semantic_dedupe_text)
+    monkeypatch.setattr(
+        "note.legacy_current.zero_base_postprocess_guard_mixin.semantic_dedupe_text",
+        _fake_semantic_dedupe_text,
+    )
     body = "## 見出し\n\n本文です。"
     deduped, audit = generator._zero_base_semantic_dedupe(body=body, contract={})
     assert "削除候補文。" in deduped
@@ -4708,7 +4864,7 @@ def test_output_guard_allows_clean_result():
     assert guard["reasons"] == []
 
 
-def test_output_guard_blocks_hard_soft_hard_failed_even_if_other_metrics_are_clean():
+def test_output_guard_keeps_hard_soft_hard_failed_as_soft_warning_when_output_is_otherwise_clean():
     from note import note_writer_app as app_mod
 
     result = {
@@ -4752,11 +4908,11 @@ def test_output_guard_blocks_hard_soft_hard_failed_even_if_other_metrics_are_cle
 
     guard = app_mod._evaluate_generation_output_guard(result)
 
-    assert guard["blocked"] is True
-    assert "hard_soft_thresholds_hard_failed" in guard["reasons"]
+    assert guard["blocked"] is False
+    assert "hard_soft_thresholds_hard_failed" in guard["soft_warnings"]
 
 
-def test_output_guard_blocks_contract_alignment_mismatch():
+def test_output_guard_keeps_contract_alignment_mismatch_as_soft_warning():
     from note import note_writer_app as app_mod
 
     result = {
@@ -4800,9 +4956,9 @@ def test_output_guard_blocks_contract_alignment_mismatch():
 
     guard = app_mod._evaluate_generation_output_guard(result)
 
-    assert guard["blocked"] is True
-    assert guard["reason_code"] == "SYS_CONTRACT_ALIGNMENT_MISMATCH"
-    assert any(str(reason).startswith("contract_alignment_score<") for reason in guard["reasons"])
+    assert guard["blocked"] is False
+    assert guard["reason_code"] is None
+    assert any(str(reason).startswith("contract_alignment_score<") for reason in guard["soft_warnings"])
 
 
 def test_output_guard_blocks_contract_alignment_forbidden_topics():
@@ -4967,7 +5123,7 @@ def test_output_guard_treats_naturalness_only_as_soft_warning():
     assert any(str(item).startswith("heading_alignment_mean<") for item in guard["soft_warnings"])
 
 
-def test_output_guard_blocks_low_proposition_density_for_announcement():
+def test_output_guard_keeps_low_proposition_density_as_soft_warning_for_announcement():
     from note import note_writer_app as app_mod
 
     low_density_body = (
@@ -5033,9 +5189,9 @@ def test_output_guard_blocks_low_proposition_density_for_announcement():
 
     guard = app_mod._evaluate_generation_output_guard(result)
 
-    assert guard["blocked"] is True
-    assert guard["reason_code"] == "SYS_LOW_PROPOSITION_DENSITY"
-    assert any(str(reason).startswith("proposition_density_") for reason in guard["reasons"])
+    assert guard["blocked"] is False
+    assert guard["reason_code"] is None
+    assert any(str(reason).startswith("proposition_density_") for reason in guard["soft_warnings"])
 
 
 def test_output_guard_keeps_low_proposition_density_as_soft_warning_for_non_announcement():
@@ -5264,7 +5420,121 @@ def test_writer_role_label_to_profile_ignores_auto():
     from note import note_writer_app as app_mod
 
     assert app_mod._writer_role_label_to_profile(app_mod.WRITER_ROLE_AUTO_LABEL) == ""
+    assert app_mod._writer_role_label_to_profile(app_mod.WRITER_ROLE_COMPANY_INTRO_NEUTRAL_LABEL) == ""
     assert app_mod._writer_role_label_to_profile("  編集担当として語る  ") == "編集担当として語る"
+
+
+def test_default_writer_role_label_skips_auto():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._get_default_writer_role_label("branding") == "企業広報として語る"
+    assert app_mod._get_default_writer_role_label("comparative_review") == "編集担当として語る"
+
+
+def test_company_intro_writer_role_options_use_semantic_specific_subset():
+    from note import note_writer_app as app_mod
+
+    options = app_mod._get_writer_role_options("branding", "company_introduction")
+
+    assert options == [
+        app_mod.WRITER_ROLE_COMPANY_INTRO_NEUTRAL_LABEL,
+        "企業広報として語る",
+    ]
+
+
+def test_company_intro_default_writer_role_label_prefers_auto():
+    from note import note_writer_app as app_mod
+
+    assert (
+        app_mod._get_default_writer_role_label("branding", "company_introduction")
+        == app_mod.WRITER_ROLE_COMPANY_INTRO_NEUTRAL_LABEL
+    )
+
+
+def test_company_intro_core_message_copy_uses_route_specific_example():
+    from note import note_writer_app as app_mod
+
+    assert (
+        app_mod._build_core_message_placeholder("branding", "company_introduction", "trust")
+        == "例: 事業内容と運用支援の姿勢を根拠付きで伝える"
+    )
+    assert "会社紹介では必須です" in app_mod._build_core_message_helper_text(
+        "branding",
+        "company_introduction",
+        "trust",
+    )
+
+
+def test_product_intro_writer_role_options_use_semantic_specific_subset():
+    from note import note_writer_app as app_mod
+
+    options = app_mod._get_writer_role_options("branding", "product_introduction")
+
+    assert options == [
+        app_mod.WRITER_ROLE_AUTO_LABEL,
+        "ブランド担当として語る",
+        "導入支援担当として語る",
+    ]
+
+
+def test_product_intro_default_writer_role_label_prefers_brand_role():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._get_default_writer_role_label("branding", "product_introduction") == "ブランド担当として語る"
+
+
+def test_daily_story_writer_role_options_use_semantic_specific_subset():
+    from note import note_writer_app as app_mod
+
+    options = app_mod._get_writer_role_options("daily_story", "daily_story")
+
+    assert options == [
+        app_mod.WRITER_ROLE_AUTO_LABEL,
+        "現場担当として語る",
+        "編集担当として語る",
+    ]
+
+
+def test_daily_story_default_writer_role_label_prefers_field_role():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._get_default_writer_role_label("daily_story", "daily_story") == "現場担当として語る"
+
+
+def test_resolve_writer_role_auto_profile_respects_semantic_defaults():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._resolve_writer_role_auto_profile("announcement", "announcement") == "運営担当として語る"
+    assert app_mod._resolve_writer_role_auto_profile("branding", "company_introduction") == ""
+    assert app_mod._resolve_writer_role_auto_profile("daily_story", "daily_story") == "現場担当として語る"
+    assert app_mod._resolve_writer_role_auto_profile("branding", "product_introduction") == "ブランド担当として語る"
+
+
+def test_announcement_writer_role_options_use_semantic_specific_subset():
+    from note import note_writer_app as app_mod
+
+    options = app_mod._get_writer_role_options("announcement", "announcement")
+
+    assert options == [
+        app_mod.WRITER_ROLE_AUTO_LABEL,
+        "運営担当として語る",
+        "編集担当として語る",
+    ]
+
+
+def test_announcement_default_writer_role_label_prefers_ops_role():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._get_default_writer_role_label("announcement", "announcement") == "運営担当として語る"
+
+
+def test_requires_core_message_input_only_for_targeted_article_types_and_goals():
+    from note import note_writer_app as app_mod
+
+    assert app_mod._requires_core_message_input("branding", "trust") is True
+    assert app_mod._requires_core_message_input("case_study", "action") is True
+    assert app_mod._requires_core_message_input("branding", "auto") is False
+    assert app_mod._requires_core_message_input("explanatory_article", "trust") is False
 
 
 def test_predict_pronoun_hint_reflects_category_and_role():
@@ -5332,8 +5602,12 @@ def test_generation_audit_log_append_writes_primary_and_workspace(tmp_path, monk
     assert written_count == 2
     assert primary.exists()
     assert mirror.exists()
-    assert json.loads(primary.read_text(encoding="utf-8").strip()) == record
-    assert json.loads(mirror.read_text(encoding="utf-8").strip()) == record
+    primary_record = json.loads(primary.read_text(encoding="utf-8").strip())
+    mirror_record = json.loads(mirror.read_text(encoding="utf-8").strip())
+    for saved_record in (primary_record, mirror_record):
+        assert saved_record["timestamp"] == record["timestamp"]
+        assert saved_record["attempt_id"] == record["attempt_id"]
+        assert saved_record["article_type"] == record["article_type"]
 
 
 def test_snapshot_partial_write_failure_still_appends_audit_log(tmp_path, monkeypatch):
@@ -5380,7 +5654,10 @@ def test_snapshot_partial_write_failure_still_appends_audit_log(tmp_path, monkey
         article_type="ai",
         writing_focus_key="analysis",
         perspective_key="auto",
-        user_prompt_text="u",
+        prompt_raw="u",
+        system_hint_items=["h1"],
+        retry_memo=[],
+        strict_saas_mode="medium",
         source_count=1,
     )
 
@@ -5447,7 +5724,10 @@ def test_pipeline_check_snapshot_includes_contract_alignment_score(tmp_path, mon
         article_type="ai",
         writing_focus_key="analysis",
         perspective_key="auto",
-        user_prompt_text="u",
+        prompt_raw="u",
+        system_hint_items=["h1"],
+        retry_memo=[],
+        strict_saas_mode="medium",
         source_count=1,
     )
 
@@ -5461,6 +5741,96 @@ def test_pipeline_check_snapshot_includes_contract_alignment_score(tmp_path, mon
     assert audit_saved["input_contract"]["length_mode"] == "short"
     assert audit_saved["contract_alignment"]["must_cover_items"] == ["判断基準"]
     assert audit_saved["contract_alignment"]["audience_profile"] == "実務担当者"
+
+
+def test_pipeline_check_snapshot_builds_contract_alignment_from_input_contract_when_missing(tmp_path, monkeypatch):
+    from note import note_writer_app as app_mod
+
+    primary_text = tmp_path / "latest.txt"
+    primary_json = tmp_path / "latest.json"
+    primary_quality = tmp_path / "quality.json"
+    primary_audit = tmp_path / "audit.jsonl"
+    mirror_text = tmp_path / "ws_latest.txt"
+    mirror_json = tmp_path / "ws_latest.json"
+    mirror_quality = tmp_path / "ws_quality.json"
+    mirror_audit = tmp_path / "ws_audit.jsonl"
+
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_TEXT_PATH", primary_text)
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_JSON_PATH", primary_json)
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_QUALITY_REPORT_PATH", primary_quality)
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_TEXT_PATH_WORKSPACE", mirror_text)
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_JSON_PATH_WORKSPACE", mirror_json)
+    monkeypatch.setattr(app_mod, "LATEST_GENERATION_QUALITY_REPORT_PATH_WORKSPACE", mirror_quality)
+    monkeypatch.setattr(app_mod, "GENERATION_AUDIT_JSONL_PATH", primary_audit)
+    monkeypatch.setattr(app_mod, "GENERATION_AUDIT_JSONL_PATH_WORKSPACE", mirror_audit)
+
+    result = {
+        "title": "t",
+        "lead": "l",
+        "body": "b",
+        "references": "",
+        "hashtags": "",
+        "full_text": "本文です。",
+        "linkedin_text": "",
+        "review_points": [],
+        "pipeline_check": {
+            "input_contract": {
+                "length_mode_requested": "adaptive",
+                "length_mode": "short",
+                "article_type": "branding",
+                "source_inputs": ["https://example.com/source"],
+                "speaker_profile": "ブランド担当者",
+                "audience_profile": "比較検討中の読者",
+                "topic_statement": "導入初期の迷いを減らす視点で整理する",
+                "must_cover": ["最初の設定で迷わない状態をつくる"],
+                "interview_answers": {
+                    "target": "比較検討中の読者",
+                    "perspective": "導入初期の迷いを減らす視点で整理する",
+                    "message": "最初の設定で迷わない状態をつくる",
+                },
+            },
+            "quality_metrics": {
+                "must_cover_reflection_ratio": 0.66,
+                "prompt_follow_anchor_coverage": 0.5,
+                "prompt_follow_discourse_hits": 2,
+                "section_count": 4,
+            },
+        },
+        "pipeline_check_linkedin": {},
+        "quality_pipeline_check": {},
+        "llm_check": {},
+        "zero_base_question_sources": {
+            "message": "interview_answers",
+            "target": "interview_answers",
+            "perspective": "interview_answers",
+        },
+    }
+
+    app_mod._persist_latest_generation_snapshot(
+        result=result,
+        attempt_id="gen-alignment-fallback-1",
+        article_type="branding",
+        writing_focus_key="analysis",
+        perspective_key="auto",
+        prompt_raw="u",
+        system_hint_items=["h1"],
+        retry_memo=[],
+        strict_saas_mode="medium",
+        source_count=1,
+    )
+
+    saved = json.loads(primary_json.read_text(encoding="utf-8"))
+    audit_saved = json.loads(primary_audit.read_text(encoding="utf-8").strip())
+    alignment = saved["zero_base_contract_alignment"]
+    assert alignment["compatibility_source"] == "input_contract_fallback"
+    assert alignment["audience_profile"] == "比較検討中の読者"
+    assert alignment["topic_statement"] == "導入初期の迷いを減らす視点で整理する"
+    assert alignment["must_cover_items"] == ["最初の設定で迷わない状態をつくる"]
+    assert alignment["question_source_counts"]["interview_answers"] == 3
+    assert alignment["question_reflection_rate"] == 1.0
+    assert saved["contract_alignment_score"] > 0.0
+    assert audit_saved["contract_alignment"]["audience_profile"] == "比較検討中の読者"
+    assert audit_saved["contract_alignment"]["topic_statement"] == "導入初期の迷いを減らす視点で整理する"
 
 
 def test_build_quality_context_includes_style_and_custom_genre_metadata():
@@ -6070,6 +6440,67 @@ def test_privacy_only_save_edited_image(tmp_path):
     assert result_path is not None
     assert "privacy-strong" in result_path.stem
     assert result_path.exists()
+
+
+def test_text_overlay_balance_report_is_centered(tmp_path):
+    from PIL import Image
+    from note.image_editing import TextOverlay, _resolve_overlay_geometry
+
+    img = Image.new("RGB", (1280, 670), color="white")
+    overlay = TextOverlay(
+        text="京都工業の強み",
+        position="center",
+        size="medium",
+        color="auto",
+        with_bar=True,
+        font_style="sans",
+        background_preset="image",
+    )
+
+    geometry = _resolve_overlay_geometry(img, overlay, "")
+    report = geometry["balance_report"]
+
+    assert report["balanced"] is True
+    assert abs(report["text_center_offset_x"]) <= 1.0
+    assert abs(report["bar_center_offset_x"]) <= 1.0
+    assert abs(report["text_bar_center_delta_x"]) <= 1.0
+    assert abs(report["text_bar_center_delta_y"]) <= 1.0
+    assert report["text_inside_bar"] is True
+    assert report["bar_inside_image"] is True
+
+
+def test_save_edited_image_supports_poster_frame_text_preset(tmp_path):
+    from PIL import Image
+    from note.image_editing import ImageAdjustment, TextOverlay, save_edited_image
+
+    img = Image.new("RGB", (1280, 670), color="white")
+    img_path = tmp_path / "poster_source.png"
+    img.save(str(img_path))
+    overlay = TextOverlay(
+        text="京都工業",
+        position="center",
+        size="large",
+        color="auto",
+        with_bar=False,
+        font_style="mincho",
+        background_preset="poster_frame",
+    )
+
+    result_path, error = save_edited_image(
+        str(img_path),
+        "none",
+        "none",
+        ImageAdjustment(),
+        overlay,
+        "",
+        str(tmp_path),
+        None,
+    )
+
+    assert error is None
+    assert result_path is not None
+    assert result_path.exists()
+    assert "poster-frame" in result_path.stem
 
 
 class _Phase08RegressionLLM:

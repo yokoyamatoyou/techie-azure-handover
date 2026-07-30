@@ -21,23 +21,33 @@ from config import (
     get_provider_option,
 )
 from llmo_client import build_provider_client
+from llmo_core.models import build_batch_item_custom_id
 from query_planning import ExecutionPlan, QueryPlanner, build_execution_plan
 from run_planning import prepare_query_plans_for_run
 from run_policy import resolve_run_policy
 from runtime.common import build_error_result, get_missing_required_fields, sanitize_runtime_error_message
+from runtime_mode import is_readonly_demo_mode, readonly_demo_block_message
 from storage import Storage
 
 
 class ScheduledMonitorService:
-    def __init__(self, db: Storage) -> None:
+    def __init__(self, db: Storage, *, readonly_demo: bool | None = None) -> None:
         self.db = db
         self.query_planner = QueryPlanner()
         self._task: asyncio.Task[Any] | None = None
         self._running = False
         self.last_tick_at: float | None = None
         self.last_message = "定期バッチ実行はまだ起動していません。"
+        self.readonly_demo = is_readonly_demo_mode() if readonly_demo is None else bool(readonly_demo)
+        if self.readonly_demo:
+            self.last_message = "read-only/demo mode: 定期バッチ実行の監視は開始しません。"
 
     def start(self) -> None:
+        if self.readonly_demo:
+            self._running = False
+            self.last_message = "read-only/demo mode: scheduler start skipped."
+            print(f"[kotomegane] {readonly_demo_block_message('scheduler start')}", flush=True)
+            return
         if self._task is not None:
             return
         self._running = True
@@ -72,6 +82,10 @@ class ScheduledMonitorService:
             await asyncio.sleep(60.0)
 
     async def tick(self) -> None:
+        if self.readonly_demo:
+            self.last_message = "read-only/demo mode: scheduler tick blocked."
+            print(f"[kotomegane] {readonly_demo_block_message('scheduler tick')}", flush=True)
+            return
         self.last_tick_at = time.time()
         await self._dispatch_due_schedules()
         await self._poll_scheduled_batches()
@@ -134,6 +148,7 @@ class ScheduledMonitorService:
                 recent_rows,
                 cfg,
                 batch_jobs=self.db.list_active_batch_job_reservations(limit=200),
+                run_guardrail_usd=run_guardrail,
             )
             missing_required_fields = get_missing_required_fields(cfg)
 
@@ -206,7 +221,7 @@ class ScheduledMonitorService:
                 )
                 self.db.update_schedule_dispatch(str(schedule["schedule_id"]), slot_key, status="cost_blocked", error_text=error_text)
                 continue
-            if run_guardrail > 0 and budget_guardrail["estimated_run_cost_usd"] > run_guardrail:
+            if budget_guardrail["run_guardrail_should_block"]:
                 error_text = (
                     f"見積 ${budget_guardrail['estimated_run_cost_usd']:.4f} が "
                     f"1 回の実行上限 ${run_guardrail:.2f} を超えるため投入を止めました。"
@@ -220,6 +235,11 @@ class ScheduledMonitorService:
                 )
                 self.db.update_schedule_dispatch(str(schedule["schedule_id"]), slot_key, status="cost_blocked", error_text=error_text)
                 continue
+            if budget_guardrail["would_exceed_run_guardrail"]:
+                self.last_message = (
+                    f"定期実行の見積 ${budget_guardrail['estimated_run_cost_usd']:.4f} は "
+                    f"1 回の実行上限 ${run_guardrail:.2f} を超えていますが、警告モードのため続行します。"
+                )
 
             run_id = self.db.create_run_session(
                 cfg.repeat_count,
@@ -249,6 +269,7 @@ class ScheduledMonitorService:
                     cfg,
                     planned_request_count=execution_plan.total_request_count,
                     batch_jobs=self.db.list_active_batch_job_reservations(limit=200),
+                    run_guardrail_usd=run_guardrail,
                 )
                 if budget_guardrail["should_block"]:
                     error_text = "実際の送信件数で見積もると日次上限を超える見込みのため定期実行の投入を止めました。"
@@ -268,7 +289,7 @@ class ScheduledMonitorService:
                         error_text=error_text,
                     )
                     continue
-                if run_guardrail > 0 and budget_guardrail["estimated_run_cost_usd"] > run_guardrail:
+                if budget_guardrail["run_guardrail_should_block"]:
                     error_text = (
                         f"実際の送信件数での見積 ${budget_guardrail['estimated_run_cost_usd']:.4f} が "
                         f"1 回の実行上限 ${run_guardrail:.2f} を超えるため投入を止めました。"
@@ -289,6 +310,11 @@ class ScheduledMonitorService:
                         error_text=error_text,
                     )
                     continue
+                if budget_guardrail["would_exceed_run_guardrail"]:
+                    self.last_message = (
+                        f"実際の送信件数見積 ${budget_guardrail['estimated_run_cost_usd']:.4f} は "
+                        f"1 回の実行上限 ${run_guardrail:.2f} を超えていますが、警告モードのため投入します。"
+                    )
                 batch_cfg = cfg.model_copy(
                     update={
                         "keywords": [request.executed_query for request in execution_plan.requests],
@@ -297,13 +323,18 @@ class ScheduledMonitorService:
                 )
                 request_contexts = [
                     {
+                        "custom_id": build_batch_item_custom_id(
+                            run_id,
+                            request_index,
+                            request.iteration_index,
+                        ),
                         "query_plan_id": request.query_plan_id,
                         "user_query_raw": request.user_query_raw,
                         "executed_query": request.executed_query,
                         "executed_query_index": request.executed_query_index,
                         "iteration_index": request.iteration_index,
                     }
-                    for request in execution_plan.requests
+                    for request_index, request in enumerate(execution_plan.requests, start=1)
                 ]
                 provider_client = build_provider_client(cfg.provider)
                 batch_handle, request_items = await asyncio.to_thread(

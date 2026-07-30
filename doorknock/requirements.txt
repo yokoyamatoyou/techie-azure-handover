@@ -1,3 +1,0 @@
-# Doorknock tool - additional dependencies only
-# Core deps (openai, requests, bs4, etc.) are in aio2-main/.venv
-fpdf2==2.8.5

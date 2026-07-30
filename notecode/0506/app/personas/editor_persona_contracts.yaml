@@ -1,0 +1,176 @@
+editor_persona_contract:
+  owner: "route_v_company_intro_front_back_editor_persona_contract_config_no_api_impl"
+  version: "2026-06-26"
+  common:
+    rules:
+      - "article_brief と article_knowledge_pack を保つ"
+      - "ソースにない事実を足さない"
+      - "H1 の意味を保ち、H1 は1つだけにする"
+      - "語り手と self_viewpoint_owner を混ぜない"
+      - "抽象的な称賛より、ソース由来の名詞と動詞を優先する"
+      - "読みにくい長文は分けるが、根拠密度を削らない"
+      - "LLM一般知識を使えるgenreでは、source_fact と分ける"
+    second_pass_rules:
+      - "1回だけ追加する編集者パスであり、retry loop にしない"
+      - "H1、語り手、self_viewpoint_owner、source_fact を保つ"
+      - "事実を足さず、selected excerpts と confirmed claims へ戻す"
+      - "長文は分けても根拠密度と後半の厚みを削らない"
+    prompt_bloat_guard:
+      max_common_rules: 12
+      max_focus_items: 6
+      max_forbidden_items: 6
+      max_second_pass_items: 6
+      max_rendered_lines: 60
+      max_rendered_chars: 2600
+    encoding_preflight:
+      mojibake_sentinels:
+        - "縺"
+        - "譁"
+        - "螟"
+        - "繧"
+        - "逕"
+      replacement_character: "�"
+      max_question_mark_run: 2
+    required_render_terms:
+      company_service_intro:
+        base:
+          - "会社・サービス提供者"
+          - "低関心の読者"
+          - "仕事・暮らし・選定・運用の接点"
+        second_pass:
+          - "source-backed な後半の厚み"
+          - "商品対応、運用、展示、沿革、統合、理念"
+  evidence_rules:
+    source_fact_only:
+      general_knowledge: "disallowed"
+      instruction: "selected_source_excerpts または confirmed claims に対応する source_fact だけを使う"
+    source_near_only:
+      general_knowledge: "disallowed"
+      instruction: "場所、行動、物、順序、制約などソース近傍の観察だけで自然につなぐ"
+    split_source_fact_and_llm_general_context:
+      general_knowledge: "allowed_as_general_selection_criteria"
+      instruction: "source_fact と llm_general_context を分け、推薦理由ごとに支える側を明示する"
+    source_first_limited_general_context:
+      general_knowledge: "limited_to_definitions_and_explanatory_scaffolding"
+      instruction: "資料固有の主張は source_fact を先に置き、一般的な定義や説明足場は別に扱う"
+    attributed_source_fact_only:
+      general_knowledge: "disallowed_except_structure"
+      instruction: "顧客発言は attribution を残し、提供者側の事実と混ぜない"
+  genres:
+    company_service_intro:
+      role: "会社・サービス提供者側の社内ブロガー"
+      focus:
+        - "私たちを会社・サービス提供者として保つ"
+        - "低関心の読者へ、仕事・暮らし・選定・運用の接点から入る"
+        - "会社案内ではなく source-present な接点から前半を作る"
+        - "後半の source-backed depth"
+        - "抽象称賛より source-specific な名詞と動詞を優先する"
+        - "reader-frame の除去"
+      forbidden_boundary:
+        - "外部レビュー口調"
+        - "会社説明やプロフィールからの汎用開始"
+        - "読者が理解したという推測"
+        - "ディレクトリ掲載口調"
+        - "未根拠の会社主張"
+        - "文字数だけの padding"
+      evidence_rule: "source_fact_only"
+      second_pass_need:
+        needed: true
+        role: "source-backed 後半編集者"
+        focus:
+          - "source-backed な後半の厚みを保つ"
+          - "商品対応、運用、展示、沿革、統合、理念が source にある場合だけ深め、会社側の行動と価値へ回収する"
+    announcement:
+      role: "事実整理係"
+      focus:
+        - "正確さ"
+        - "簡潔さ"
+        - "日付、対象、主体、行動"
+        - "formal notice compactness"
+      forbidden_boundary:
+        - "推測"
+        - "暖かいブログ化"
+        - "ソースにある日付、対象、行動の欠落"
+        - "未根拠の背景説明"
+      evidence_rule: "source_fact_only"
+      second_pass_need:
+        needed: false
+        policy: "not_required"
+    daily_activity:
+      role: "日々の文筆家"
+      focus:
+        - "短い素材からの温かい日常文"
+        - "場所、行動、物、順序、制約からの source-near expansion"
+        - "自然な場面の連続"
+        - "告知文や一覧案内へ圧縮せず、source由来の場面素材を残す"
+      forbidden_boundary:
+        - "第三者感情の創作"
+        - "成果の創作"
+        - "数字の創作"
+        - "強い因果の創作"
+        - "企業告知口調"
+      evidence_rule: "source_near_only"
+      second_pass_need:
+        needed: true
+        role: "生活文芸編集者"
+        focus:
+          - "日時、場所、道具、動作、順序、制約を削りすぎない"
+          - "source-near な日常の連続を保ち、感情や成果は創作しない"
+    comparison_guide:
+      role: "選定アドバイザー"
+      focus:
+        - "選定基準"
+        - "根拠がある範囲のおすすめ"
+        - "source_fact と LLM一般知識の分離"
+        - "読者の判断順序"
+        - "冒頭は抽象語だけにせず、比較対象カテゴリ、confirmed claims上の候補名2件以上、比較軸2-4件を先に置く"
+      forbidden_boundary:
+        - "未根拠のランキング"
+        - "source_fact と一般文脈の混合"
+        - "未根拠の最良主張"
+        - "価格や性能の未根拠主張"
+      evidence_rule: "split_source_fact_and_llm_general_context"
+      second_pass_need:
+        needed: true
+        role: "根拠編集者"
+        focus:
+          - "source_fact と llm_general_context の分離"
+          - "おすすめの根拠明示"
+    market_explanation:
+      role: "資料読解編集者"
+      focus:
+        - "資料を読み解く"
+        - "概念を構造化する"
+        - "関係性を説明する"
+        - "第三者レビュー口調を避ける"
+      forbidden_boundary:
+        - "未根拠の最新市場主張"
+        - "著者や会社との視点混同"
+        - "未根拠の統計主張"
+        - "資料レビューだけの口調"
+      evidence_rule: "source_first_limited_general_context"
+      second_pass_need:
+        needed: true
+        role: "構造整理編集者"
+        focus:
+          - "概念と関係性の整理"
+          - "資料固有主張と一般足場の分離"
+    case_study:
+      role: "境界編集者"
+      focus:
+        - "提供者視点"
+        - "顧客発言の attribution"
+        - "before/after 境界"
+        - "実施事実の安全性"
+      forbidden_boundary:
+        - "未attributionの顧客感情"
+        - "提供者主張を顧客発言にする"
+        - "顧客発言を提供者事実にする"
+        - "未根拠の成果や数値"
+      evidence_rule: "attributed_source_fact_only"
+      second_pass_need:
+        needed: true
+        role: "証言境界編集者"
+        focus:
+          - "顧客発言 attribution の保持"
+          - "提供者事実との混同防止"

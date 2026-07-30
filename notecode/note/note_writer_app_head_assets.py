@@ -70,6 +70,12 @@ BASE_HEAD_HTML = """
   --nav-text-active: #F5BA71;
   --nav-height: 52px;
   --logo-height: 52px;
+  --self: #6f8b67;
+  --self-soft: rgba(111, 139, 103, 0.12);
+  --competitive: #c29246;
+  --competitive-soft: rgba(194, 146, 70, 0.16);
+  --external: #be6b4a;
+  --external-soft: rgba(190, 107, 74, 0.13);
   /* 黄金比スペーシングスケール */
   --space-xs: 4px;
   --space-sm: 8px;
@@ -171,9 +177,66 @@ body {
   box-shadow: 0 14px 28px rgba(199, 55, 27, 0.14);
 }
 @media (max-width: 720px) {
-  .source-mode-choice-row {
-    grid-template-columns: 1fr;
+  .input-stage-card {
+    display: flex !important;
+    flex-direction: column !important;
   }
+  .input-stage-card > * {
+    order: 5;
+  }
+  .input-stage-card > .input-stage-heading-row {
+    order: 0;
+  }
+  .input-stage-card > .source-inputs-section {
+    order: 1;
+    margin-top: 4px !important;
+    gap: 8px !important;
+  }
+  .input-stage-card > .input-stage-intro-copy {
+    order: 2;
+    margin-top: 6px;
+  }
+  .input-stage-card > .source-mode-choice-section {
+    order: 3;
+  }
+  .input-stage-card > .source-mode-helper-label {
+    order: 4;
+  }
+  .source-inputs-helper {
+    font-size: 11px !important;
+    line-height: 1.4;
+  }
+  .source-mode-choice-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .source-mode-choice-card {
+    min-height: 92px;
+    padding: 10px 8px !important;
+    gap: 4px !important;
+  }
+  .source-mode-choice-title {
+    font-size: 13px !important;
+    line-height: 1.35;
+  }
+  .source-mode-choice-summary {
+    font-size: 11px !important;
+    line-height: 1.35;
+  }
+  .source-mode-choice-detail {
+    display: none;
+  }
+}
+
+.source-input-alert {
+  border: 1px solid rgba(217, 119, 6, 0.38);
+  border-left: 5px solid #D97706;
+  border-radius: 12px;
+  background: #FFFBEB;
+  padding: 12px 14px;
+}
+.source-input-alert:empty {
+  display: none;
 }
 
 .brand-header {
@@ -271,6 +334,24 @@ body {
 }
 .card:hover {
   box-shadow: var(--shadow-hover);
+}
+.card-primary {
+  background: var(--surface);
+  border-radius: 18px;
+  border: 2px solid var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.card-secondary {
+  background: var(--surface-muted);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.card-detail {
+  background: var(--surface-muted);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: none;
 }
 /* 出力カード: 入力カードと明確に区別 */
 .output-card {
@@ -951,8 +1032,26 @@ body {
   .brand-copy { gap: 0; }
   .hero-sub { font-size: 14px; }
   .hero-next { font-size: 13px; }
-  .hub-nav { gap: 10px; padding: 0 12px; }
-  .hub-nav a { font-size: 12px; min-height: 44px; padding: 0 10px; }
+  .hub-nav {
+    gap: 3px;
+    padding: 0 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+  .hub-nav a {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 11px;
+    letter-spacing: 0;
+    min-height: 44px;
+    padding: 0 5px;
+  }
+  .hub-nav a.hub-nav-home {
+    padding: 5px 8px;
+  }
+  .hub-nav .hub-nav-sep {
+    display: none;
+  }
   .generated-preview-card { padding: 16px 14px; }
 }
 

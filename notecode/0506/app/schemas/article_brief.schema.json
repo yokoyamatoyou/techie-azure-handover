@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.bloggen/schemas/article_brief.schema.json",
+  "title": "Article Brief",
+  "type": "object",
+  "required": ["article_brief"],
+  "additionalProperties": false,
+  "properties": {
+    "article_brief": {
+      "type": "object",
+      "required": [
+        "brief_id",
+        "genre_id",
+        "persona_id",
+        "writer_role",
+        "viewpoint_mode",
+        "target_reader",
+        "article_goal",
+        "narrator",
+        "self_viewpoint_owner",
+        "qa_policy_id",
+        "style_profile_id",
+        "style_edit_policy",
+        "editor_profile_id",
+        "editor_pass_policy",
+        "target_length_chars",
+        "section_count",
+        "source_thickness",
+        "editorial_bridge_policy",
+        "editorial_bridge_candidates",
+        "claim_allocation",
+        "sections",
+        "style_rules",
+        "forbidden_viewpoint_terms",
+        "config_refs",
+        "persona_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "brief_id": {"type": "string", "minLength": 1},
+        "genre_id": {"type": "string", "minLength": 1},
+        "persona_id": {"type": "string", "minLength": 1},
+        "writer_role": {"type": "string", "minLength": 1},
+        "viewpoint_mode": {"type": "string", "enum": ["self_perspective"]},
+        "target_reader": {"type": "string", "minLength": 1},
+        "comparison_target_category": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "article_goal": {"type": "string", "minLength": 1},
+        "narrator": {"type": "string", "minLength": 1},
+        "self_viewpoint_owner": {"type": "string", "minLength": 1},
+        "qa_policy_id": {"type": "string", "minLength": 1},
+        "style_profile_id": {"type": "string", "minLength": 1},
+        "style_edit_policy": {"$ref": "#/$defs/style_edit_policy"},
+        "editor_profile_id": {"type": "string", "minLength": 1},
+        "editor_pass_policy": {"$ref": "#/$defs/editor_pass_policy"},
+        "target_length_chars": {"type": "integer", "minimum": 600, "maximum": 3000},
+        "section_count": {"type": "integer", "minimum": 1, "maximum": 5},
+        "source_thickness": {"type": "string", "enum": ["thin", "medium", "thick"]},
+        "source_shape": {
+          "type": "string",
+          "enum": [
+            "narrative",
+            "table_or_list",
+            "faq",
+            "company_profile",
+            "service_catalog",
+            "announcement_details",
+            "pdf_slide",
+            "mixed"
+          ],
+          "x-openai-exclude": true
+        },
+        "source_use_mode": {
+          "type": "string",
+          "enum": ["representative", "selective", "exhaustive"],
+          "x-openai-exclude": true
+        },
+        "unassigned_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true,
+          "x-openai-exclude": true
+        },
+        "voice_mode": {
+          "type": "string",
+          "enum": ["self_authored_blogger"],
+          "x-openai-exclude": true
+        },
+        "reader_arrival_context": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "interest_hook": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "reading_reward": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "self_authored_angle": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "paragraph_function_plan": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 8,
+          "items": {"type": "string", "minLength": 1},
+          "x-openai-exclude": true
+        },
+        "body_length_floor_chars": {
+          "type": "integer",
+          "minimum": 800,
+          "maximum": 2200,
+          "x-openai-exclude": true
+        },
+        "source_derived_aside_policy": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "source_backed_reader_bridge_policy": {
+          "type": "string",
+          "minLength": 1,
+          "x-openai-exclude": true
+        },
+        "rhythm_break_plan": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {"type": "string", "minLength": 1},
+          "x-openai-exclude": true
+        },
+        "aside_allowed_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true,
+          "x-openai-exclude": true
+        },
+        "daily_activity_source_role_contract": {
+          "$ref": "#/$defs/daily_activity_source_role_contract",
+          "x-openai-exclude": true
+        },
+        "editorial_bridge_policy": {"$ref": "#/$defs/editorial_bridge_policy"},
+        "editorial_bridge_candidates": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/editorial_bridge_candidate"}
+        },
+        "claim_allocation": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/claim_allocation"}
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/section"}
+        },
+        "style_rules": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "forbidden_viewpoint_terms": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "allowed_external_voice": {"type": "string"},
+        "config_refs": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "persona_refs": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "claim_allocation": {
+      "type": "object",
+      "required": ["section_id", "claim_ids", "reuse_allowed"],
+      "additionalProperties": false,
+      "properties": {
+        "section_id": {"type": "string", "minLength": 1},
+        "claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "reuse_allowed": {"type": "boolean"}
+      }
+    },
+    "editorial_bridge_policy": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "max_items",
+        "max_sentences_each",
+        "max_article_ratio_percent",
+        "required_grounding",
+        "factual_status",
+        "allowed_kinds",
+        "forbidden_claims"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "max_items": {"type": "integer", "minimum": 0, "maximum": 3},
+        "max_sentences_each": {"type": "integer", "minimum": 1, "maximum": 2},
+        "max_article_ratio_percent": {"type": "integer", "minimum": 1, "maximum": 10},
+        "required_grounding": {"type": "string", "enum": ["source_claim_ids"]},
+        "factual_status": {"type": "string", "enum": ["not_a_fact_claim"]},
+        "allowed_kinds": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/editorial_bridge_kind"},
+          "uniqueItems": true
+        },
+        "forbidden_claims": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "editorial_bridge_candidate": {
+      "type": "object",
+      "required": [
+        "bridge_id",
+        "kind",
+        "section_id",
+        "source_claim_ids",
+        "angle",
+        "usage_note"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bridge_id": {"type": "string", "pattern": "^B[0-9]{3,}$"},
+        "kind": {"$ref": "#/$defs/editorial_bridge_kind"},
+        "section_id": {"type": "string", "minLength": 1},
+        "source_claim_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "angle": {"type": "string", "minLength": 1},
+        "usage_note": {"type": "string", "minLength": 1}
+      }
+    },
+    "editorial_bridge_kind": {
+      "type": "string",
+      "enum": [
+        "reader_scene",
+        "service_use_case",
+        "company_posture",
+        "business_history",
+        "material_detail",
+        "pre_consultation_check"
+      ]
+    },
+    "daily_activity_source_role_contract": {
+      "type": "object",
+      "required": [
+        "primary_scene_report_claim_ids",
+        "auxiliary_context_claim_ids",
+        "auxiliary_suppressed_claim_ids",
+        "scene_material_claim_ids",
+        "body_beat_claim_ids",
+        "role_boundary",
+        "auxiliary_use_policy",
+        "raw_source_handoff_allowed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "primary_scene_report_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "auxiliary_context_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "auxiliary_suppressed_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "scene_material_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "body_beat_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "role_boundary": {"type": "string", "minLength": 1},
+        "auxiliary_use_policy": {"type": "string", "minLength": 1},
+        "raw_source_handoff_allowed": {"type": "boolean", "const": false}
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": [
+        "section_id",
+        "heading",
+        "purpose",
+        "assigned_claim_ids",
+        "main_subject",
+        "discourse_rules"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "section_id": {"type": "string", "minLength": 1},
+        "heading": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 1},
+        "assigned_claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        },
+        "main_subject": {"type": "string", "minLength": 1},
+        "discourse_rules": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "style_edit_policy": {
+      "type": "object",
+      "required": [
+        "preferred_sentences_per_paragraph",
+        "max_sentences_per_paragraph",
+        "line_break_policy",
+        "subject_omission_policy",
+        "ending_bucket_policy",
+        "protected_subject_terms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "preferred_sentences_per_paragraph": {"type": "integer", "minimum": 1, "maximum": 4},
+        "max_sentences_per_paragraph": {"type": "integer", "minimum": 1, "maximum": 5},
+        "line_break_policy": {"type": "string", "minLength": 1},
+        "subject_omission_policy": {"type": "string", "minLength": 1},
+        "ending_bucket_policy": {"type": "string", "minLength": 1},
+        "protected_subject_terms": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "editor_pass_policy": {
+      "type": "object",
+      "required": [
+        "focus_late_half",
+        "split_late_paragraph_over_sentences",
+        "align_first_person_to_narrator",
+        "preserve_facts",
+        "preserve_numbers_dates_names",
+        "do_not_add_claims"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "focus_late_half": {"type": "boolean"},
+        "split_late_paragraph_over_sentences": {"type": "integer", "minimum": 1, "maximum": 5},
+        "align_first_person_to_narrator": {"type": "boolean"},
+        "preserve_facts": {"type": "boolean"},
+        "preserve_numbers_dates_names": {"type": "boolean"},
+        "do_not_add_claims": {"type": "boolean"}
+      }
+    }
+  }
+}

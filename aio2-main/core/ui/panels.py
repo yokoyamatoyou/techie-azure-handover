@@ -2,13 +2,67 @@
 """UI panels split from nicegui_app."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
-import difflib
-import html
+from typing import Any, Dict, Optional
 import re
 
 from nicegui import ui
-from core.application.analysis_run_service import _build_ui_snapshot
+from core.application.analysis_run_service import _build_priority_actions, _build_ui_snapshot
+from core.application.time_display import format_jst_datetime
+from core.ui.panel_components import (
+    _clamp_score,
+    _diff_html,
+    _extract_row_id_from_event_args,
+    _render_expandable_generated_card,
+    _render_generated_card,
+    _render_workspace_header,
+)
+from core.ui.saved_workspace import (
+    _provider_check_status_label,
+    _provider_has_actionable_details,
+    _describe_google_controls,
+    _build_summary_priority_note,
+    _safe_score_value,
+    _score_status_meta,
+    _build_saved_run_overall_message,
+    _build_evaluation_axis_cards,
+    _reason_label_hint,
+    _saved_run_reason_title,
+    _saved_run_reason_metric,
+    _render_saved_run_overview,
+    _render_saved_run_next_actions,
+    _render_saved_run_improvement_tab,
+    _saved_run_has_improvement_tab,
+    _saved_run_has_writing_tab,
+    _saved_run_has_implementation_tab,
+    _saved_run_has_engineer_tab,
+    _saved_run_has_comparison_tab,
+    _render_saved_run_evaluation,
+    _build_workspace_improvement_map,
+    _render_workspace_improvement_map,
+    _build_provider_focus_summary,
+    _build_implementation_stop_message,
+    _filter_actionable_google_controls,
+    _status_sort_key,
+    _render_status_note_card,
+    _render_engineer_summary_card,
+    _split_task_actions,
+    _prioritize_search_intent_secondary_actions,
+    _render_task_action_card,
+    _short_reason_text,
+    _intent_confidence_label,
+    _intent_note_values,
+    _intent_role_overview_items,
+    _render_saved_run_intent_role_overview,
+    _render_workspace_summary_tab,
+    _render_workspace_task_tab,
+    _render_workspace_writing_tab,
+    _render_workspace_implementation_tab,
+    _render_workspace_engineer_tab,
+    _render_workspace_comparison_tab,
+    _build_workspace_tab_plan,
+    _render_workspace_tabs,
+    render_saved_run_workspace,
+)
 from core.ui.panel_context import PanelContext, build_panel_context
 
 
@@ -64,21 +118,6 @@ def _require_aio_score_help() -> Dict[str, str]:
     return _require_panel_context().aio_score_help
 
 
-def _extract_row_id_from_event_args(args: Any) -> int:
-    if isinstance(args, dict):
-        if "row" in args:
-            return int((args.get("row") or {}).get("id", 0) or 0)
-        return int(args.get("id", 0) or 0)
-    if isinstance(args, list) and args:
-        for item in args:
-            if isinstance(item, dict):
-                if "row" in item:
-                    row_id = int((item.get("row") or {}).get("id", 0) or 0)
-                else:
-                    row_id = int(item.get("id", 0) or 0)
-                if row_id:
-                    return row_id
-    return 0
 
 
 def _title_with_hint(
@@ -93,101 +132,12 @@ def _title_with_hint(
         ui.icon("info_outline").classes("text-sm text-[#9B7A60] opacity-70 cursor-help").tooltip(hint)
 
 
-def _render_generated_card(
-    *,
-    title: str = "",
-    body: str = "",
-    metric: str = "",
-    label: str = "分析結果",
-    body_classes: str = "generated-body",
-    card_classes: str = "card p-4 w-full generated-block",
-) -> None:
-    with ui.card().classes(card_classes):
-        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-            ui.label(label).classes("generated-chip")
-            if metric:
-                ui.label(metric).classes("generated-metric")
-        if title:
-            ui.label(title).classes("generated-title")
-        if body:
-            ui.label(body).classes(body_classes)
 
 
-def _render_expandable_generated_card(
-    *,
-    title: str = "",
-    body: str = "",
-    metric: str = "",
-    label: str = "分析結果",
-    card_classes: str = "card p-4 w-full generated-block",
-    body_expand_label: str = "全文を見る",
-) -> None:
-    clean_body = str(body or "").strip()
-    with ui.card().classes(card_classes):
-        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-            ui.label(label).classes("generated-chip")
-            if metric:
-                ui.label(metric).classes("generated-metric")
-        if title:
-            ui.label(title).classes("generated-title whitespace-pre-line")
-        if clean_body:
-            if len(clean_body) <= 120:
-                ui.label(clean_body).classes("generated-body whitespace-pre-line")
-            else:
-                body_exp = ui.expansion(body_expand_label, icon="unfold_more", value=False).classes("w-full mt-2")
-                with body_exp:
-                    ui.label(clean_body).classes("generated-body whitespace-pre-line")
 
 
-def _render_workspace_header(
-    *,
-    title: str,
-    description: str,
-    mode_label: str = "分析結果",
-) -> None:
-    with ui.row().classes("items-start justify-between w-full gap-3 flex-wrap"):
-        with ui.column().classes("gap-1 min-w-[220px]"):
-            ui.label(title).classes("card-title")
-            ui.label(description).classes("card-hint text-sm")
-        ui.label(mode_label).classes("generated-chip")
 
 
-def _diff_html(before: str, after: str) -> Tuple[str, str]:
-    """Generate minimal diff markup for before/after strings."""
-    before = before or ""
-    after = after or ""
-    # Limit to keep UI fast
-    if len(before) > _DIFF_MAX_CHARS:
-        before = before[: _DIFF_MAX_CHARS] + "…"
-    if len(after) > _DIFF_MAX_CHARS:
-        after = after[: _DIFF_MAX_CHARS] + "…"
-
-    a = list(before)
-    b = list(after)
-    matcher = difflib.SequenceMatcher(a=a, b=b)
-    before_parts = []
-    after_parts = []
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "equal":
-            segment = html.escape("".join(a[i1:i2]))
-            before_parts.append(segment)
-            after_parts.append(segment)
-        elif tag == "delete":
-            segment = html.escape("".join(a[i1:i2]))
-            if segment:
-                before_parts.append(f"<span class='diff-del'>{segment}</span>")
-        elif tag == "insert":
-            segment = html.escape("".join(b[j1:j2]))
-            if segment:
-                after_parts.append(f"<span class='diff-add'>{segment}</span>")
-        elif tag == "replace":
-            seg_before = html.escape("".join(a[i1:i2]))
-            seg_after = html.escape("".join(b[j1:j2]))
-            if seg_before:
-                before_parts.append(f"<span class='diff-del'>{seg_before}</span>")
-            if seg_after:
-                after_parts.append(f"<span class='diff-add'>{seg_after}</span>")
-    return "".join(before_parts), "".join(after_parts)
 
 
 def _infer_kpi(action_text: str) -> str:
@@ -244,7 +194,13 @@ def _build_decision_actions(
     seo_results: Dict[str, Any],
     summary: Dict[str, Any],
     business_goal: str = "自動判定",
+    results: Optional[Dict[str, Any]] = None,
 ) -> list[dict]:
+    if results:
+        priority_actions = _build_priority_actions(results)
+        if priority_actions:
+            return priority_actions[:3]
+
     items: list[dict] = []
     business_recs = deep_recs.get("business", []) or []
     technical_recs = deep_recs.get("technical", []) or []
@@ -378,8 +334,6 @@ def _render_output_gate_notice(results: Dict[str, Any]) -> bool:
     return False
 
 
-def _clamp_score(value: float) -> int:
-    return int(max(0, min(100, round(value))))
 
 
 def _extract_social_channels(html_text: str) -> list[str]:
@@ -751,7 +705,7 @@ def _build_context_note_rows(
         prev_seo = int(previous_run.get("seo_score", 0) or 0)
         prev_aio = int(previous_run.get("aio_score", 0) or 0)
         prev_issue_count = int(previous_run.get("total_issues", 0) or 0)
-        analyzed_at = previous_run.get("analyzed_at", "前回")
+        analyzed_at = format_jst_datetime(previous_run.get("analyzed_at")) or "前回"
 
         diagnostic_rows.append(
             "前回比較: "
@@ -1078,6 +1032,7 @@ def results_panel() -> None:
         seo_results=seo_results,
         summary=summary,
         business_goal=integrated.get("business_goal", "自動判定"),
+        results=results,
     )
 
     from core.ui.reports.executive_summary import render_executive_summary
@@ -1176,7 +1131,13 @@ def detail_tabs() -> None:
         if "SEO" in visible_tabs:
             with ui.tab_panel("SEO"):
                 from core.ui.tabs.seo_tab import render_seo_tab
-                render_seo_tab(seo_results, aio_results, trim_text, format_reason_text_ui)
+                render_seo_tab(
+                    seo_results,
+                    aio_results,
+                    trim_text,
+                    format_reason_text_ui,
+                    results.get("site_health") or {},
+                )
 
         if "AIO" in visible_tabs:
             with ui.tab_panel("AIO"):
@@ -1612,9 +1573,9 @@ def report_panel() -> None:
                     if template:
                         ui.label(format_reason_text_ui(f"改善案: {template}")).classes("card-sub text-green-600 whitespace-pre-line")
                     if template_non:
-                        ui.label(format_reason_text_ui(f"非エンジニア向け: {template_non}")).classes("card-sub text-emerald-600 whitespace-pre-line")
+                        ui.label(format_reason_text_ui(f"読み手向けの説明: {template_non}")).classes("card-sub text-emerald-600 whitespace-pre-line")
                     if template_eng:
-                        ui.label(format_reason_text_ui(f"エンジニア向け: {template_eng}")).classes("card-sub text-blue-600 whitespace-pre-line")
+                        ui.label(format_reason_text_ui(f"実装担当向けメモ: {template_eng}")).classes("card-sub text-blue-600 whitespace-pre-line")
                     if reason:
                         ui.label(format_reason_text_ui(f"理由: {reason}")).classes("card-hint whitespace-pre-line")
         if existing_faqs:
@@ -1771,1732 +1732,109 @@ def report_panel() -> None:
             previous_run=previous_run,
         )
 
-def _display_snapshot_label(label: str) -> str:
-    normalized = str(label or "").strip()
-    mapping = {
-        "今回のURL": "このページ向け",
-        "対象ページで確認": "このページ向け",
-        "このページ向け": "このページ向け",
-        "表示アドバイス": "表現・見せ方",
-        "分析メモ": "補足メモ",
-        "参考": "参考情報",
-    }
-    return mapping.get(normalized, normalized)
-
-
-def _compact_copy(value: Any, limit: int = 110) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
-    if len(text) <= limit:
-        return text
-    shortened = text[:limit]
-    for delimiter in ("。", "、", ".", " "):
-        cut = shortened.rfind(delimiter)
-        if cut >= int(limit * 0.65):
-            return shortened[: cut + (1 if delimiter != " " else 0)].strip() + "…"
-    return shortened.rstrip() + "…"
-
-
-def _render_snapshot_cards(
-    items: list[dict],
-    *,
-    empty_text: str,
-    compact: bool = False,
-    show_title: bool = True,
-    show_label: bool = True,
-    detail_limit: int | None = None,
-) -> None:
-    if not items:
-        ui.label(empty_text).classes("card-sub text-gray-500")
-        return
-    for item in items:
-        title = str(item.get("title", "") or "").strip()
-        detail = str(item.get("detail", "") or "").strip()
-        label = str(item.get("label", "") or "").strip()
-        metric = _display_snapshot_label(label) if label and show_label else ""
-        long_detail = bool(detail and detail_limit and len(detail) > detail_limit)
-        if long_detail:
-            _render_expandable_generated_card(
-                title=title if show_title else "",
-                body=detail,
-                metric=metric,
-                label="確認ポイント",
-                body_expand_label="クリックで全文表示",
-            )
-            continue
-        _render_generated_card(
-            title=title if show_title else "",
-            body=detail,
-            metric=metric,
-            label="確認ポイント",
-            body_classes="generated-body whitespace-pre-line" if (detail and not compact) else "generated-body",
-        )
-
-
-def _render_compact_note_rows(items: list[dict], *, empty_text: str) -> None:
-    if not items:
-        ui.label(empty_text).classes("card-sub text-gray-500")
-        return
-    with ui.element("div").classes("compact-note-list"):
-        for item in items:
-            with ui.element("div").classes("compact-note-row"):
-                detail = str(item.get("detail") or item.get("title") or "").strip()
-                if detail:
-                    ui.label(detail).classes("card-sub whitespace-pre-line")
-
-
-def _priority_badge_classes(priority_level: str) -> str:
-    if priority_level == "高":
-        return "bg-red-50 text-red-700"
-    if priority_level == "中":
-        return "bg-amber-50 text-amber-700"
-    return "bg-emerald-50 text-emerald-700"
-
-
-def _normalize_status_key(status: Any) -> str:
-    normalized = str(status or "").strip().lower()
-    if normalized in {"fail", "要対応"}:
-        return "fail"
-    if normalized in {"warn", "warning", "注意", "要確認"}:
-        return "warn"
-    if normalized in {"pass", "ok", "通過", "問題なし"}:
-        return "pass"
-    if normalized in {"reference", "info", "参考"}:
-        return "reference"
-    return "info"
-
-
-def _status_label(status: Any) -> str:
-    return {
-        "pass": "通過",
-        "warn": "注意",
-        "fail": "要対応",
-        "reference": "参考",
-        "info": "参考",
-    }.get(_normalize_status_key(status), "未判定")
-
-
-def _status_badge_classes(status: str) -> str:
-    mapping = {
-        "pass": "bg-emerald-50 text-emerald-700",
-        "warn": "bg-amber-50 text-amber-700",
-        "fail": "bg-red-50 text-red-700",
-        "reference": "bg-slate-100 text-slate-600",
-        "info": "bg-slate-100 text-slate-600",
-        "blocked": "bg-amber-50 text-amber-700",
-        "error": "bg-red-50 text-red-700",
-    }
-    return mapping.get(_normalize_status_key(status), "bg-slate-100 text-slate-600")
-
-
-def _provider_check_status_label(status: Any) -> str:
-    return _status_label(status)
-
-
-def _provider_has_actionable_details(payload: Dict[str, Any]) -> bool:
-    checks = payload.get("official_checks") or []
-    heuristics = payload.get("heuristic_notes") or []
-    for check in checks:
-        if str(check.get("status") or "").strip().lower() in {"warn", "fail"}:
-            return True
-    return bool(heuristics)
-
-
-def _describe_google_controls(google_controls: Dict[str, Any]) -> list[dict]:
-    max_snippet = google_controls.get("max_snippet")
-    if max_snippet in (None, -1, "-1", ""):
-        max_snippet_text = "制限なし"
-    elif str(max_snippet).strip() == "0":
-        max_snippet_text = "抜粋不可"
-    else:
-        max_snippet_text = f"{max_snippet}文字まで"
-
-    data_nosnippet_count = int(google_controls.get("data_nosnippet_count") or 0)
-    data_nosnippet_text = "検出なし" if data_nosnippet_count <= 0 else f"{data_nosnippet_count}箇所で抜粋除外"
-
-    return [
-        {"title": "検索結果への掲載除外（noindex）", "detail": "設定あり" if google_controls.get("noindex") else "設定なし"},
-        {"title": "抜粋禁止（nosnippet）", "detail": "設定あり" if google_controls.get("nosnippet") else "設定なし"},
-        {"title": "抜粋長の制御（max-snippet）", "detail": max_snippet_text},
-        {"title": "部分的な抜粋除外（data-nosnippet）", "detail": data_nosnippet_text},
-    ]
-
-
-def _build_summary_priority_note(summary_workspace: Dict[str, Any]) -> Dict[str, str]:
-    priority_counts = summary_workspace.get("priority_counts") or []
-    counts = {
-        str(item.get("label") or ""): int(item.get("count") or 0)
-        for item in priority_counts
-        if str(item.get("label") or "").strip()
-    }
-    provider_count = counts.get("AI公開条件", 0)
-    legal_count = counts.get("表示アドバイス", counts.get("法務・表示", 0))
-    action_count = counts.get("最優先アクション", 0)
-
-    if provider_count or legal_count:
-        title = "先に直す項目があります"
-        status = "warn"
-    else:
-        title = "大きな停止要因は見えていません"
-        status = "pass"
-
-    detail = f"AI公開条件 {provider_count}件 / 表現・見せ方 {legal_count}件 / すぐ見る提案 {action_count}件"
-    return {"title": title, "detail": detail, "status": status}
-
-
-def _safe_score_value(value: Any) -> int:
-    try:
-        return _clamp_score(float(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _score_status_meta(score: Any) -> tuple[int, str, str]:
-    numeric = _safe_score_value(score)
-    if numeric >= 80:
-        return numeric, "pass", "良好"
-    if numeric >= 60:
-        return numeric, "warn", "改善余地"
-    return numeric, "fail", "要対応"
-
-
-def _build_saved_run_overall_message(header: Dict[str, Any]) -> str:
-    seo_score = _safe_score_value(header.get("seo_score"))
-    aio_score = _safe_score_value(header.get("aio_score"))
-    legal_score = _safe_score_value(header.get("legal_score"))
-
-    concerns: list[str] = []
-    positives: list[str] = []
-
-    if seo_score < 60:
-        concerns.append("検索の基礎が弱めです")
-    elif seo_score >= 80:
-        positives.append("検索の基礎は安定しています")
-    else:
-        positives.append("検索の基礎は大きく崩れていません")
-
-    if aio_score < 60:
-        concerns.append("AI検索で要点を拾われにくい状態です")
-    elif aio_score >= 80:
-        positives.append("AI検索で拾われやすい土台があります")
-    else:
-        positives.append("AI検索向けの土台はあります")
-
-    if legal_score < 60:
-        concerns.append("表示まわりに確認したい点があります")
-    elif legal_score >= 80:
-        positives.append("表示まわりの大きな不安は目立ちません")
-    else:
-        positives.append("表示まわりは概ね許容範囲です")
-
-    if concerns:
-        message = " / ".join(concerns[:2]) + "。"
-        if positives:
-            message += positives[0] + "。"
-        return message
-    if positives:
-        return " / ".join(positives[:2]) + "。"
-    return "大きく崩れている評価は見えていません。"
-
-
-def _build_evaluation_axis_cards(header: Dict[str, Any]) -> list[Dict[str, str]]:
-    axis_specs = [
-        (
-            "検索",
-            header.get("seo_score"),
-            "検索結果で見つけられやすいかの見立てです。",
-            {
-                "pass": "検索の基礎は安定しています。",
-                "warn": "検索の基礎に改善余地があります。",
-                "fail": "検索の基礎を先に見直したい状態です。",
-            },
-        ),
-        (
-            "AI",
-            header.get("aio_score"),
-            "AI検索や要約で要点を拾われやすいかの見立てです。",
-            {
-                "pass": "AI検索で拾われやすい土台があります。",
-                "warn": "AI検索向けの構造に改善余地があります。",
-                "fail": "AI検索で要点を拾われにくい状態です。",
-            },
-        ),
-        (
-            "表示",
-            header.get("legal_score"),
-            "表現や見せ方で不安が出にくいかの見立てです。",
-            {
-                "pass": "表示まわりの大きな不安は目立ちません。",
-                "warn": "表示まわりは一度確認したい状態です。",
-                "fail": "表示まわりを先に確認したい状態です。",
-            },
-        ),
-    ]
-
-    cards: list[Dict[str, str]] = []
-    for label, score, hint, messages in axis_specs:
-        numeric, status_key, status_label = _score_status_meta(score)
-        cards.append(
-            {
-                "label": label,
-                "score": str(numeric),
-                "hint": hint,
-                "status_key": status_key,
-                "status_label": status_label,
-                "message": messages.get(status_key, ""),
-            }
-        )
-    return cards
-
-
-def _reason_label_hint(label: str) -> str:
-    mapping = {
-        "AI公開条件": "AIサービス側で拾われにくくなる条件の確認です。",
-        "表示アドバイス": "表現や見せ方で不安が出る箇所の確認です。",
-        "分析メモ": "今回の評価に影響した補足メモです。",
-    }
-    return mapping.get(str(label or "").strip(), "")
-
-
-def _saved_run_reason_title(item: Dict[str, Any]) -> str:
-    title = str(item.get("title") or "").strip()
-    if title and title not in {"要確認メモ", "補足メモ", "分析メモ"}:
-        return title
-    detail = str(item.get("detail") or "").strip()
-    if detail:
-        return _short_reason_text(detail, limit=34)
-    label = _display_snapshot_label(str(item.get("label") or ""))
-    if label and label != "補足メモ":
-        return label
-    return "要確認"
-
-
-def _saved_run_reason_metric(item: Dict[str, Any]) -> str:
-    label = _display_snapshot_label(str(item.get("label") or "").strip())
-    if label in {"", "補足メモ"}:
-        return ""
-    return label
-
-
-def _render_saved_run_overview(
-    summary_workspace: Dict[str, Any],
-    header: Dict[str, Any],
-    previous_diff: Dict[str, Any],
-) -> None:
-    summary_note = _build_summary_priority_note(summary_workspace)
-    summary_lines = [
-        str(line).strip()
-        for line in (summary_workspace.get("summary_lines") or [])
-        if str(line or "").strip()
-    ]
-    payload = _build_workspace_improvement_map(summary_workspace, header)
-    axes = payload.get("axes") or []
-    diff_label = str(previous_diff.get("label") or "").strip()
-    detail_parts = [str(summary_note.get("detail") or "").strip()] if str(summary_note.get("detail") or "").strip() else []
-    if diff_label and diff_label != "前回なし":
-        detail_parts.append(f"前回比 {diff_label}")
-    if not detail_parts and not summary_lines and not axes:
-        return
-
-    ui.separator()
-    with ui.row().classes("summary-visual-grid w-full mt-3"):
-        with ui.card().classes("card p-4 summary-radar-card"):
-            with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-                ui.label(str(summary_note.get("title") or "判断")).classes("generated-title")
-                ui.label("5軸").classes("fixed-chip")
-            if detail_parts:
-                ui.label(" / ".join(detail_parts)).classes("card-hint text-sm mt-1")
-            if summary_lines:
-                with ui.row().classes("w-full gap-2 flex-wrap mt-3"):
-                    for line in summary_lines[:3]:
-                        ui.label(line).classes("fixed-chip")
-            if axes:
-                chart = ui.echart(payload["options"]).classes("w-full summary-radar-chart mt-3")
-                chart.style("height: 300px;")
-
-        with ui.column().classes("summary-visual-side gap-3"):
-            weakest_axes = payload.get("weakest_axes") or []
-            if weakest_axes:
-                with ui.card().classes("card p-4 w-full"):
-                    ui.label("低い軸").classes("card-sub font-bold")
-                    for axis in weakest_axes:
-                        with ui.row().classes("items-center gap-3 w-full mt-2"):
-                            ui.label(str(axis.get("label") or "")).classes("card-hint font-semibold min-w-[84px]")
-                            ui.linear_progress(
-                                value=max(0.0, min(float(axis.get("value") or 0) / 100.0, 1.0)),
-                                size="8px",
-                                show_value=False,
-                                color="orange",
-                            ).classes("flex-1")
-                            ui.label(f"{float(axis.get('value') or 0):.0f}").classes("summary-axis-score")
-
-            alerts = payload.get("alerts") or []
-            if alerts:
-                with ui.card().classes("card p-4 w-full"):
-                    with ui.row().classes("w-full gap-2 flex-wrap"):
-                        for item in alerts:
-                            tone = str(item.get("tone") or "info")
-                            tone_class = {
-                                "warn": "summary-pill-warn",
-                                "pass": "summary-pill-pass",
-                            }.get(tone, "summary-pill-info")
-                            ui.label(f"{item.get('label')} {item.get('detail')}").classes(f"summary-alert-pill {tone_class}")
-
-
-def _render_saved_run_next_actions(summary_workspace: Dict[str, Any], header: Dict[str, Any], *, show_title: bool = True) -> None:
-    top_actions = summary_workspace.get("top_actions") or (header.get("top_actions") or [])
-    actionable_items = [
-        item for item in top_actions[:3]
-        if str(item.get("title") or "").strip() or str(item.get("action") or item.get("detail") or "").strip()
-    ]
-    if not actionable_items:
-        return
-
-    if show_title:
-        ui.separator()
-        ui.label("改善").classes("card-sub font-bold")
-    with ui.element("div").classes("evaluation-reason-grid w-full mt-3"):
-        for index, item in enumerate(actionable_items, 1):
-            with ui.card().classes("card evaluation-reason-card p-4"):
-                with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-                    with ui.row().classes("items-center gap-2 flex-wrap"):
-                        ui.label(f"優先 {index}").classes("generated-chip")
-                        area = str(item.get("area") or "").strip()
-                        if area:
-                            ui.label(area).classes("generated-metric")
-                    effort = str(item.get("effort") or "").strip()
-                    if effort:
-                        ui.label(effort).classes("card-hint text-xs")
-                ui.label(str(item.get("title") or "改善提案")).classes("generated-title")
-                action_text = str(item.get("action") or item.get("detail") or "").strip()
-                if action_text:
-                    ui.label(_compact_copy(action_text, 150)).classes("generated-body whitespace-pre-line")
-                impact_text = str(item.get("impact") or item.get("kpi") or "").strip()
-                if impact_text:
-                    ui.label(_compact_copy(impact_text, 84)).classes("card-hint text-xs")
-
-
-def _render_saved_run_improvement_tab(snapshot: Dict[str, Any]) -> None:
-    summary_workspace = snapshot.get("summary_workspace") or {}
-    header = snapshot.get("header") or {}
-    task_workspace = snapshot.get("task_workspace") or {}
-    actions = task_workspace.get("actions") or []
-    owner_counts = task_workspace.get("owner_counts") or {}
-    primary_actions, secondary_actions = _split_task_actions(actions)
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if owner_counts:
-            with ui.row().classes("w-full gap-2 flex-wrap"):
-                for owner, count in owner_counts.items():
-                    ui.label(f"{owner} {count}件").classes("fixed-chip")
-
-        if primary_actions:
-            for item in primary_actions:
-                _render_task_action_card(item)
-        elif (summary_workspace.get("top_actions") or header.get("top_actions")):
-            _render_saved_run_next_actions(summary_workspace, header, show_title=False)
-            return
-        else:
-            ui.label("改善案はまだ抽出されていません。").classes("card-sub text-gray-500")
-            return
-
-        if secondary_actions:
-            remaining_exp = ui.expansion(f"続き {len(secondary_actions)}件", icon="unfold_more", value=False).classes("w-full mt-3")
-            with remaining_exp:
-                for item in secondary_actions[:5]:
-                    _render_task_action_card(item)
-
-
-def _saved_run_has_improvement_tab(snapshot: Dict[str, Any]) -> bool:
-    summary_workspace = snapshot.get("summary_workspace") or {}
-    header = snapshot.get("header") or {}
-    task_workspace = snapshot.get("task_workspace") or {}
-    return bool(
-        (task_workspace.get("actions") or [])
-        or (summary_workspace.get("top_actions") or [])
-        or (header.get("top_actions") or [])
-    )
-
-
-def _saved_run_has_writing_tab(snapshot: Dict[str, Any]) -> bool:
-    writing_workspace = snapshot.get("writing_workspace") or {}
-    faq_summary = writing_workspace.get("faq_detection_summary") or {}
-    content_plan = writing_workspace.get("content_plan") or {}
-    return bool(
-        (writing_workspace.get("title_rewrites") or [])
-        or (writing_workspace.get("description_rewrites") or [])
-        or (writing_workspace.get("body_rewrites") or [])
-        or (writing_workspace.get("citation_phrases") or [])
-        or (faq_summary.get("items") or [])
-        or (writing_workspace.get("faq_suggestions") or [])
-        or (content_plan.get("sections") or [])
-    )
-
-
-def _saved_run_has_implementation_tab(snapshot: Dict[str, Any]) -> bool:
-    implementation_workspace = snapshot.get("implementation_workspace") or {}
-    technical_workspace = snapshot.get("technical_workspace") or {}
-    return bool(
-        (implementation_workspace.get("provider_matrix") or [])
-        or (implementation_workspace.get("provider_payload") or {})
-        or (implementation_workspace.get("google_controls") or {})
-        or (implementation_workspace.get("schema_summary") or {})
-        or (implementation_workspace.get("llms_notes") or [])
-        or (implementation_workspace.get("seo_audit_notes") or [])
-        or (implementation_workspace.get("legal_display_notes") or [])
-        or (implementation_workspace.get("technical_actions") or [])
-        or (technical_workspace.get("summary_cards") or [])
-    )
-
-
-def _saved_run_has_engineer_tab(snapshot: Dict[str, Any]) -> bool:
-    technical_workspace = snapshot.get("technical_workspace") or {}
-    return bool(
-        (technical_workspace.get("summary_cards") or [])
-        or (technical_workspace.get("crawl_scope") or {})
-        or (technical_workspace.get("link_health") or {})
-        or (technical_workspace.get("schema") or {})
-        or (technical_workspace.get("llms") or {})
-        or (technical_workspace.get("site_health_checks") or [])
-        or (technical_workspace.get("action_items") or [])
-        or (technical_workspace.get("actions") or [])
-    )
-
-
-def _saved_run_has_comparison_tab(snapshot: Dict[str, Any], same_url_history: list[dict]) -> bool:
-    comparison_workspace = snapshot.get("comparison_workspace") or {}
-    competitor_summary = comparison_workspace.get("competitor_summary") or {}
-    previous_diff = comparison_workspace.get("previous_diff") or {}
-    return bool(same_url_history or competitor_summary or previous_diff)
-
-
-def _render_saved_run_evaluation(bundle: Dict[str, Any]) -> None:
-    snapshot = bundle.get("snapshot") or {}
-    run = bundle.get("run") or {}
-    meta = snapshot.get("meta") or {}
-    header = snapshot.get("header") or {}
-    summary_workspace = snapshot.get("summary_workspace") or {}
-    priority_level = str(header.get("priority_level") or "低")
-    previous_diff = header.get("previous_diff") or {}
-    summary_note = _build_summary_priority_note(summary_workspace)
-    evaluation_cards = _build_evaluation_axis_cards(header)
-    reasons = (summary_workspace.get("blocking_issues") or [])[:4]
-
-    with ui.card().classes("card evaluation-summary-card p-5 w-full"):
-        with ui.row().classes("items-start justify-between w-full gap-4 flex-wrap"):
-            with ui.column().classes("gap-2 min-w-[280px]"):
-                ui.label("評価").classes("section-eyebrow")
-                ui.label(str(meta.get("url") or run.get("url") or "-")).classes("card-title break-all")
-                ui.label(_build_saved_run_overall_message(header)).classes("card-sub")
-            with ui.column().classes("items-end gap-2"):
-                ui.label("総合評価").classes("text-xs text-gray-500")
-                ui.label(priority_level).classes(
-                    f"text-2xl font-bold px-3 py-1 rounded { _priority_badge_classes(priority_level) }"
-                )
-
-        with ui.row().classes("w-full gap-2 flex-wrap mt-3"):
-            if previous_diff and str(previous_diff.get("label") or "").strip() not in {"", "前回なし"}:
-                ui.label(f"前回比 {previous_diff.get('label')}").classes("fixed-chip")
-            note_chip = ui.label(str(summary_note.get("title") or "評価")).classes(
-                f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(str(summary_note.get('status') or 'info')) }"
-            )
-
-        with ui.element("div").classes("evaluation-grid w-full mt-4"):
-            for item in evaluation_cards:
-                with ui.card().classes("card evaluation-card p-4"):
-                    label = ui.label(str(item.get("label") or "")).classes("evaluation-label")
-                    hint = str(item.get("hint") or "")
-                    if hint:
-                        label.tooltip(hint)
-                    with ui.row().classes("items-end justify-between gap-3 mt-2"):
-                        with ui.row().classes("items-end gap-1"):
-                            ui.label(str(item.get("score") or "0")).classes("evaluation-score")
-                            ui.label("/100").classes("evaluation-score-scale")
-                        ui.label(str(item.get("status_label") or "")).classes(
-                            f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(str(item.get('status_key') or 'info')) }"
-                        )
-                    ui.label(str(item.get("message") or "")).classes("card-hint text-sm mt-3")
-
-        _render_saved_run_overview(summary_workspace, header, previous_diff)
-
-        ui.separator()
-        ui.label("理由").classes("card-sub font-bold")
-        if reasons:
-            with ui.element("div").classes("evaluation-reason-grid w-full mt-3"):
-                for item in reasons:
-                    status = str(item.get("status") or "info")
-                    label_text = str(item.get("label") or "").strip()
-                    with ui.card().classes("card evaluation-reason-card p-4"):
-                        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-                            ui.label(str(_status_label(status))).classes(
-                                f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(status) }"
-                            )
-                            reason_metric = _saved_run_reason_metric(item)
-                            if reason_metric:
-                                reason_chip = ui.label(reason_metric).classes("generated-chip")
-                                label_hint = _reason_label_hint(label_text)
-                                if label_hint:
-                                    reason_chip.tooltip(label_hint)
-                        ui.label(_saved_run_reason_title(item)).classes("generated-title")
-                        ui.label(_compact_copy(item.get("detail"), 160)).classes("generated-body whitespace-pre-line")
-        else:
-            ui.label("大きな懸念は先頭では見えていません。").classes("card-hint mt-2")
-
-
-def _build_workspace_improvement_map(summary_workspace: Dict[str, Any], header: Dict[str, Any]) -> Dict[str, Any]:
-    raw_priority_counts = summary_workspace.get("priority_counts") or []
-    counts = {
-        str(item.get("label") or "").strip(): int(item.get("count") or 0)
-        for item in raw_priority_counts
-        if str(item.get("label") or "").strip()
-    }
-    provider_count = counts.get("AI公開条件", 0)
-    display_count = counts.get("表示アドバイス", counts.get("法務・表示", 0))
-    action_count = counts.get("最優先アクション", 0)
-
-    seo_score = _clamp_score(float(header.get("seo_score") or 0))
-    aio_score = _clamp_score(float(header.get("aio_score") or 0))
-    legal_score = _clamp_score(float(header.get("legal_score") or 0))
-    provider_score = _clamp_score(100 - min(provider_count, 4) * 25)
-    trust_score = _clamp_score((legal_score * 0.60) + (aio_score * 0.40))
-
-    axes = [
-        {"label": "SEO基礎", "value": seo_score, "hint": "検索流入の基礎"},
-        {"label": "AI引用", "value": aio_score, "hint": "AI検索で拾われやすい構成"},
-        {"label": "信頼情報", "value": trust_score, "hint": "著者・運営者・安心材料"},
-        {"label": "公開条件", "value": provider_score, "hint": "AIサービス側の到達性"},
-        {"label": "表示安全", "value": legal_score, "hint": "表示まわりの安全性"},
-    ]
-    weakest_axes = sorted(axes, key=lambda item: item["value"])[:3]
-
-    alerts = []
-    if provider_count:
-        alerts.append({"label": "AI公開条件", "detail": f"要確認 {provider_count}件", "tone": "warn"})
-    if display_count:
-        alerts.append({"label": "表示アドバイス", "detail": f"要確認 {display_count}件", "tone": "warn"})
-    if action_count:
-        alerts.append({"label": "最優先アクション", "detail": f"先頭で {action_count}件確認", "tone": "info"})
-    if not alerts:
-        alerts.append({"label": "先に確認", "detail": "大きな阻害要因は先頭では見えていません", "tone": "pass"})
-
-    options = {
-        "animation": True,
-        "tooltip": {"trigger": "item"},
-        "radar": {
-            "radius": "66%",
-            "splitNumber": 4,
-            "indicator": [{"name": axis["label"], "max": 100} for axis in axes],
-            "axisName": {"color": "#5B5347", "fontSize": 12, "fontWeight": "600"},
-            "splitLine": {"lineStyle": {"color": "rgba(130, 113, 94, 0.18)"}},
-            "splitArea": {
-                "areaStyle": {
-                    "color": [
-                        "rgba(242, 237, 228, 0.18)",
-                        "rgba(242, 237, 228, 0.28)",
-                        "rgba(242, 237, 228, 0.38)",
-                        "rgba(242, 237, 228, 0.48)",
-                    ]
-                }
-            },
-            "axisLine": {"lineStyle": {"color": "rgba(130, 113, 94, 0.24)"}},
-        },
-        "series": [{
-            "type": "radar",
-            "data": [{
-                "value": [axis["value"] for axis in axes],
-                "name": "現在地",
-                "symbol": "circle",
-                "symbolSize": 7,
-                "lineStyle": {"color": "#D96B1F", "width": 3},
-                "areaStyle": {"color": "rgba(217, 107, 31, 0.18)"},
-                "itemStyle": {"color": "#B95416"},
-            }],
-        }],
-    }
-
-    return {
-        "axes": axes,
-        "weakest_axes": weakest_axes,
-        "alerts": alerts[:3],
-        "options": options,
-    }
-
-
-def _render_workspace_improvement_map(summary_workspace: Dict[str, Any], header: Dict[str, Any]) -> None:
-    payload = _build_workspace_improvement_map(summary_workspace, header)
-    axes = payload.get("axes") or []
-    if not axes:
-        return
-
-    ui.label("改善マップ").classes("card-sub font-bold mt-4")
-    with ui.row().classes("summary-visual-grid w-full mt-2"):
-        with ui.card().classes("card p-4 summary-radar-card"):
-            with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-                ui.label("5軸で見た現在地").classes("card-sub font-bold")
-                ui.label("圧縮表示").classes("fixed-chip")
-            ui.label("低い軸ほど、先に直す価値が高い状態です。").classes("card-hint text-xs")
-            chart = ui.echart(payload["options"]).classes("w-full summary-radar-chart")
-            chart.style("height: 300px;")
-
-        with ui.column().classes("summary-visual-side gap-3"):
-            with ui.card().classes("card p-4 w-full"):
-                ui.label("先に手を入れる軸").classes("card-sub font-bold")
-                for axis in payload.get("weakest_axes") or []:
-                    with ui.row().classes("items-center gap-3 w-full mt-2"):
-                        with ui.column().classes("gap-0 min-w-[84px]"):
-                            ui.label(str(axis.get("label") or "")).classes("card-hint font-semibold")
-                            ui.label(str(axis.get("hint") or "")).classes("card-hint text-xs")
-                        ui.linear_progress(
-                            value=max(0.0, min(float(axis.get("value") or 0) / 100.0, 1.0)),
-                            size="8px",
-                            show_value=False,
-                            color="orange",
-                        ).classes("flex-1")
-                        ui.label(f"{float(axis.get('value') or 0):.0f}").classes("summary-axis-score")
-
-            with ui.card().classes("card p-4 w-full"):
-                ui.label("先に確認").classes("card-sub font-bold")
-                for item in payload.get("alerts") or []:
-                    tone = str(item.get("tone") or "info")
-                    tone_class = {
-                        "warn": "summary-pill-warn",
-                        "pass": "summary-pill-pass",
-                    }.get(tone, "summary-pill-info")
-                    with ui.row().classes("items-start gap-2 w-full mt-2"):
-                        ui.label(str(item.get("label") or "")).classes(f"summary-alert-pill {tone_class}")
-                        ui.label(str(item.get("detail") or "")).classes("card-hint")
-
-
-def _build_provider_focus_summary(provider_matrix: list[Dict[str, Any]]) -> Dict[str, int]:
-    summary = {"fail": 0, "warn": 0, "pass": 0, "other": 0}
-    for row in provider_matrix:
-        status = str(row.get("status") or "").strip()
-        if status == "要対応":
-            summary["fail"] += 1
-        elif status == "注意":
-            summary["warn"] += 1
-        elif status == "通過":
-            summary["pass"] += 1
-        else:
-            summary["other"] += 1
-    return summary
-
-
-def _build_implementation_stop_message(*, actionable_count: int, refresh_count: int) -> str:
-    if actionable_count > 0:
-        return f"まずはこの上段 {actionable_count} 件を見れば十分です。参考情報は下の「参考」にまとめています。"
-    if refresh_count > 0:
-        return "今すぐ止まる要因は見当たりません。旧データ由来の項目だけ、必要に応じて再分析で詳細化してください。"
-    return "今すぐ止まる要因は見当たりません。参考情報だけ確認すれば十分です。"
-
-
-def _filter_actionable_google_controls(google_controls: Dict[str, Any]) -> list[dict]:
-    actionable_rows: list[dict] = []
-    if google_controls.get("noindex"):
-        actionable_rows.append({"title": "検索結果への掲載除外（noindex）", "detail": "設定あり"})
-    if google_controls.get("nosnippet"):
-        actionable_rows.append({"title": "抜粋禁止（nosnippet）", "detail": "設定あり"})
-    max_snippet = google_controls.get("max_snippet")
-    if max_snippet not in (None, -1, "-1", ""):
-        actionable_rows.append(
-            {
-                "title": "抜粋長の制御（max-snippet）",
-                "detail": "抜粋不可" if str(max_snippet).strip() == "0" else f"{max_snippet}文字まで",
-            }
-        )
-    data_nosnippet_count = int(google_controls.get("data_nosnippet_count") or 0)
-    if data_nosnippet_count > 0:
-        actionable_rows.append(
-            {"title": "部分的な抜粋除外（data-nosnippet）", "detail": f"{data_nosnippet_count}箇所で抜粋除外"}
-        )
-    return actionable_rows
-
-
-def _status_sort_key(status: Any) -> int:
-    order = {
-        "fail": 0,
-        "warn": 1,
-        "pass": 2,
-        "reference": 3,
-        "info": 4,
-    }
-    return order.get(_normalize_status_key(status), 9)
-
-
-def _render_status_note_card(
-    item: Dict[str, Any],
-    *,
-    fallback_source_label: str = "",
-    card_classes: str = "card p-4 w-full generated-block",
-) -> None:
-    status_key = _normalize_status_key(item.get("status"))
-    status_text = str(item.get("status_label") or _status_label(status_key) or "参考").strip()
-    source_text = str(item.get("source_label") or fallback_source_label or "").strip()
-    title = str(item.get("title") or "").strip()
-    detail = str(item.get("detail") or "").strip()
-    summary_text = str(item.get("summary") or "").strip() or detail
-    show_raw_detail = bool(detail and summary_text and detail != summary_text)
-
-    with ui.card().classes(card_classes):
-        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-            with ui.row().classes("items-center gap-2 flex-wrap"):
-                ui.label(status_text).classes(
-                    f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(status_key) }"
-                )
-                if source_text:
-                    ui.label(source_text).classes("fixed-chip")
-            label_text = str(item.get("label") or "").strip()
-            if label_text and label_text not in {source_text, "参考"}:
-                ui.label(_display_snapshot_label(label_text)).classes("generated-metric")
-        if title:
-            ui.label(title).classes("generated-title")
-        if summary_text:
-            ui.label(summary_text).classes("generated-body whitespace-pre-line")
-        if show_raw_detail:
-            raw_exp = ui.expansion("実データを見る", icon="insights", value=False).classes("w-full mt-2")
-            with raw_exp:
-                ui.label(detail).classes("card-hint text-xs whitespace-pre-line")
-
-
-def _render_engineer_summary_card(
-    item: Dict[str, Any],
-    *,
-    card_classes: str = "card p-4 min-w-[220px] flex-1",
-) -> None:
-    status_key = _normalize_status_key(item.get("status"))
-    status_text = str(item.get("status_label") or _status_label(status_key) or "参考").strip()
-    title = str(item.get("title") or "技術サマリー").strip()
-    detail = str(item.get("detail") or "").strip()
-    metric_text = ""
-    if item.get("score") not in (None, ""):
-        try:
-            metric_text = f"{float(item.get('score')):.0f}点"
-        except (TypeError, ValueError):
-            metric_text = str(item.get("score"))
-    elif item.get("quality_score") not in (None, "", 0):
-        metric_text = f"{int(item.get('quality_score'))}点"
-
-    with ui.card().classes(card_classes):
-        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-            ui.label(status_text).classes(
-                f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(status_key) }"
-            )
-            if metric_text:
-                ui.label(metric_text).classes("generated-metric")
-        ui.label(title).classes("generated-title")
-        if detail:
-            ui.label(detail).classes("card-hint text-xs whitespace-pre-line")
-
-
-def _split_task_actions(actions: list[Dict[str, Any]], primary_count: int = 3) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]]]:
-    if primary_count < 0:
-        primary_count = 0
-    return actions[:primary_count], actions[primary_count:]
-
-
-def _render_task_action_card(item: Dict[str, Any]) -> None:
-    with ui.card().classes("card p-4 w-full"):
-        with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-            with ui.row().classes("items-center gap-2 flex-wrap"):
-                ui.label(str(item.get("priority") or "中")).classes(
-                    f"text-xs px-2 py-1 rounded { _priority_badge_classes(str(item.get('priority') or '中')) }"
-                )
-                ui.label(str(item.get("owner") or "運用")).classes("generated-chip")
-                if item.get("area"):
-                    ui.label(str(item.get("area"))).classes("generated-metric")
-            ui.label(str(item.get("effort") or "")).classes("card-hint text-xs")
-        ui.label(str(item.get("title") or "改善提案")).classes("generated-title")
-        action_text = str(item.get("action") or item.get("detail") or "").strip()
-        if action_text:
-            if len(action_text) <= 140:
-                ui.label(action_text).classes("generated-body whitespace-pre-line")
-            else:
-                action_exp = ui.expansion("手順を見る", icon="unfold_more", value=False).classes("w-full mt-2")
-                with action_exp:
-                    ui.label(action_text).classes("generated-body whitespace-pre-line")
-        meta_parts = [part for part in [item.get("impact"), item.get("kpi")] if str(part or "").strip()]
-        if meta_parts:
-            ui.label(" / ".join(str(part) for part in meta_parts)).classes("card-hint text-xs")
-
-
-def _short_reason_text(value: Any, limit: int = 72) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
-    if not text:
-        return ""
-    if len(text) <= limit:
-        return text
-    shortened = text[:limit]
-    for delimiter in ("。", "、", ".", " "):
-        cut = shortened.rfind(delimiter)
-        if cut >= int(limit * 0.55):
-            return shortened[: cut + (1 if delimiter != " " else 0)].strip()
-    return shortened.rstrip() + "…"
-
-
-def _render_workspace_summary_tab(snapshot: Dict[str, Any], *, show_header: bool = True) -> None:
-    header = snapshot.get("header") or {}
-    summary_workspace = snapshot.get("summary_workspace") or {}
-    raw_headline_metrics = summary_workspace.get("headline_metrics") or []
-    headline_metrics = [
-        metric
-        for metric in raw_headline_metrics
-        if str(metric.get("label") or "").strip() not in {"法務", "法務・表示", "表示アドバイス"}
-    ]
-    summary_lines = summary_workspace.get("summary_lines") or []
-    raw_priority_counts = summary_workspace.get("priority_counts") or []
-    priority_counts = []
-    for item in raw_priority_counts:
-        normalized = dict(item)
-        if str(normalized.get("label") or "").strip() == "法務・表示":
-            normalized["label"] = "表示アドバイス"
-        priority_counts.append(normalized)
-    top_actions = summary_workspace.get("top_actions") or (header.get("top_actions") or [])[:3]
-    raw_blocking_issues = summary_workspace.get("blocking_issues") or []
-    blocking_issues = []
-    for item in raw_blocking_issues:
-        normalized = dict(item)
-        if str(normalized.get("label") or "").strip() == "法務・表示":
-            normalized["label"] = "表示アドバイス"
-        blocking_issues.append(normalized)
-    previous_diff = summary_workspace.get("previous_diff") or (header.get("previous_diff") or {})
-    summary_note = _build_summary_priority_note(summary_workspace)
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="サマリー",
-                description="結論と最優先事項だけを先に確認できます。",
-            )
-
-        with ui.card().classes("card p-4 w-full mt-3"):
-            ui.label(str(summary_note.get("title") or "結論")).classes("card-sub font-bold")
-            ui.label(str(summary_note.get("detail") or "")).classes("card-sub")
-            if summary_lines or previous_diff:
-                with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                    for line in summary_lines[:3]:
-                        ui.label(str(line)).classes("fixed-chip")
-                    if previous_diff:
-                        diff_label = str(previous_diff.get("label", "前回なし"))
-                        ui.label(f"前回比 {diff_label}").classes(
-                            f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(str(summary_note.get('status') or 'info')) }"
-                        )
-
-        if priority_counts:
-            with ui.row().classes("w-full gap-2 flex-wrap mt-4"):
-                for item in priority_counts:
-                    status = str(item.get("status") or "info")
-                    with ui.card().classes("card p-3 min-w-[160px]"):
-                        ui.label(str(item.get("label") or "-")).classes("text-xs text-gray-500")
-                        ui.label(str(item.get("count") or 0)).classes("text-2xl font-bold")
-                        ui.label(str(item.get("detail") or "")).classes(f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(status) }")
-
-        _render_workspace_improvement_map(summary_workspace, header)
-
-        if top_actions:
-            ui.separator()
-            ui.label("最優先3件").classes("card-sub font-bold")
-            with ui.row().classes("w-full gap-3 flex-wrap"):
-                for item in top_actions[:3]:
-                    _render_expandable_generated_card(
-                        title=str(item.get("title") or "改善提案"),
-                        body=str(item.get("action") or item.get("detail") or ""),
-                        metric=str(item.get("area") or "改善"),
-                        card_classes="card p-4 generated-block flex-1 min-w-[220px] action-preview-card",
-                        body_expand_label="クリックで全文表示",
-                    )
-
-        if headline_metrics:
-            ui.separator()
-            ui.label("判断の目安").classes("card-sub font-bold")
-            with ui.row().classes("w-full gap-3 flex-wrap mt-2"):
-                for metric in headline_metrics[:4]:
-                    with ui.card().classes("card p-4 min-w-[140px] flex-1"):
-                        ui.label(str(metric.get("label") or "-")).classes("text-xs text-gray-500")
-                        ui.label(str(metric.get("value") or "-")).classes("text-2xl font-bold")
-
-        if blocking_issues:
-            ui.separator()
-            ui.label("要確認").classes("card-sub font-bold")
-            _render_snapshot_cards(
-                [
-                    {
-                        "title": item.get("title"),
-                        "detail": item.get("detail"),
-                        "label": item.get("label"),
-                    }
-                    for item in blocking_issues[:8]
-                ],
-                empty_text="",
-                detail_limit=160,
-            )
-
-
-def _render_workspace_task_tab(snapshot: Dict[str, Any], *, show_header: bool = True) -> None:
-    task_workspace = snapshot.get("task_workspace") or {}
-    actions = task_workspace.get("actions") or []
-    owner_counts = task_workspace.get("owner_counts") or {}
-    primary_actions, secondary_actions = _split_task_actions(actions)
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="やること",
-                description="担当と優先度で、そのまま実務に渡せる形にまとめています。",
-            )
-        if owner_counts:
-            with ui.row().classes("w-full gap-2 flex-wrap mt-3"):
-                for owner, count in owner_counts.items():
-                    ui.label(f"{owner} {count}件").classes("fixed-chip")
-
-        if not actions:
-            ui.label("実務タスクはまだ抽出されていません。").classes("card-sub text-gray-500 mt-3")
-            return
-
-        if primary_actions:
-            ui.label("先に着手する3件").classes("card-sub font-bold mt-3")
-            for item in primary_actions:
-                _render_task_action_card(item)
-
-        if secondary_actions:
-            remaining_exp = ui.expansion(f"続きのタスクを見る ({len(secondary_actions)}件)", icon="unfold_more", value=False).classes("w-full mt-3")
-            with remaining_exp:
-                for item in secondary_actions[:5]:
-                    _render_task_action_card(item)
-
-
-def _render_workspace_writing_tab(snapshot: Dict[str, Any], *, show_header: bool = True) -> None:
-    writing_workspace = snapshot.get("writing_workspace") or {}
-    title_rewrites = writing_workspace.get("title_rewrites") or []
-    description_rewrites = writing_workspace.get("description_rewrites") or []
-    body_rewrites = writing_workspace.get("body_rewrites") or []
-    citation_phrases = writing_workspace.get("citation_phrases") or []
-    faq_summary = writing_workspace.get("faq_detection_summary") or {}
-    faq_items = faq_summary.get("items") or []
-    faq_suggestions = writing_workspace.get("faq_suggestions") or []
-    content_plan = writing_workspace.get("content_plan") or {}
-    sections = content_plan.get("sections") or []
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="文章改善",
-                description="本文・タイトル・FAQ内容など、書き換える内容だけを集約しています。",
-            )
-
-        rewrite_groups = [
-            ("タイトル改善案", title_rewrites),
-            ("説明文改善案", description_rewrites),
-        ]
-        for title, rows in rewrite_groups:
-            if not rows:
-                continue
-            ui.separator()
-            ui.label(title).classes("card-sub font-bold")
-            for row in rows[:3]:
-                current = str(row.get("current") or "").strip()
-                proposed = str(row.get("proposed") or "").strip()
-                before_html, after_html = _diff_html(current, proposed)
-                with ui.card().classes("card p-4 w-full"):
-                    if current:
-                        ui.html(f"<div class='diff-block'><span class='diff-label'>現在</span> {before_html}</div>", sanitize=False).classes("card-sub diff-wrap")
-                    if proposed:
-                        ui.html(f"<div class='diff-block'><span class='diff-label'>提案</span> {after_html}</div>", sanitize=False).classes("card-sub diff-wrap")
-
-        if body_rewrites:
-            ui.separator()
-            ui.label("本文リライト").classes("card-sub font-bold")
-            for item in body_rewrites[:3]:
-                before = str(item.get("original_segment") or "").strip()
-                after = str(item.get("improved_segment") or "").strip()
-                reason = str(item.get("reason") or "").strip()
-                before_html, after_html = _diff_html(before, after)
-                with ui.card().classes("card p-4 w-full"):
-                    ui.html(f"<div class='diff-block'><span class='diff-label'>変更前</span> {before_html}</div>", sanitize=False).classes("card-sub diff-wrap")
-                    ui.html(f"<div class='diff-block'><span class='diff-label'>変更後</span> {after_html}</div>", sanitize=False).classes("card-sub diff-wrap")
-                    if reason:
-                        ui.label(reason).classes("card-hint whitespace-pre-line")
-
-        if citation_phrases:
-            ui.separator()
-            ui.label("AI引用されやすい文章構造").classes("card-sub font-bold")
-            for item in citation_phrases[:4]:
-                phrase = str(item.get("phrase") or "引用候補").strip()
-                proposal = str(item.get("template_non_engineer") or item.get("template") or "").strip()
-                reason = str(item.get("reason") or "").strip()
-                exp = ui.expansion(phrase if len(phrase) <= 48 else f"{phrase[:48]}...", icon="edit", value=False).classes("w-full")
-                with exp:
-                    if proposal:
-                        ui.label(proposal).classes("card-sub whitespace-pre-line")
-                    if reason:
-                        ui.label(reason).classes("card-hint whitespace-pre-line")
-
-        ui.separator()
-        if faq_items:
-            ui.label("既存FAQ検出").classes("card-sub font-bold")
-            ui.label(f"{len(faq_items)}件のFAQ内容を確認できます。").classes("card-hint text-xs")
-            for item in faq_items[:5]:
-                exp = ui.expansion(str(item.get("question") or "FAQ"), icon="help", value=False).classes("w-full")
-                with exp:
-                    ui.label(str(item.get("answer") or "")).classes("card-sub whitespace-pre-line")
-                    if item.get("source"):
-                        ui.label(f"検出元: {item.get('source')}").classes("card-hint text-xs")
-        else:
-            ui.label("FAQ提案").classes("card-sub font-bold")
-            if faq_suggestions:
-                for item in faq_suggestions[:5]:
-                    with ui.card().classes("card p-4 w-full"):
-                        ui.label(str(item.get("question") or "FAQ候補")).classes("generated-title")
-                        with ui.row().classes("items-center gap-2 flex-wrap mt-1"):
-                            if item.get("source_label"):
-                                ui.label(str(item.get("source_label"))).classes("generated-chip")
-                            short_reason = _short_reason_text(item.get("reason"))
-                            if short_reason:
-                                ui.label(f"理由: {short_reason}").classes("card-hint text-xs")
-                        answer_text = str(item.get("answer") or "").strip()
-                        if answer_text:
-                            exp = ui.expansion("回答案を見る", icon="help_outline", value=False).classes("w-full mt-2")
-                            with exp:
-                                ui.label(answer_text).classes("card-sub whitespace-pre-line")
-                                if item.get("reason"):
-                                    ui.label(str(item.get("reason"))).classes("card-hint text-xs whitespace-pre-line")
-            else:
-                ui.label("FAQ候補はまだ抽出されていません。").classes("card-sub text-gray-500")
-
-        if sections:
-            ui.separator()
-            ui.label("追加コンテンツ提案").classes("card-sub font-bold")
-            for section in sections[:3]:
-                _render_expandable_generated_card(
-                    title=str(section.get("title") or "新規セクション"),
-                    body=str(section.get("purpose") or ""),
-                    metric=str(section.get("format") or "提案"),
-                    body_expand_label="詳細を見る",
-                )
-
-
-def _render_workspace_implementation_tab(snapshot: Dict[str, Any], *, show_header: bool = True) -> None:
-    implementation_workspace = snapshot.get("implementation_workspace") or {}
-    technical_workspace = snapshot.get("technical_workspace") or {}
-    provider_matrix = implementation_workspace.get("provider_matrix") or []
-    provider_payload = implementation_workspace.get("provider_payload") or {}
-    google_controls = implementation_workspace.get("google_controls") or {}
-    schema_summary = implementation_workspace.get("schema_summary") or {}
-    llms_notes = implementation_workspace.get("llms_notes") or []
-    seo_audit_notes = implementation_workspace.get("seo_audit_notes") or []
-    reference_notes = implementation_workspace.get("reference_notes") or []
-    informational_notes = [
-        item for item in (implementation_workspace.get("informational_notes") or [])
-        if str(item.get("label") or "") != "llms.txt"
-    ]
-    platform_guidance = implementation_workspace.get("platform_guidance") or {}
-    legal_notes = implementation_workspace.get("legal_display_notes") or []
-    technical_actions = implementation_workspace.get("technical_actions") or []
-    provider_focus = _build_provider_focus_summary(provider_matrix)
-    actionable_provider_rows = [
-        row for row in provider_matrix
-        if str(row.get("status") or "").strip() in {"注意", "要対応"}
-    ]
-    actionable_google_controls = _filter_actionable_google_controls(google_controls)
-    actionable_provider_payloads = []
-    reference_provider_payloads = []
-    for key, label in (
-        ("google", "Google"),
-        ("openai_search", "OpenAI Search"),
-        ("perplexity", "Perplexity"),
-        ("claude_search", "Claude Search"),
-    ):
-        payload = provider_payload.get(key) or {}
-        if not payload:
-            continue
-        status_key = _normalize_status_key(payload.get("status"))
-        if status_key == "pass" and not _provider_has_actionable_details(payload):
-            continue
-        row = (label, payload, status_key)
-        if status_key in {"fail", "warn"}:
-            actionable_provider_payloads.append(row)
-        else:
-            reference_provider_payloads.append(row)
-
-    refresh_notes = [
-        item for item in seo_audit_notes
-        if str(item.get("group") or "").strip() == "refresh"
-        or str(item.get("source") or "").strip() == "legacy_fallback"
-    ]
-    actionable_seo_audits = sorted(
-        [
-            item for item in seo_audit_notes
-            if item not in refresh_notes and _normalize_status_key(item.get("status")) in {"fail", "warn"}
-        ],
-        key=lambda item: (_status_sort_key(item.get("status")), str(item.get("title") or "")),
-    )
-    reference_seo_audits = sorted(
-        [
-            item for item in seo_audit_notes
-            if item not in refresh_notes and _normalize_status_key(item.get("status")) not in {"fail", "warn"}
-        ],
-        key=lambda item: (_status_sort_key(item.get("status")), str(item.get("title") or "")),
-    )
-    technical_summary_cards = [
-        item for item in (technical_workspace.get("summary_cards") or [])
-        if isinstance(item, dict) and str(item.get("detail") or "").strip()
-    ][:3]
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="実装・設定",
-                description="今やること、旧データの再分析対象、参考情報を分けて確認できます。",
-            )
-
-        if technical_summary_cards:
-            ui.label("重要な技術サマリー").classes("card-sub font-bold mt-3")
-            with ui.row().classes("w-full gap-3 flex-wrap mt-2"):
-                for item in technical_summary_cards:
-                    _render_engineer_summary_card(item)
-
-        ui.label("要対応 / 注意").classes("card-sub font-bold mt-3")
-        with ui.card().classes("card implementation-note-card p-4 w-full mt-2"):
-            if provider_matrix:
-                ui.label("公開条件の要点").classes("card-sub font-bold")
-                ui.label(
-                    f"要対応 {provider_focus['fail']}件 / 注意 {provider_focus['warn']}件 / 通過 {provider_focus['pass']}件"
-                ).classes("card-sub")
-            actionable_count = (
-                len(actionable_provider_rows)
-                + len(actionable_provider_payloads)
-                + len(actionable_google_controls)
-                + len(actionable_seo_audits)
-                + len(technical_actions)
-                + len(legal_notes)
-            )
-            ui.label("ここまで見れば十分").classes("card-sub font-bold mt-2")
-            ui.label(
-                _build_implementation_stop_message(
-                    actionable_count=actionable_count,
-                    refresh_count=len(refresh_notes),
-                )
-            ).classes("card-hint text-sm")
-            if actionable_provider_rows:
-                with ui.row().classes("w-full gap-3 flex-wrap mt-2"):
-                    for row in actionable_provider_rows:
-                        status_text = str(row.get("status") or "未判定")
-                        with ui.card().classes("card p-4 min-w-[180px] flex-1"):
-                            ui.label(str(row.get("label") or "-")).classes("text-xs text-gray-500")
-                            ui.label(status_text).classes(
-                                f"text-xl font-bold px-2 py-1 rounded inline-flex { _status_badge_classes(status_text) }"
-                            )
-                            if row.get("summary"):
-                                ui.label(str(row.get("summary"))).classes("card-hint text-xs")
-            if actionable_provider_payloads:
-                for label, payload, status_key in actionable_provider_payloads:
-                    exp = ui.expansion(
-                        f"{label}: {payload.get('status_label') or _status_label(status_key)}",
-                        icon="shield",
-                        value=True,
-                    ).classes("w-full mt-3")
-                    with exp:
-                        if payload.get("summary"):
-                            ui.label(str(payload.get("summary"))).classes("card-sub")
-                        checks = payload.get("official_checks") or []
-                        visible_checks = [
-                            check for check in checks
-                            if _normalize_status_key(check.get("status")) in {"warn", "fail"}
-                        ]
-                        if checks:
-                            ui.label("公開条件").classes("card-sub font-bold mt-2")
-                            for check in visible_checks or checks[:1]:
-                                check_label = _provider_check_status_label(check.get("status"))
-                                ui.label(f"{check.get('label')}: {check_label}").classes("card-hint text-xs")
-                        heuristics = payload.get("heuristic_notes") or []
-                        if heuristics:
-                            ui.label("内部ヒューリスティック").classes("card-sub font-bold mt-2")
-                            for note in heuristics[:4]:
-                                ui.label(f"・{note}").classes("card-hint text-xs")
-            if actionable_google_controls:
-                ui.label("Google 制御").classes("card-sub font-bold mt-3")
-                _render_snapshot_cards(actionable_google_controls, empty_text="", show_label=False)
-            if actionable_seo_audits:
-                ui.label("SEO / AI Search 追加監査").classes("card-sub font-bold mt-3")
-                for item in actionable_seo_audits:
-                    _render_status_note_card(item)
-            if technical_actions:
-                ui.label("技術アクション").classes("card-sub font-bold mt-3")
-                _render_snapshot_cards(technical_actions[:3], empty_text="", show_label=False, detail_limit=180)
-                if len(technical_actions) > 3:
-                    technical_exp = ui.expansion(
-                        f"続きの技術アクションを見る ({len(technical_actions) - 3}件)",
-                        icon="code",
-                        value=False,
-                    ).classes("w-full mt-2")
-                    with technical_exp:
-                        _render_snapshot_cards(technical_actions[3:], empty_text="", show_label=False, detail_limit=180)
-            if legal_notes:
-                ui.label("表示アドバイスメモ").classes("card-sub font-bold mt-3")
-                _render_snapshot_cards(
-                    [
-                        {
-                            "title": item.get("title"),
-                            "detail": item.get("detail"),
-                            "label": "このページ向け",
-                        }
-                        for item in legal_notes
-                    ],
-                    empty_text="",
-                    detail_limit=180,
-                )
-
-        if refresh_notes:
-            ui.separator()
-            ui.label("再分析で詳細化").classes("card-sub font-bold")
-            with ui.card().classes("card p-4 w-full mt-2"):
-                ui.label("旧データ由来のため、追加監査は再分析後に実データへ置き換わります。").classes("card-hint")
-                for item in refresh_notes:
-                    _render_status_note_card(item, card_classes="card p-4 w-full mt-2")
-
-        reference_section_visible = bool(
-            schema_summary
-            or reference_seo_audits
-            or reference_provider_payloads
-            or llms_notes
-            or informational_notes
-            or platform_guidance
-            or reference_notes
-            or (google_controls and not actionable_google_controls)
-        )
-        if reference_section_visible:
-            ui.separator()
-            ui.label("参考（後で見る）").classes("card-sub font-bold")
-        if schema_summary or reference_seo_audits or reference_provider_payloads or (google_controls and not actionable_google_controls):
-            with ui.card().classes("card reference-note-card p-4 w-full mt-2"):
-                if schema_summary:
-                    ui.label("構造化データ / FAQPage").classes("card-sub font-bold")
-                    _render_compact_note_rows(
-                        [{"detail": line} for line in (schema_summary.get("summary_lines") or [])],
-                        empty_text="構造化データ情報はありません。",
-                    )
-                    validation = schema_summary.get("validation") or {}
-                    suspicious_items = validation.get("suspicious_items") or []
-                    if suspicious_items:
-                        warn_exp = ui.expansion("整合チェックの注意", icon="warning", value=False).classes("w-full mt-2")
-                        with warn_exp:
-                            for item in suspicious_items[:4]:
-                                ui.label(str(item.get("question") or item.get("reason") or "")).classes("card-sub")
-                                if item.get("reason"):
-                                    ui.label(str(item.get("reason"))).classes("card-hint text-xs")
-                if reference_seo_audits:
-                    ui.label("SEO / AI Search 追加監査").classes("card-sub font-bold mt-3")
-                    for item in reference_seo_audits:
-                        _render_status_note_card(item, card_classes="card p-4 w-full mt-2")
-                if reference_provider_payloads:
-                    provider_exp = ui.expansion("公開条件の詳細を見る", icon="shield", value=False).classes("w-full mt-3")
-                    with provider_exp:
-                        for label, payload, status_key in reference_provider_payloads:
-                            inner = ui.expansion(
-                                f"{label}: {payload.get('status_label') or _status_label(status_key)}",
-                                icon="check_circle",
-                                value=False,
-                            ).classes("w-full mt-2")
-                            with inner:
-                                if payload.get("summary"):
-                                    ui.label(str(payload.get("summary"))).classes("card-sub")
-                                checks = payload.get("official_checks") or []
-                                if checks:
-                                    ui.label("公開条件").classes("card-sub font-bold mt-2")
-                                    for check in checks[:2]:
-                                        check_label = _provider_check_status_label(check.get("status"))
-                                        ui.label(f"{check.get('label')}: {check_label}").classes("card-hint text-xs")
-                                heuristics = payload.get("heuristic_notes") or []
-                                if heuristics:
-                                    ui.label("内部ヒューリスティック").classes("card-sub font-bold mt-2")
-                                    for note in heuristics[:2]:
-                                        ui.label(f"・{note}").classes("card-hint text-xs")
-                if google_controls and not actionable_google_controls:
-                    google_exp = ui.expansion("Google 制御の現状", icon="tune", value=False).classes("w-full mt-3")
-                    with google_exp:
-                        _render_snapshot_cards(_describe_google_controls(google_controls), empty_text="", show_label=False)
-
-        if llms_notes:
-            llms_exp = ui.expansion("llms.txt（任意）", icon="description", value=False).classes("w-full")
-            with llms_exp:
-                _render_snapshot_cards(llms_notes, empty_text="", show_label=False, detail_limit=180)
-
-        if informational_notes:
-            info_exp = ui.expansion("参考メモ", icon="info", value=False).classes("w-full")
-            with info_exp:
-                _render_snapshot_cards(
-                    [
-                        {
-                            "title": item.get("label"),
-                            "detail": item.get("message"),
-                            "label": "参考",
-                        }
-                        for item in informational_notes[:5]
-                    ],
-                    empty_text="",
-                    detail_limit=180,
-                )
-
-        technical_steps = platform_guidance.get("technical_steps") or []
-        business_steps = platform_guidance.get("business_steps") or []
-        help_links = platform_guidance.get("help_links") or []
-        if platform_guidance or reference_notes:
-            cms_exp = ui.expansion("CMS別手順", icon="build", value=False).classes("w-full")
-            with cms_exp:
-                if platform_guidance.get("label"):
-                    ui.label(str(platform_guidance.get("label"))).classes("card-hint text-xs")
-                for step in technical_steps[:4]:
-                    ui.label(f"・{step}").classes("card-sub")
-                for step in business_steps[:2]:
-                    ui.label(f"・{step}").classes("card-hint")
-                for link in help_links[:3]:
-                    ui.link(str(link.get("label") or "公式ドキュメント"), str(link.get("url") or "#"), new_tab=True).classes("card-hint")
-                if reference_notes:
-                    ui.separator()
-                    ui.label("運用メモ").classes("card-sub font-bold")
-                    _render_snapshot_cards(reference_notes[:5], empty_text="", detail_limit=180)
-
-
-def _render_workspace_engineer_tab(snapshot: Dict[str, Any], *, show_header: bool = True) -> None:
-    technical_workspace = snapshot.get("technical_workspace") or {}
-    summary_cards = [
-        item for item in (technical_workspace.get("summary_cards") or [])
-        if isinstance(item, dict) and str(item.get("detail") or "").strip()
-    ]
-    crawl_scope = technical_workspace.get("crawl_scope") or {}
-    link_health = technical_workspace.get("link_health") or {}
-    schema = technical_workspace.get("schema") or {}
-    llms = technical_workspace.get("llms") or {}
-    site_health_checks = technical_workspace.get("site_health_checks") or []
-    action_items = technical_workspace.get("action_items") or technical_workspace.get("actions") or []
-
-    def _render_item_lines(items: list[dict], *, value_keys: tuple[str, ...], empty_text: str = "") -> None:
-        rendered = 0
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            lead = ""
-            for key in value_keys:
-                lead = str(item.get(key) or "").strip()
-                if lead:
-                    break
-            if not lead:
-                continue
-            ui.label(f"・{lead}").classes("card-sub")
-            rendered += 1
-        if rendered == 0 and empty_text:
-            ui.label(empty_text).classes("card-hint text-xs")
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="エンジニア向け",
-                description="構造化データ、llms.txt、内部リンク、技術健全性の詳細をまとめています。",
-                mode_label="技術詳細",
-            )
-
-        if summary_cards:
-            ui.label("優先確認項目").classes("card-sub font-bold mt-3")
-            with ui.row().classes("w-full gap-3 flex-wrap mt-2"):
-                for item in summary_cards:
-                    _render_engineer_summary_card(item)
-
-        if crawl_scope:
-            ui.separator()
-            ui.label("クロール範囲").classes("card-sub font-bold")
-            with ui.card().classes("card p-4 w-full mt-2"):
-                _render_engineer_summary_card(
-                    {
-                        "title": str(crawl_scope.get("title") or "クロール範囲"),
-                        "detail": str(crawl_scope.get("detail") or ""),
-                        "status": crawl_scope.get("status"),
-                        "status_label": crawl_scope.get("status_label"),
-                    },
-                    card_classes="card p-0 w-full bg-transparent shadow-none",
-                )
-                if crawl_scope.get("warning"):
-                    ui.label(str(crawl_scope.get("warning"))).classes("card-hint text-xs text-orange-700 mt-2")
-                if crawl_scope.get("error"):
-                    ui.label(str(crawl_scope.get("error"))).classes("card-hint text-xs text-red-700 mt-1")
-                priority_pages = crawl_scope.get("priority_pages") or []
-                if priority_pages:
-                    scope_exp = ui.expansion("取得できた優先ページ", icon="travel_explore", value=False).classes("w-full mt-2")
-                    with scope_exp:
-                        for page in priority_pages[:6]:
-                            title = str(page.get("title") or page.get("url") or "-")
-                            url = str(page.get("url") or "").strip()
-                            ui.label(title).classes("card-sub")
-                            if url:
-                                ui.label(url).classes("card-hint text-xs break-all")
-                source_sitemaps = crawl_scope.get("source_sitemaps") or []
-                if source_sitemaps:
-                    sitemap_exp = ui.expansion("参照した sitemap", icon="account_tree", value=False).classes("w-full mt-2")
-                    with sitemap_exp:
-                        for item in source_sitemaps[:5]:
-                            ui.label(str(item)).classes("card-hint text-xs break-all")
-
-        if link_health:
-            ui.separator()
-            ui.label("内部リンク / リンク先監査").classes("card-sub font-bold")
-            with ui.card().classes("card p-4 w-full mt-2"):
-                _render_engineer_summary_card(
-                    link_health,
-                    card_classes="card p-0 w-full bg-transparent shadow-none",
-                )
-                diagnosis = str(link_health.get("diagnosis") or "").strip()
-                if diagnosis:
-                    ui.label(diagnosis).classes("card-sub mt-2")
-                metrics = []
-                if link_health.get("total_known_pages"):
-                    metrics.append(f"把握ページ {link_health.get('total_known_pages')}件")
-                if link_health.get("total_analyzed_pages"):
-                    metrics.append(f"分析ページ {link_health.get('total_analyzed_pages')}件")
-                if link_health.get("avg_depth") not in (None, ""):
-                    metrics.append(f"平均深度 {link_health.get('avg_depth')}")
-                if link_health.get("audited_target_count"):
-                    metrics.append(f"リンク先監査 {link_health.get('audited_target_count')}件")
-                if metrics:
-                    ui.label(" / ".join(metrics)).classes("card-hint text-xs mt-2")
-
-                for section_title, items, value_keys in (
-                    ("エラーリンク候補", link_health.get("broken_targets") or [], ("detail", "final_url", "url")),
-                    ("リダイレクト候補", link_health.get("redirected_targets") or [], ("detail", "final_url", "url")),
-                    ("canonical 不整合候補", link_health.get("canonical_mismatches") or [], ("detail", "canonical_url", "url")),
-                    ("noindex リンク先候補", link_health.get("noindex_targets") or [], ("detail", "url")),
-                ):
-                    if not items:
-                        continue
-                    exp = ui.expansion(section_title, icon="link_off", value=False).classes("w-full mt-2")
-                    with exp:
-                        _render_item_lines(items[:5], value_keys=value_keys)
-                if link_health.get("orphan_pages"):
-                    orphan_exp = ui.expansion("孤立ページ候補", icon="warning", value=False).classes("w-full mt-2")
-                    with orphan_exp:
-                        for item in (link_health.get("orphan_pages") or [])[:5]:
-                            ui.label(f"・{item}").classes("card-sub break-all")
-
-        if schema:
-            ui.separator()
-            ui.label("構造化データ").classes("card-sub font-bold")
-            with ui.card().classes("card p-4 w-full mt-2"):
-                _render_engineer_summary_card(
-                    schema,
-                    card_classes="card p-0 w-full bg-transparent shadow-none",
-                )
-                for line in (schema.get("summary_lines") or [])[:4]:
-                    ui.label(str(line)).classes("card-hint text-xs mt-1")
-                validation_issues = schema.get("validation_issues") or []
-                if validation_issues:
-                    validation_exp = ui.expansion("FAQ / schema 整合の注意", icon="rule", value=False).classes("w-full mt-2")
-                    with validation_exp:
-                        _render_item_lines(validation_issues[:5], value_keys=("question", "reason"))
-                suggestions = schema.get("suggestions") or []
-                if suggestions:
-                    ui.label("追加候補（上位3件）").classes("card-sub font-bold mt-3")
-                    for item in suggestions[:3]:
-                        with ui.card().classes("card p-4 w-full mt-2"):
-                            with ui.row().classes("items-center justify-between gap-2 flex-wrap"):
-                                ui.label(str(item.get("status_label") or "未設定")).classes(
-                                    f"text-xs px-2 py-1 rounded inline-flex { _status_badge_classes(item.get('status')) }"
-                                )
-                                ui.label(str(item.get("priority") or "")).classes("generated-metric")
-                            ui.label(str(item.get("schema_type") or "Schema")).classes("generated-title")
-                            if item.get("summary"):
-                                ui.label(str(item.get("summary"))).classes("card-hint text-xs whitespace-pre-line")
-                            template = str(item.get("template") or "").strip()
-                            if template:
-                                code_exp = ui.expansion("コードを見る", icon="code", value=False).classes("w-full mt-2")
-                                with code_exp:
-                                    ui.code(template[:2000]).classes("text-xs w-full")
-
-        if llms:
-            ui.separator()
-            ui.label("llms.txt").classes("card-sub font-bold")
-            with ui.card().classes("card p-4 w-full mt-2"):
-                _render_engineer_summary_card(
-                    llms,
-                    card_classes="card p-0 w-full bg-transparent shadow-none",
-                )
-                found_paths = llms.get("found_paths") or []
-                if found_paths:
-                    ui.label(f"検出パス: {', '.join(str(item) for item in found_paths[:3])}").classes("card-hint text-xs mt-2")
-                if llms.get("issues"):
-                    issues_exp = ui.expansion("要確認", icon="report_problem", value=False).classes("w-full mt-2")
-                    with issues_exp:
-                        for issue in (llms.get("issues") or [])[:4]:
-                            ui.label(f"・{issue}").classes("card-sub")
-                if llms.get("recommendations"):
-                    rec_exp = ui.expansion("改善案", icon="description", value=False).classes("w-full mt-2")
-                    with rec_exp:
-                        for item in (llms.get("recommendations") or [])[:4]:
-                            ui.label(f"・{item}").classes("card-sub")
-                checked_paths = llms.get("checked_paths") or []
-                if checked_paths and not found_paths:
-                    ui.label(f"確認先: {', '.join(str(item) for item in checked_paths[:5])}").classes("card-hint text-xs mt-2")
-
-        if site_health_checks:
-            ui.separator()
-            ui.label("OGP / セキュリティ / アクセシビリティ").classes("card-sub font-bold")
-            with ui.row().classes("w-full gap-3 flex-wrap mt-2"):
-                for item in site_health_checks:
-                    _render_engineer_summary_card(item)
-            for item in site_health_checks:
-                details_available = bool(item.get("highlights") or item.get("issues") or item.get("recommendations") or item.get("items"))
-                if not details_available:
-                    continue
-                exp = ui.expansion(f"{item.get('title')}の詳細", icon="monitor_heart", value=False).classes("w-full mt-2")
-                with exp:
-                    highlights = item.get("highlights") or []
-                    for line in highlights[:3]:
-                        ui.label(f"・{line}").classes("card-sub")
-                    for line in (item.get("issues") or [])[:3]:
-                        ui.label(f"・{line}").classes("card-hint text-xs text-orange-700")
-                    for line in (item.get("recommendations") or [])[:3]:
-                        ui.label(f"・{line}").classes("card-hint text-xs")
-
-        if action_items:
-            ui.separator()
-            ui.label("技術アクション").classes("card-sub font-bold")
-            _render_snapshot_cards(action_items[:4], empty_text="", show_label=False, detail_limit=180)
-
-
-def _render_workspace_comparison_tab(snapshot: Dict[str, Any], same_url_history: list[dict], *, show_header: bool = True) -> None:
-    comparison_workspace = snapshot.get("comparison_workspace") or {}
-    previous_diff = comparison_workspace.get("previous_diff") or {}
-    competitor_summary = comparison_workspace.get("competitor_summary") or {}
-
-    with ui.card().classes("card workspace-panel p-5 w-full"):
-        if show_header:
-            _render_workspace_header(
-                title="履歴と比較",
-                description="前回との差分と競合比較だけをまとめています。",
-            )
-        ui.label(f"前回比: {previous_diff.get('label', '前回なし')}").classes("card-sub")
-        ui.label(str(comparison_workspace.get("run_note") or "")).classes("card-hint text-xs")
-
-        if competitor_summary:
-            ui.separator()
-            ui.label("競合比較").classes("card-sub font-bold")
-            status = str(competitor_summary.get("status") or "")
-            if status == "available":
-                if competitor_summary.get("url"):
-                    ui.label(str(competitor_summary.get("url"))).classes("card-hint text-xs break-all")
-                for row in competitor_summary.get("scores") or []:
-                    ui.label(
-                        f"{row.get('label')}: 自社 {row.get('own')} / 競合 {row.get('competitor')} / 差分 {row.get('diff'):+} ({row.get('verdict')})"
-                    ).classes("card-sub")
-                if competitor_summary.get("actions"):
-                    ui.label("差分アクション").classes("card-sub font-bold mt-2")
-                    _render_snapshot_cards(
-                        competitor_summary.get("actions") or [],
-                        empty_text="",
-                        show_label=False,
-                        detail_limit=180,
-                    )
-            else:
-                ui.label(str(competitor_summary.get("message") or "比較情報はありません。")).classes(
-                    f"card-sub px-2 py-1 rounded inline-flex { _status_badge_classes(status) }"
-                )
-
-        ui.separator()
-        ui.label("同一URLの履歴").classes("card-sub font-bold")
-        if same_url_history:
-            history_columns = [
-                {"name": "analyzed_at", "label": "分析日時", "field": "analyzed_at", "align": "left"},
-                {"name": "seo_score", "label": "SEO", "field": "seo_score", "align": "center"},
-                {"name": "aio_score", "label": "AI認識", "field": "aio_score", "align": "center"},
-                {"name": "total_issues", "label": "課題数", "field": "total_issues", "align": "center"},
-            ]
-            table = ui.table(columns=history_columns, rows=same_url_history, row_key="id", pagination=8).classes("w-full mt-3 text-sm")
-            table.props("flat bordered separator=cell")
-            table.on(
-                "rowClick",
-                lambda event: ui.navigate.to(
-                    f"/runs/{_extract_row_id_from_event_args(event.args)}"
-                ),
-            )
-        else:
-            ui.label("比較できる履歴はまだありません。").classes("card-sub text-gray-500")
-
-
-def _build_workspace_tab_plan(snapshot: Dict[str, Any], *, same_url_history: list[dict]) -> dict[str, list[dict]]:
-    comparison_workspace = snapshot.get("comparison_workspace") or {}
-    competitor_summary = comparison_workspace.get("competitor_summary") or {}
-    primary = [
-        {"name": "サマリー"},
-        {"name": "やること"},
-        {"name": "文章改善"},
-        {"name": "実装・設定"},
-    ]
-    secondary = [
-        {
-            "name": "エンジニア向け",
-            "icon": "terminal",
-            "description": "構造化データ、llms.txt、内部リンク、技術健全性の詳細を見たいときだけ開きます。",
-        }
-    ]
-    if same_url_history or competitor_summary:
-        secondary.append(
-            {
-                "name": "履歴と比較",
-                "icon": "history",
-                "description": "前回との差分や競合比較を確認するときだけ開きます。",
-            }
-        )
-    return {"primary": primary, "secondary": secondary}
-
-
-def _render_workspace_tabs(snapshot: Dict[str, Any], *, same_url_history: list[dict]) -> None:
-    tab_specs: list[tuple[str, Any]] = [
-        ("評価", lambda: _render_workspace_summary_tab(snapshot, show_header=False)),
-    ]
-    if _saved_run_has_improvement_tab(snapshot):
-        tab_specs.append(("改善", lambda: _render_workspace_task_tab(snapshot, show_header=False)))
-    if _saved_run_has_writing_tab(snapshot):
-        tab_specs.append(("リライト", lambda: _render_workspace_writing_tab(snapshot, show_header=False)))
-    if _saved_run_has_implementation_tab(snapshot):
-        tab_specs.append(("設定", lambda: _render_workspace_implementation_tab(snapshot, show_header=False)))
-    if _saved_run_has_engineer_tab(snapshot):
-        tab_specs.append(("技術", lambda: _render_workspace_engineer_tab(snapshot, show_header=False)))
-    if _saved_run_has_comparison_tab(snapshot, same_url_history):
-        tab_specs.append(("比較", lambda: _render_workspace_comparison_tab(snapshot, same_url_history, show_header=False)))
-
-    with ui.card().classes("card detail-tabs-card p-4 w-full"):
-        with ui.tabs().props("outside-arrows mobile-arrows").classes("tabs saved-run-tabs saved-run-tabs-sticky w-full") as workspace_tabs:
-            for name, _renderer in tab_specs:
-                ui.tab(name)
-
-        with ui.tab_panels(workspace_tabs, value=tab_specs[0][0]).classes("w-full saved-run-tab-panels mt-4"):
-            for name, renderer in tab_specs:
-                with ui.tab_panel(name).classes("px-0 pt-0"):
-                    renderer()
-
-
-def render_saved_run_workspace(bundle: Dict[str, Any]) -> None:
-    snapshot = bundle.get("snapshot") or {}
-    same_url_history = bundle.get("same_url_history") or []
-
-    _render_saved_run_evaluation(bundle)
-
-    tab_specs: list[tuple[str, Any]] = []
-    if _saved_run_has_improvement_tab(snapshot):
-        tab_specs.append(("改善", lambda: _render_saved_run_improvement_tab(snapshot)))
-    if _saved_run_has_writing_tab(snapshot):
-        tab_specs.append(("リライト", lambda: _render_workspace_writing_tab(snapshot, show_header=False)))
-    if _saved_run_has_implementation_tab(snapshot):
-        tab_specs.append(("設定", lambda: _render_workspace_implementation_tab(snapshot, show_header=False)))
-    if _saved_run_has_engineer_tab(snapshot):
-        tab_specs.append(("技術", lambda: _render_workspace_engineer_tab(snapshot, show_header=False)))
-    if _saved_run_has_comparison_tab(snapshot, same_url_history):
-        tab_specs.append(("比較", lambda: _render_workspace_comparison_tab(snapshot, same_url_history, show_header=False)))
-
-    if not tab_specs:
-        return
-
-    with ui.card().classes("card detail-tabs-card p-4 w-full"):
-        with ui.tabs().props("outside-arrows mobile-arrows").classes("tabs saved-run-tabs saved-run-tabs-sticky w-full") as saved_run_tabs:
-            for name, _renderer in tab_specs:
-                ui.tab(name)
-
-        with ui.tab_panels(saved_run_tabs, value=tab_specs[0][0]).classes("w-full saved-run-tab-panels mt-4"):
-            for name, renderer in tab_specs:
-                with ui.tab_panel(name).classes("px-0 pt-0"):
-                    renderer()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

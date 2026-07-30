@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 import xml.etree.ElementTree as ET
+import re
 
 from core.safe_fetch import safe_fetch_url
 
@@ -95,6 +96,8 @@ def _parse_sitemap_xml(
 
     namespace = _extract_namespace(tree.tag)
 
+    generator_hint = _extract_generator_hint(xml_text)
+
     if _strip_ns(tree.tag).lower() == "sitemapindex":
         if depth >= MAX_SITEMAP_RECURSION:
             return _empty_result(error="sitemapindex の再帰上限に達しました")
@@ -113,6 +116,7 @@ def _parse_sitemap_xml(
         parsed_sitemaps = 1
         media_hints = {"image_sitemap_detected": False, "video_sitemap_detected": False}
         source_sitemaps: List[str] = []
+        generator_hints: List[str] = [generator_hint] if generator_hint else []
 
         for sub_url in allowed_sub_urls:
             normalized_sub_url = sub_url.strip()
@@ -146,6 +150,9 @@ def _parse_sitemap_xml(
                 media_hints["image_sitemap_detected"] = media_hints["image_sitemap_detected"] or bool(child_hints.get("image_sitemap_detected"))
                 media_hints["video_sitemap_detected"] = media_hints["video_sitemap_detected"] or bool(child_hints.get("video_sitemap_detected"))
                 source_sitemaps.extend(parsed.get("source_sitemaps") or [])
+                child_generator = str(parsed.get("generator_hint") or "").strip()
+                if child_generator:
+                    generator_hints.append(child_generator)
                 error_text = str(parsed.get("error") or "").strip()
                 if error_text:
                     warnings.append(error_text)
@@ -164,6 +171,7 @@ def _parse_sitemap_xml(
             parsed_sitemaps=parsed_sitemaps,
             media_hints=media_hints,
             source_sitemaps=source_sitemaps,
+            generator_hint=" / ".join(sorted(set(generator_hints)))[:160],
         )
 
     if _strip_ns(tree.tag).lower() != "urlset":
@@ -186,6 +194,7 @@ def _parse_sitemap_xml(
             "video_sitemap_detected": "<video:video" in xml_text.lower(),
         },
         source_sitemaps=[],
+        generator_hint=generator_hint,
     )
 
 
@@ -196,6 +205,7 @@ def _build_result_from_entries(
     parsed_sitemaps: int = 1,
     media_hints: Optional[Dict[str, bool]] = None,
     source_sitemaps: Optional[List[str]] = None,
+    generator_hint: str = "",
 ) -> Dict[str, Any]:
     deduped_entries = _dedupe_entries(entries)
     total_urls = len(deduped_entries)
@@ -227,6 +237,7 @@ def _build_result_from_entries(
         "entries": deduped_entries,
         "media_hints": media_hints or {"image_sitemap_detected": False, "video_sitemap_detected": False},
         "source_sitemaps": sorted(set(source_sitemaps or []))[:20],
+        "generator_hint": generator_hint,
     }
 
 
@@ -245,7 +256,24 @@ def _empty_result(error: Optional[str] = None, warning: Optional[str] = None) ->
         "entries": [],
         "media_hints": {"image_sitemap_detected": False, "video_sitemap_detected": False},
         "source_sitemaps": [],
+        "generator_hint": "",
     }
+
+
+def _extract_generator_hint(xml_text: str) -> str:
+    lowered = (xml_text or "").lower()
+    if "xml-sitemaps.com" in lowered:
+        return "xml-sitemaps.com"
+    if "all in one seo" in lowered or "aioseo" in lowered:
+        return "All in One SEO"
+    if "yoast" in lowered:
+        return "Yoast SEO"
+    comment_match = re.search(r"<!--\s*(.{0,160}?)\s*-->", xml_text or "", flags=re.S)
+    if comment_match:
+        comment = re.sub(r"\s+", " ", comment_match.group(1)).strip()
+        if comment:
+            return comment[:120]
+    return ""
 
 
 def _extract_namespace(tag: str) -> str:

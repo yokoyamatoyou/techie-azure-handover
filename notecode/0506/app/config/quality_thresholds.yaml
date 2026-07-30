@@ -1,0 +1,29 @@
+qa_policies:
+  self_perspective_blog_default:
+    min_score_for_auto_publish: 90
+    human_review_score_floor: 80
+    high_risk_auto_publish_allowed: false
+    forbidden_viewpoint_terms:
+      - "同社"
+      - "同サービス"
+      - "同店"
+      - "同院"
+    risky_phrases:
+      - "いかがでしたでしょうか"
+      - "〜と言えるでしょう"
+      - "〜することができます"
+      - "この記事では"
+      - "ぜひ参考にしてみてください"
+      - "このように"
+      - "また、"
+      - "さらに、"
+  formal_notice_default:
+    min_score_for_auto_publish: 90
+    human_review_score_floor: 80
+    high_risk_auto_publish_allowed: false
+    forbidden_viewpoint_terms:
+      - "同社"
+      - "同サービス"
+    risky_phrases:
+      - "いかがでしたでしょうか"
+      - "ぜひ参考にしてみてください"

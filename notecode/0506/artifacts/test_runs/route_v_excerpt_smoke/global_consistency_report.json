@@ -1,0 +1,12 @@
+{
+  "editor_profile_id": "note_hatena_global_consistency_editor",
+  "focus": "whole_article_voice_after_opening",
+  "changed": false,
+  "checks": {
+    "narrator_present": true,
+    "duplicate_motto_reduced": true,
+    "duplicate_founding_reduced": true,
+    "source_grounding_policy_changed": false,
+    "qa_threshold_changed": false
+  }
+}

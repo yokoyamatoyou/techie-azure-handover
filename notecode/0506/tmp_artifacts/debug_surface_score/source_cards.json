@@ -1,0 +1,42 @@
+[
+  {
+    "source_id": "manual_dbbf3a870a33",
+    "source_type": "manual",
+    "title": "????",
+    "published_or_updated_at": null,
+    "reliability": "user_uploaded",
+    "main_topics": [
+      "????"
+    ],
+    "facts": [
+      {
+        "fact_id": "F001",
+        "claim": "????2018????????????????????????????????????",
+        "category": "source_claim",
+        "importance": 5,
+        "source_span": "manual:1",
+        "usable_in_article": true,
+        "confidence": "medium",
+        "risk_flags": []
+      }
+    ],
+    "quotes_or_phrases": [],
+    "warnings": [
+      {
+        "type": "ambiguous",
+        "message": "manual text is thin and should be reviewed before generation",
+        "source_span": null
+      }
+    ],
+    "metadata": {
+      "source_label": "????",
+      "url": null,
+      "canonical_url": null,
+      "author": null,
+      "retrieved_at": "2026-06-27T11:02:08.169201+00:00",
+      "source_priority": 1,
+      "extraction_method": "manual_text",
+      "extraction_confidence": "low"
+    }
+  }
+]

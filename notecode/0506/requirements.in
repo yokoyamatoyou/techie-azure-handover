@@ -1,0 +1,14 @@
+pytest
+jsonschema
+pydantic
+PyYAML
+httpx
+beautifulsoup4
+pypdf
+PyMuPDF
+python-docx
+python-dotenv
+sudachipy
+sudachidict_core
+openai
+nicegui

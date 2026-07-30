@@ -122,6 +122,20 @@ class TestSubjectExplicitRate:
         rate = subject_explicit_rate(HUMAN_LIKE_TEXT)
         assert 0.0 <= rate <= 1.0
 
+    def test_detects_sentence_initial_subjects(self):
+        text = "市場は拡大した。競争が激化した。価格は下落した。"
+        rate = subject_explicit_rate(text)
+        assert rate >= 0.66
+
+    def test_ignores_mid_sentence_subject_markers(self):
+        text = (
+            "確認事項として、管理者は操作画面を確認しました。"
+            "案内文では、利用者は対象範囲を確認しました。"
+            "移行前に、承認者は設定内容を確認しました。"
+        )
+        rate = subject_explicit_rate(text)
+        assert rate == 0.0
+
     @pytest.mark.skipif(not SUDACHI_AVAILABLE, reason="Sudachi unavailable")
     def test_detects_noun_plus_subject_particle_pattern_with_sudachi(self):
         text = "市場は拡大した。競争が激化した。価格は下落した。"
@@ -301,6 +315,18 @@ class TestFingerprintCorrection:
         result = apply_fingerprint_corrections(text, report, max_rewrite_ratio=1.0)
         assert "subject_drop" in result.applied_rules
         assert result.text != text
+
+    def test_subject_drop_ignores_mid_sentence_pronouns(self):
+        text = (
+            "確認のあと、私は進めました。"
+            "共有のあと、私は調整しました。"
+            "相談のあと、私は記録しました。"
+            "比較のあと、私は反映しました。"
+        )
+        report = FingerprintReport(flat_zone_flags=["subject_explicit_high"])
+        result = apply_fingerprint_corrections(text, report, max_rewrite_ratio=1.0)
+        assert "subject_drop" not in result.applied_rules
+        assert result.text == text
 
     def test_sentence_end_variation_disabled_by_default(self):
         text = "\n".join([
@@ -1349,6 +1375,11 @@ class TestR9T03EndingRepetition:
         assert "desu" in hints[0]
         assert "3回連続" in hints[0]
 
+    def test_paragraph_boundary_resets_streak(self):
+        text = "確認します。調整します。\n\n報告します。"
+        hints = detect_ending_repetition(text)
+        assert hints == []
+
     def test_four_consecutive_masu(self):
         text = "確認します。改善します。実行します。報告します。"
         hints = detect_ending_repetition(text)
@@ -1473,6 +1504,24 @@ class TestR9AnalyzerIntegration:
         report = analyzer.analyze(HUMAN_LIKE_TEXT)
         # Human-like text should not have excessive ending repetition
         assert "ending_repetition" not in report.flat_zone_flags or True  # soft check
+
+    def test_subject_explicit_high_ignores_mid_sentence_topics(self, monkeypatch):
+        import core.app_config as app_cfg
+
+        text = (
+            "確認事項として、管理者は操作画面を確認しました。"
+            "案内文では、利用者は対象範囲を確認しました。"
+            "移行前に、承認者は設定内容を確認しました。"
+        )
+
+        monkeypatch.setattr(
+            app_cfg,
+            "get_active_fingerprint_thresholds",
+            lambda: {"subject_explicit_rate_high": 0.01},
+        )
+        report = FingerprintAnalyzer().analyze(text, focus="")
+        assert report.subject_explicit_rate == 0.0
+        assert "subject_explicit_high" not in report.flat_zone_flags
 
 
 class TestR14SentenceOpeningAndCommaVariation:

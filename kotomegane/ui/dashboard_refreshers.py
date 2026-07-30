@@ -46,7 +46,7 @@ def update_summary_refs(
         if current_status_label is not None:
             current_status_label.text = "今の入力では未分析"
         if current_note_label is not None:
-            current_note_label.text = "今の入力ではまだ分析していません。保存済み結果は下の累積傾向と履歴だけに置いています。"
+            current_note_label.text = "今の入力ではまだ分析していません。これはエラーではありません。保存済み結果は下の累積傾向と履歴だけに置いています。"
         metric_refs["overall"][0].text = "今の入力では未分析"
         metric_refs["overall"][1].text = "質問と自社URLを確認したら、「1回だけ分析」で今回の結果を作ります。"
         metric_refs["competition"][0].text = "保存済み結果は混ぜません"
@@ -61,7 +61,7 @@ def update_summary_refs(
         detail_label.update()
     summary_refs["saved_scope"][0].text = portfolio_story["overall_label"]
     summary_refs["saved_scope"][1].text = (
-        f"これは今回 1 問の結果ではなく、保存済みデータの累積集計です。 "
+        f"これは今の入力で実行した結果ではなく、保存済みデータの累積集計です。 "
         f"観測した {portfolio_story['total_trials']} 試行のうち {portfolio_story['visible_trials']} 回で自社が見えています。 "
         f"{portfolio_story['competition_summary']}"
     )
@@ -87,32 +87,34 @@ def update_summary_refs(
         )
     else:
         summary_refs["kpis"]["target_hit_rate"][0].text = "--"
-        summary_refs["kpis"]["target_hit_rate"][1].text = "定期分析の履歴がまだありません。"
+        summary_refs["kpis"]["target_hit_rate"][1].text = "自動チェックの履歴がまだありません。"
         summary_refs["kpis"]["owned_citation_rate"][0].text = "--"
-        summary_refs["kpis"]["owned_citation_rate"][1].text = "定期分析の結果から集計します。"
+        summary_refs["kpis"]["owned_citation_rate"][1].text = "自動チェックの結果から集計します。"
         summary_refs["kpis"]["external_lead_rate"][0].text = "--"
-        summary_refs["kpis"]["external_lead_rate"][1].text = "手動スポット確認はここに混ぜません。"
+        summary_refs["kpis"]["external_lead_rate"][1].text = "1回だけ確認はここに混ぜません。"
 
     if tracked_delta_summary.get("available"):
         summary_refs["kpis"]["delta"][0].text = f"{float(tracked_delta_summary['target_hit_rate_delta']):+.1f}pt"
-        summary_refs["kpis"]["delta"][1].text = "前回の定期分析との差"
+        summary_refs["kpis"]["delta"][1].text = "前回の自動チェックとの差"
     else:
         summary_refs["kpis"]["delta"][0].text = "--"
-        summary_refs["kpis"]["delta"][1].text = str(tracked_delta_summary.get("reason") or "前回比はまだありません。")
+        summary_refs["kpis"]["delta"][1].text = str(tracked_delta_summary.get("reason") or "前回の保存結果との差はまだありません。")
     for value_label, detail_label in summary_refs["kpis"].values():
         value_label.update()
         detail_label.update()
 
     if tracked_query_rollup_rows:
         summary_refs["tracking_note"].text = (
-            f"ここは定期分析 {len(tracked_query_rollup_rows)}件分だけを集計しています。"
+            f"ここは自動チェック {len(tracked_query_rollup_rows)}件分だけを集計しています。"
             " ここに出す割合はすべて観測試行数を分母にしています。"
-            " 手動スポット確認の結果は今回の結果と履歴、質問別推移で見ます。"
+            " 点が少ない間は、横軸に保存時刻をそのまま表示します。"
+            " 1回だけ確認の結果は今回の結果と履歴、質問別推移で見ます。"
         )
     else:
         summary_refs["tracking_note"].text = (
-            "まだ定期分析はありません。ここには定期分析の結果だけが入ります。"
-            " 手動スポット確認の結果は今回の結果と履歴、質問別推移で見てください。"
+            "まだ自動チェックはありません。ここには自動チェックの結果だけが入ります。"
+            " 履歴はありますが、グラフ化できる自動チェック結果はまだありません。"
+            " 1回だけ確認の結果は今回の結果と履歴、質問別推移で見てください。"
         )
     summary_refs["tracking_note"].update()
 
@@ -134,7 +136,7 @@ def update_decision_refs(
         )
     else:
         decision_refs["intent"]["headline"].text = "弱い質問タイプは未判定"
-        decision_refs["intent"]["summary"].text = "定期分析の結果が保存されると、どの質問タイプで弱いかをここで示します。"
+        decision_refs["intent"]["summary"].text = "自動チェックの結果が保存されると、どの質問タイプで弱いかをここで示します。"
     decision_refs["intent"]["headline"].update()
     decision_refs["intent"]["summary"].update()
     decision_refs["intent"]["table"].rows = intent_rows
@@ -148,7 +150,7 @@ def update_decision_refs(
         )
     else:
         decision_refs["gap"]["headline"].text = "不足している情報タイプは未判定"
-        decision_refs["gap"]["summary"].text = "定期分析の結果が保存されると、どの情報タイプが不足しているかをここに出します。"
+        decision_refs["gap"]["summary"].text = "自動チェックの結果が保存されると、どの情報タイプが不足しているかをここに出します。"
     decision_refs["gap"]["headline"].update()
     decision_refs["gap"]["summary"].update()
     decision_refs["gap"]["table"].rows = page_gap_rows

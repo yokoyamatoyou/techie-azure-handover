@@ -2,6 +2,7 @@
 """Site health check orchestrator."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
@@ -33,6 +34,11 @@ from core.site_health import (
     format_security_result,
     get_platform_specific_suggestions,
     get_wcag_compliance_level,
+)
+from core.site_health.browser_accessibility_scanner import (
+    build_browser_accessibility_payload,
+    browser_accessibility_enabled,
+    run_browser_accessibility_scan,
 )
 from core.structured_data import (
     SchemaSuggester,
@@ -66,12 +72,64 @@ def _extract_json_ld(soup: BeautifulSoup) -> List[Dict[str, Any]]:
     return json_ld
 
 
+def _run_ogp_check(html: str, url: str, mode: str) -> Dict[str, Any]:
+    ogp_checker = OGPChecker(html or "", url)
+    ogp_raw = ogp_checker.run_all_checks()
+    ogp_formatted = format_ogp_result(ogp_raw, mode=mode)
+    return {
+        "raw": ogp_raw,
+        "formatted": ogp_formatted,
+        "platform_suggestions": get_platform_specific_suggestions(ogp_raw.get("ogp", {})),
+    }
+
+
+def _run_security_check(
+    url: str,
+    headers: Dict[str, Any],
+    html: str,
+    mode: str,
+    sitemap_info: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    security_checker = SecurityChecker(url, dict(headers), html or "", sitemap_info=sitemap_info)
+    security_raw = security_checker.run_all_checks()
+    return {
+        "raw": security_raw,
+        "formatted": format_security_result(security_raw, mode=mode),
+    }
+
+
+def _run_accessibility_check(html: str, url: str, mode: str) -> Dict[str, Any]:
+    browser_accessibility = None
+    if browser_accessibility_enabled():
+        browser_report = run_browser_accessibility_scan(url)
+        if browser_report:
+            browser_accessibility = build_browser_accessibility_payload(browser_report, mode=mode)
+
+    if browser_accessibility:
+        return {
+            "raw": browser_accessibility["raw"],
+            "formatted": browser_accessibility["formatted"],
+            "wcag": browser_accessibility["wcag"],
+            "source": "browser",
+        }
+
+    accessibility_checker = AccessibilityChecker(html or "")
+    accessibility_raw = accessibility_checker.run_all_checks()
+    return {
+        "raw": accessibility_raw,
+        "formatted": format_accessibility_result(accessibility_raw, mode=mode),
+        "wcag": get_wcag_compliance_level(accessibility_raw),
+        "source": "html",
+    }
+
+
 def run_full_site_health_check(
     url: str,
     html: str,
     mode: str = "simple",
     headers: Optional[Dict[str, Any]] = None,
     force_is_ec: Optional[bool] = None,
+    sitemap_info: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """全チェック（法的、OGP、セキュリティ、アクセシビリティ、構造化データ）を統合実行"""
     headers = headers or {}
@@ -84,38 +142,29 @@ def run_full_site_health_check(
     business_type = business_type_result.get("primary_type", "article")
     schema_site_type = infer_schema_site_type(html or "", url, schemas=json_ld, hinted_type=business_type)
 
-    # OGP
-    ogp_checker = OGPChecker(html or "", url)
-    ogp_raw = ogp_checker.run_all_checks()
-    ogp_formatted = format_ogp_result(ogp_raw, mode=mode)
-    ogp_platform = get_platform_specific_suggestions(ogp_raw.get("ogp", {}))
+    # These checks only read the fetched HTML/headers (plus bounded public endpoint
+    # checks inside SecurityChecker), so they can run in parallel without changing
+    # scoring or issue semantics.
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        ogp_future = executor.submit(_run_ogp_check, html or "", url, mode)
+        security_future = executor.submit(
+            _run_security_check,
+            url,
+            dict(headers),
+            html or "",
+            mode,
+            sitemap_info,
+        )
+        accessibility_future = executor.submit(_run_accessibility_check, html or "", url, mode)
 
-    # セキュリティ
-    security_checker = SecurityChecker(url, dict(headers), html or "")
-    security_raw = security_checker.run_all_checks()
-    security_formatted = format_security_result(security_raw, mode=mode)
-
-    # アクセシビリティ
-    accessibility_checker = AccessibilityChecker(html or "")
-    accessibility_raw = accessibility_checker.run_all_checks()
-    accessibility_formatted = format_accessibility_result(accessibility_raw, mode=mode)
-    wcag_compliance = get_wcag_compliance_level(accessibility_raw)
+        ogp_result = ogp_future.result()
+        security_result = security_future.result()
+        accessibility_result = accessibility_future.result()
 
     site_health = {
-        "ogp": {
-            "raw": ogp_raw,
-            "formatted": ogp_formatted,
-            "platform_suggestions": ogp_platform,
-        },
-        "security": {
-            "raw": security_raw,
-            "formatted": security_formatted,
-        },
-        "accessibility": {
-            "raw": accessibility_raw,
-            "formatted": accessibility_formatted,
-            "wcag": wcag_compliance,
-        },
+        "ogp": ogp_result,
+        "security": security_result,
+        "accessibility": accessibility_result,
     }
 
     # 構造化データサマリー
@@ -141,7 +190,7 @@ def run_full_site_health_check(
     meta_tag = soup.find("meta", attrs={"name": "description"})
     if meta_tag and meta_tag.get("content"):
         meta_desc = meta_tag["content"].strip()
-    og_image = ogp_formatted.get("preview", {}).get("image") or "https://example.com/ogp-image.jpg"
+    og_image = ogp_result.get("formatted", {}).get("preview", {}).get("image") or "https://example.com/ogp-image.jpg"
     page_data = {
         "title": title,
         "description": meta_desc,

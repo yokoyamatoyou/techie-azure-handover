@@ -1,0 +1,10 @@
+runtime:
+  python: "3.11"
+  platform: "windows-first"
+  output_platforms:
+    - "note"
+    - "hatena_blog"
+defaults:
+  viewpoint_mode: "self_perspective"
+  narrator: "私たち"
+  qa_policy_id: "self_perspective_blog_default"

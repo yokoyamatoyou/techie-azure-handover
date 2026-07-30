@@ -1,0 +1,12 @@
+# Source Consistency Note
+
+category_id: category_06_industry_analysis
+source_consistency_ok: true
+category_fit_ok: false
+use_as_ab_baseline: caution_reference_only
+recommended_label: wrong_category_route_a_reference
+
+Route A本文の主要な数値・制度・瑕疵物件説明は保存済みsourceにあります。
+ただし、sourceは不動産会社のサービス/相談ページであり、Route A本文は業界・市場解説に寄せているため、同カテゴリABの正規baselineではなく、カテゴリ不一致を明記した参考本文として扱ってください。
+
+artifact: C:\tetie\notecode\logs\route_0506_user_provided_source_ab_pair_creation_up_to_3_20260513\source_consistency_audit_category_06_industry_analysis

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.bloggen/schemas/quality_check.schema.json",
+  "title": "Quality Check",
+  "type": "object",
+  "required": ["quality_check"],
+  "additionalProperties": false,
+  "properties": {
+    "quality_check": {
+      "type": "object",
+      "required": ["pass", "score", "issues", "rewrite_needed"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": {"type": "boolean"},
+        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "issues": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/issue"}
+        },
+        "rewrite_needed": {"type": "boolean"},
+        "stylometry": {"$ref": "#/$defs/stylometry"}
+      }
+    }
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "required": ["type", "severity", "text", "reason", "fix_instruction"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "unsupported_claim",
+            "first_person_inconsistency",
+            "subject_ambiguity",
+            "zero_anaphora_risk",
+            "duplication",
+            "ai_like_phrase",
+            "style_mismatch",
+            "cta_issue",
+            "forbidden_phrase",
+            "sentence_too_long",
+            "ending_repetition",
+            "connector_repetition",
+            "paragraph_rhythm_monotony",
+            "line_break_monotony",
+            "ending_bucket_monotony",
+            "model_frequent_word",
+            "generic_encouragement_phrase",
+            "third_party_viewpoint_leakage",
+            "viewpoint_owner_mismatch",
+            "narrator_mixing",
+            "company_name_overuse_as_narrator",
+            "unattributed_customer_voice",
+            "genre_role_mismatch",
+            "sentence_rhythm_monotony",
+            "nominalization_overuse",
+            "formatting_mismatch",
+            "reader_instruction_meta_commentary",
+            "low_density_bridge_sentence",
+            "abstract_navigation_phrase",
+            "body_length_below_floor",
+            "missing_h1"
+          ]
+        },
+        "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "text": {"type": "string"},
+        "reason": {"type": "string", "minLength": 1},
+        "fix_instruction": {"type": "string", "minLength": 1},
+        "claim_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^C[0-9]{3,}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "stylometry": {
+      "type": "object",
+      "required": ["sentence_count", "paragraph_count", "issue_candidates"],
+      "additionalProperties": true,
+      "properties": {
+        "sentence_count": {"type": "integer", "minimum": 0},
+        "paragraph_count": {"type": "integer", "minimum": 0},
+        "issue_candidates": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/issue_candidate"}
+        }
+      }
+    },
+    "issue_candidate": {
+      "type": "object",
+      "required": ["type", "severity", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"$ref": "#/$defs/issue/properties/type"},
+        "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

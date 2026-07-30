@@ -46,17 +46,6 @@ aio2-main/data/poc_outputs/
 notecode/data/
 notecode/image/
 
-# Runtime data files required by application code
-!kotomegane/data/
-!kotomegane/data/stopwords_ja.txt
-!kotomegane/data/exclude_words_preset.json
-!notecode/data/
-!notecode/data/human_corpus/
-!notecode/data/human_corpus/simple_note_refactor_2026-03-22/
-!notecode/data/human_corpus/simple_note_refactor_2026-03-22/learner_calibration_bootstrap.json
-!notecode/data/human_corpus/simple_note_refactor_2026-03-22/manifest.json
-!notecode/data/human_corpus/simple_note_refactor_2026-03-22/README.md
-
 # Build/export artifacts
 *.zip
 *.tar
@@ -70,6 +59,8 @@ infra/main.json
 **/*.db
 **/*.sqlite
 **/*.sqlite3
+aio2-main/Notebook/
+aio2-main/Notebook_previous_*/
 
 # OS/editor files
 .DS_Store

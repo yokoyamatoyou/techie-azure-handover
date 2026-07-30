@@ -109,6 +109,8 @@ def acquire_mutex(mutex_name: str):
     Acquire a named mutex to prevent multiple instances.
     Returns handle if successful, None if already exists.
     """
+    if os.name != "nt":
+        return object()
     kernel32 = ctypes.windll.kernel32
     mutex_name_bytes = mutex_name.encode('utf-8')
     mutex = kernel32.CreateMutexA(None, False, mutex_name_bytes)
@@ -193,6 +195,14 @@ def main() -> int:
         if nested_core.exists():
             sys.path.insert(0, str(nested_core))
 
+        try:
+            from core.site_health.vulnerability_db_bootstrap import bootstrap_vulnerability_database
+
+            bootstrap_vulnerability_database()
+        except Exception as exc:
+            print(f"Error: vulnerability DB bootstrap failed: {exc}")
+            return 1
+
         # In onefile builds, modules may not exist as physical .py files under bundle_path.
         # So we validate by importing instead of checking file existence.
         try:
@@ -216,9 +226,10 @@ def main() -> int:
         #     app_url = f"http://127.0.0.1:{target_port}"
         #     threading.Thread(target=open_browser_delayed, args=(app_url,), daemon=True).start()
 
-        print(f"Starting NiceGUI on port {target_port}")
+        bind_host = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("CONTAINER_ENV") else "127.0.0.1")
+        print(f"Starting NiceGUI on {bind_host}:{target_port}")
         from nicegui_app import run_app as nicegui_run_app
-        nicegui_run_app(host="127.0.0.1", port=target_port)
+        nicegui_run_app(host=bind_host, port=target_port)
         return 0
 
     except Exception:

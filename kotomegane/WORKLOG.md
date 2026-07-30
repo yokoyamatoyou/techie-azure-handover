@@ -3,6 +3,34 @@
 `kotomegane` 現行 PoC の current snapshot と handoff を残す。  
 旧作業履歴は `archive/WORKLOG.md` を参照する。
 
+## 2026-07-11 (Codex) Cross-suite UX audit UI fix
+
+- decision: `implementation_no_api_gate_pass`
+- owner: `cross_suite_ux_audit_findings_ui_fix_2026_07_11`
+- scope:
+  - 390px幅のヘッダをロゴ + 4リンクの1行に圧縮した。
+  - desktopの質問 / 自社照合2列は維持し、`結果を見る` を次行全幅へ移して片側の大空白を解消した。設定の対象AI / 保存済み条件は縦の読み順へ変更した。
+  - read-only modeの送信・保存遮断は維持しつつ、ヒーロー内の他製品リンクだけは高コントラストの通常リンク表現へ戻した。
+- boundary:
+  - provider/API/LLM send、DB schema/保存、scheduler、query planner、scoring、billing rulesは変更していない。
+- validation:
+  - focused UX contract tests: `3 passed`。service-wide tests: `24 passed`。changed module `py_compile` passed。API送信回数: `0`。
+
+
+## 2026-07-10 (Codex) 単発確認の20回答表示とread-only起動
+
+- scope: 手動実行カードの説明・進捗表示と確認用起動だけを変更。標準単発確認は `4拡張質問 × 5回 = 合計20回答` の既存仕様を維持し、定期/Batchの保存済み `repeat_count=20`、provider/API、DBは変更していない。
+- change: 主CTAを `合計20回答を確認`、見出しを `まずは合計20回答を確認` とし、実行前に合計20回答を明示する。実行中は `進捗: xx%（完了/総回答）` を表示する。確認用起動を `.\run.ps1 -ReadOnlyDemo` として明示し、既存の送信ボタン無効化・provider client blockへ確実に入れる。
+- validation: `py_compile`、`unittest tests.test_input_config_builders tests.test_security_hardening -v` -> 16 passed、`run.ps1` PowerShell parse -> PASS。API送信回数: 0。
+
+## 2026-07-10 Web検索コスト削減設定
+
+- owner: kotomegane manual run cost reduction.
+- scope: 標準の単発確認を、元質問 + 拡張質問3件を5回実行する合計20リクエストへ変更。
+- changed files: `config.py`, `config/llmo_poc_settings.json`, `ui/input_config_builders.py`, `tests/test_input_config_builders.py`, `README.md`, `ALGORITHM.md`, `docs/CURRENT_STATE_2026-03-30.md`, `docs/LLM_BATCH_AND_CACHE_RULES_2026-04-05.md`。
+- non-owner boundary: 定期/Batchの保存済み `repeat_count=20` と provider/API仕様は変更しない。
+- validation: `test_input_config_builders.py` 3件 OK、`py_compile` OK、設定読込で `4 × 5 = 20` を確認。
+
 ## Current Source Of Truth
 
 - `AGENTS.md`
@@ -11,6 +39,8 @@
 - `docs/UI_REDUCTION_IMPLEMENTATION_PLAN_2026-04-14.md`
 - `docs/RESULT_UX_IMPLEMENTATION_PLAN_2026-04-14.md`
 - `docs/COMPETITIVE_VALUE_VISUALIZATION_PLAN_2026-04-24.md`
+- `docs/UI_UX_REFACTOR_PLAN_2026-05-23.md`
+- `docs/SCHEDULE_UI_CHANGE_2026-05-23.md`
 - `docs/SAAS_IMPLEMENTATION_PLAN_2026-04-03.md`
 - `docs/LLM_BATCH_AND_CACHE_RULES_2026-04-05.md`
 - `docs/DESIGN_IMPLEMENTATION_PLAN_2026-04-01.md`
@@ -18,6 +48,810 @@
 - `TASK.md`
 - `README.md`
 - `ALGORITHM.md`
+
+## 2026-07-09 Codex model/provider差し替え前点検
+
+- owner: kotomegane model/provider swap readiness check.
+- scope:
+  - 2026-07-09 Claude `claude_ui_polish_pass_20260709_p0` 後の `コトミガキで改善する` 導線確認。
+  - OpenAI / Gemini / Claude provider registry、model 正規化、prompt cache fallback、batch/cache 記述の実行上の阻害確認。
+  - GPT5.6 luna はユーザー予定名として扱い、存在・仕様は断定しない。
+- changed files:
+  - `config.py`
+  - `tests/test_provider_model_config.py`
+  - `ALGORITHM.md`
+  - `README.md`
+  - `WORKLOG.md`
+- result:
+  - OpenAI 系の custom model 名を config で指定した場合、registry の候補リスト完全一致でなくても保持するようにした。UI の provider 切替では切替先 provider の既定 model に戻す。
+  - `gpt-5.6-luna` dry-run では `normalize_provider_config()` 後も model が保持され、OpenAI Responses request body の `model` にそのまま入ることを確認。
+  - 未登録 custom model の 24h prompt cache は対応断定せず、`in_memory` へ補正されることを確認。
+  - Gemini の `temperature=0` は Gemini adapter 内のみ。OpenAI / Claude request body には temperature 固定はなく、OpenAI は `reasoning.effort`、Claude は `max_tokens` / web search tool 中心。
+  - `GPT-4.1-mini` 固定は現行 config / provider registry / request body owner では見つからなかった。
+- UI verification:
+  - read-only/demo mode で 8083 の持続起動を複数方式で試行。最終 `subprocess.Popen` detached 起動直後は `/healthz` が `200 {"status":"ok","service":"kotomegane"}` を返したが、実ブラウザ navigation 時には `ERR_CONNECTION_REFUSED` となり、実ブラウザでのリンク表示・クリック確認は完了できなかった。
+  - 代替証跡として、read-only SQLite で実DBに最新成功 run があることを確認（最新 `run_848eaab8a30749c4b1a4d33017e5ec35`, manual, 40 results / 0 errors）。AST 走査で `ui/result_cards.py` に `ui.link("コトミガキで改善する", "http://127.0.0.1:8081", new_tab=True)` が line 376 に存在することを確認。
+- validation:
+  - `.\.venv\Scripts\python.exe -m py_compile config.py ui\provider_runtime_controls.py tests\test_provider_model_config.py` -> OK
+  - `.\.venv\Scripts\python.exe -m unittest tests.test_provider_model_config tests.test_input_config_builders -v` -> 5 tests OK
+  - OpenAI request body dry-run: `body["model"] == "gpt-5.6-luna"`, `prompt_cache_retention == "in_memory"`。
+  - API / provider / LLM send count: 0。
+- notes:
+  - DB schema、deterministic_score、観測ロジック、scheduler / batch 実行仕様は変更なし。
+  - ルート `WORKLOG.md` は子窓境界に従い未更新。
+
+## 2026-07-09 (Claude) hero観測カードにコトミガキ導線を追加
+
+- 実施者: Claude（Sonnet 5, CLI agent）。ユーザー指示によりUI表示層のみを変更。観測ロジック・deterministic_score算出・DBスキーマは無変更。
+- decision:
+  - `claude_ui_polish_pass_20260709_p0`
+- scope:
+  - `render_hero_observation_snapshot()` の「次に強化すべき論点」カード（結果が1件以上ある通常表示側）に、`app.py` のページヘッダーで既に使われているのと同一パターン・同一URLの `ui.link("コトミガキで改善する", "http://127.0.0.1:8081", new_tab=True)` を追加。
+  - 背景: 同関数の「結果ゼロ」空状態カードには元々「改善へ渡す材料 → コトミガキへ」という説明文があったが、実際に観測データがある通常時（大半のユーザーが見る画面）には、コトミガキへの導線がテキストにも遷移にも存在しなかった。ヘッダー上部に汎用リンクはあるが、論点が特定された直後の文脈付きアクションはなかったため追加。
+  - 新しい統合・データ受け渡し（キーワードやURLをコトミガキ側へ引き継ぐ等）は実装していない。既存の固定URLを開くだけの単純なリンク。
+- changed files:
+  - `ui/result_cards.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: OK。
+  - `ast.parse`: OK。
+  - AST走査で `ui.link("コトミガキで改善する", ...)` 呼び出しが構文的に正しく挿入されていることを確認。
+  - `render_hero_observation_snapshot()` は `AppConfig` 等の実行時依存が大きく、合成データでの実描画スモークテストは本セッションでは実施していない（`app.py:623` の同一パターンが本番で稼働中であることを既存コードから確認し、構文的に同一の呼び出し形であることを根拠とした）。次回ブラウザ起動時に `http://127.0.0.1:8083/` で1件以上の観測結果がある状態を表示し、「次に強化すべき論点」カード内のリンク表示とクリック遷移を目視確認することを推奨。
+
+## 2026-07-08 UI Operation Smoke Check
+
+### Owner / Scope
+
+- owner: TECHIE cross-service UI operation check
+- scope: `http://127.0.0.1:8083/` と `/healthz` のUI確認。実DBの保存済みscheduled jobを誤再開しないため、通常モードの隔離コピー `.codex-ui-kotomegane-safe-20260708` でブラウザ操作を実施。実DBは 2026-07-07 all-failure run の証拠読み取りのみ。
+
+### Result
+
+- `/healthz` returned `{"status":"ok","service":"kotomegane"}` and `/` rendered `コトメガネ | TECHIE`.
+- `確認用モード` banner was not shown in the isolated normal-mode UI.
+- First view had enabled `1回だけ分析`, `保存済み条件を見る`, `まとめて分析を見る`, `曜日を決めて自動チェック`; inputs for question, owned URL, name, and detail conditions were present.
+- Single manual run clicked once. UI showed progress, disabled non-run navigation while running, then completed with `分析完了`, `失敗 0件`, and current result cards.
+- Isolated DB evidence: `run_176681b10ed44cc88bb2662c9de53f3d`, manual, `2026-07-08 09:08:18` to `09:10:46` JST, 50 `keyword_result`, 0 errors.
+- Continuous paths: saved conditions, batch run controls, schedule controls, load/duplicate/delete/diff controls, and report update controls rendered. `まとめて分析を開始`, `進み具合を更新`, `完了結果を反映`, and `自動チェックを保存` were visible.
+- Real DB evidence for prior repair target: `run_c044f90a5d6448d787c40f082bab8a87`, manual, `2026-07-07 09:58:44` to `10:00:15` JST, 50 results / 50 `Connection error.`.
+- Console observation: one browser resource access warning/error (`net::ERR_NETWORK_ACCESS_DENIED`) only; no app JS exception observed.
+- Product code changed: false.
+
+## 2026-07-07 Manual Run All-Failure Status Repair
+
+### Owner / Scope
+
+- owner: kotomegane manual run failure status
+- scope: 手動実行で全リクエストが接続エラーなどにより失敗した場合の UI 状態だけを修正。分析ロジック、provider payload、スコアリング、scheduler、batch API は変更していない。
+
+### What Changed
+
+- `app.py` の手動実行完了処理で、`total_steps > 0` かつ成功 `0` / 失敗 `全件` の場合は `分析完了` ではなく `分析に失敗しました` と表示するようにした。
+- 全件失敗 run は `current_result_run_id` に採用せず、`今回の結果` 面へエラー行を通常結果として復元しないようにした。
+- `ui/dashboard_view_models.py` の起動時 current result 復元でも、全件エラー run を `直近の結果` として採用しないようにした。
+- 直近 DB では 2026-07-07 09:58:44 JST の manual run が 50/50 件 `Connection error.` で保存されており、画面自体ではなく AI 接続側の失敗として確認した。
+
+### Validation
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\dashboard_view_models.py` -> OK
+- `.\.venv\Scripts\python.exe -m unittest discover -s tests -v` -> OK
+- `http://127.0.0.1:8083/healthz` -> 200、`http://127.0.0.1:8083/` -> 200
+- 外部 provider / API / LLM 実行は未実施。
+
+### Notes
+
+- AGENTS.md 更新なし（source of truth / 恒久ルール変更なし）。
+
+## 2026-07-06 Cross-Suite UI Clarity Pass Contribution
+
+### Owner / Scope
+
+- owner: kotomegane UI copy clarity
+- scope: 表示文言のみの修正。分析ロジック・スコアリング・スケジューラ挙動は一切変更していない。全体の背景は `C:\tetie\WORKLOG.md` の「Cross-Suite UI Clarity Pass」を参照。
+
+### What Changed
+
+- 共有トップナビ (`ui/styles.py` `render_top_nav()`) のラベルを `発信作成/見え方観測/サイト改善` から `コトメイク/コトメガネ/コトミガキ` へ統一（他3サービスと揃えた）。
+- `read-only/demo mode` バナー見出し・本文および約8箇所のボタン脇ヘルパー文言 (`app.py`) を平易な日本語（「確認用モード」）に書き換え。バックエンドの起動ログ文言は開発者向けのため据え置き。
+- 「元質問を拡張質問（同じ意味の言い換え文）に広げる」という内部挙動の説明を、実行中サマリー文言 (`app.py` 該当箇所) に追加。
+- 「保存済み条件を見る」「まとめて分析を見る」「曜日を決めて自動チェック」の3ショートカットボタンにツールチップを追加し、使い分けを明記。
+- 予算ガードレールの警告トースト2箇所を、現在の設定（続行/停止のどちらか）が自己完結して伝わる文言に変更。
+- `billing_rules.py` の `build_billing_policy_microcopy` に、「クレジット」と「単位」が別々の残数管理であることを示す一文を追加。
+- 質問入力欄の「表示中」という受身的な文言を「使って分析します」に変更し、上限3件を明記。
+
+### Changed Files
+
+- `app.py`
+- `ui/styles.py`
+- `billing_rules.py`
+- `WORKLOG.md`
+
+### Validation
+
+- `.\.venv\Scripts\python.exe -c "import ast; ast.parse(open('app.py', encoding='utf-8-sig').read())"` -> OK
+- `.\.venv\Scripts\python.exe -c "import ast; ast.parse(open('billing_rules.py', encoding='utf-8').read())"` -> OK
+- `KOTOMEGANE_READONLY_DEMO=1` でサーバー起動し、`preview_snapshot` でナビ・確認用モード文言・詳細条件文言の反映を確認。コンソール/サーバーエラーなし。
+
+### Notes
+
+- AGENTS.md 更新なし（source of truth / 恒久ルール変更なし）。
+- `docs/cross_product/UI_UNIFICATION_PLAN_2026-03-31.md` の「Immediate Next Step」「2026-04-01 の次アクション」は本日の対応で完了済みのため、同ドキュメント側にも完了追記が必要（別途反映）。
+
+## 2026-06-17 Export Link Security Hardening
+
+### Owner / Scope
+
+- owner: kotomegane export security
+- scope: generated `exports/` files are no longer exposed through a static mount; UI export rows now receive signed, short-lived download URLs.
+
+### What Changed
+
+- `app.py` replaced static `/exports` file serving with a route that validates bundle id, filename, expiry, and HMAC token before returning a file.
+- `export_file_writers.py` now signs export paths, limits filenames to the known export set, and rejects expired/tampered/direct paths.
+- Root `.gitignore` / `.distignore` exclude live `.env` files and generated export bundles from future distribution packages.
+
+### Changed Files
+
+- `app.py`
+- `export_file_writers.py`
+- `tests/test_security_hardening.py`
+- `../.gitignore`
+- `../.distignore`
+- `WORKLOG.md`
+
+### Validation
+
+- `..\notecode\.venv\Scripts\python.exe -m pytest tests/test_security_hardening.py -q` -> 12 passed
+- `.\.venv\Scripts\python.exe -m py_compile app.py export_file_writers.py tests\test_security_hardening.py` -> OK
+
+### Notes
+
+- AGENTS.md 更新なし（source of truth / 恒久ルール変更なし）
+
+## 2026-06-12 First View Quick Setup Compression
+
+### Owner / Scope
+
+- owner: kotomegane first-view UX
+- scope: 初回画面の入力面を `何を観測するか` / `自社をどう照合するか` / `結果を見る` の3ブロックへ圧縮し、市場観測主導線と read-only/demo safety は維持
+
+### What Changed
+
+- `app.py` の first view を 3 ブロック化し、主質問1件、自社URL/名称、実行/保存済み条件導線の順に整理した
+- 質問2/3、重点テーマ、比較対象、入力例は `詳細条件` に退避し、初回表示の認知負荷を下げた
+- `保存済み条件を見る` の shortcut を設定タブの保存済み条件エリアへ接続した
+- `ui/input_config_builders.py` は、表示中の質問数だけを `AppConfig.keywords` に反映するようにし、隠れている追加質問が対象AI送信対象に混ざらないようにした
+
+### Changed Files
+
+- `app.py`
+- `ui/input_config_builders.py`
+- `tests/test_input_config_builders.py`
+
+### Validation
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\input_config_builders.py tests\test_input_config_builders.py tests\test_security_hardening.py` -> OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_input_config_builders tests.test_security_hardening` -> 12 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で `import app` -> OK / read-only mode True
+- `rg` で first-view の新ブロック文言と旧密集見出しの除去を確認
+
+### Notes
+
+- provider/API送信は実行していない
+- AGENTS.md 更新なし（source of truth / 恒久ルール変更なし）
+
+## 2026-05-24 Provider Batch Completion / Import Follow-up
+
+### What Changed
+
+- 既存 `validating` の OpenAI batch 3件を確認し、provider 側で完了済みだった結果を取り込んだ
+- 最新 batch は通常モード UI で `進み具合を更新` -> `完了結果を反映` を実行し、80件成功 / 0エラーで反映した
+- 残り2件は provider read-only retrieve で `completed` / 80件成功 / 0失敗を確認し、同じ app storage/import 経路で各80件を反映した
+- 最終的に対象3件はすべて `completed`、`80/80`、`80 imported`、`0 import errors`、対応 run_session は `finished_at` ありになった
+
+### Preserved
+
+- DB schema、provider 仕様、scheduler logic、分析アルゴリズム、ベースカラー、UI 大規模刷新、kotomegane 以外の変更なし
+
+### Verification
+
+- 通常モード起動: `KOTOMEGANE_READONLY_DEMO` 未設定、`/healthz` -> 200、`/` -> 200
+- DB delta: `batch_job 6 -> 6`, `batch_job_item 494 -> 494`, `keyword_result 2820 -> 3060`, `run_session 97 -> 97`
+- UI 履歴: 対象3行すべて `完了`、`80/80 成功 / 0 失敗`、`80 成功 / 0 エラー`
+- 保存済み結果 / 経時分析 / 課題提案に反映され、最終 browser console warning/error は 0
+
+### Evidence
+
+- `logs/provider_batch_completion_import_followup_20260524_211921/`
+
+### Next Owner
+
+- none for this owner; provider batch completion/import follow-up is complete
+
+## 2026-05-24 Batch History Layout Balance Repair
+
+### What Changed
+
+- 通常モードの `設定` タブで、低密度の `対象AIを設定` card と高密度の `保存済み条件` card が同じ幅になり、右側だけが縦に詰まって見える layout を最小修正した
+- provider card を compact な左 rail にし、保存済み条件 card に広い横幅を渡す desktop flex ratio を追加した
+- 1100px 以下では同 row を縦積みにして、1280x720 より狭い viewport で無理な2カラムにならないようにした
+
+### Preserved
+
+- DB schema、provider request/response semantics、scheduler polling / import logic、custom_id logic、分析アルゴリズム、OpenAI/API/provider 実行仕様、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\styles.py` -> OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_batch_custom_id_uniqueness` -> 2 tests OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- 通常モード起動、`/healthz` -> 200、`/` -> 200
+- Browser 1365x768 / 1280x720 screenshots captured
+- Browser console warning/error 0、`run_stderr.log` 空
+
+### Evidence
+
+- `logs/batch_history_layout_balance_20260524_2056/`
+
+### Next Owner
+
+- `provider batch completion/import follow-up owner`
+
+## 2026-05-24 Batch Custom ID Uniqueness Repair
+
+### What Changed
+
+- `今回だけまとめて分析` の rerun blocker を修正した
+- `batch_job_item.custom_id` を質問由来の deterministic ID ではなく、batch run attempt の `run_id`、request index、iteration index を含む ID に変更した
+- manual batch submit と scheduled batch submit の両方で同じ custom_id 生成 helper を使うようにした
+- 同じ保存済み条件 `QA 通常モード実用確認 2026-05-24 2016` を通常モード UI から再実行し、既存履歴と衝突せず `batch_job` / `batch_job_item` が増えることを確認した
+
+### Preserved
+
+- DB schema、migration、provider request body、scheduler polling / import logic、scoring、billing rules、分析アルゴリズム、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py scheduler_runtime.py llmo_core\models.py tests\test_batch_custom_id_uniqueness.py` -> OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_batch_custom_id_uniqueness` -> 2 tests OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- 通常モード起動、`/healthz` -> 200、`/` -> 200
+- DB delta: `run_session +3`, `keyword_result 0`, `question_set 0`, `schedule_plan 0`, `batch_job +3`, `batch_job_item +240`
+- `batch_job_item.custom_id` duplicate check -> 0 rows
+- UI 履歴で同じ保存済み条件の batch rows が開始時刻別に区別表示されることを確認
+- Browser / Playwright console warning/error 0、page error 0、final restart `run_stderr.log` 空
+
+### Evidence
+
+- `logs/batch_custom_id_uniqueness_repair_20260524_2034/`
+
+### Next Owner
+
+- `provider batch completion/import follow-up owner`
+
+## 2026-05-24 Normal Mode Usefulness QA
+
+### What Changed
+
+- 実装修正なし
+- 通常モードで `1回だけ分析`、保存済み条件の新規保存、自動チェック保存、履歴/推移/課題提案の実用 QA を実施した
+- QA 用の保存済み条件 `QA 通常モード実用確認 2026-05-24 2016` と、自動チェック `QA 自動チェック 2026-05-24 2016` を通常 DB に保存した
+- `今回だけまとめて分析` は、既存 batch/scheduled 履歴と同じ質問由来の `batch_job_item.custom_id` が衝突し、`UNIQUE constraint failed: batch_job_item.custom_id` で未達になった
+
+### Preserved
+
+- DB schema、migration、provider payload、scheduler dispatch logic、scoring、billing rules、分析アルゴリズム、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py ui\charts.py ui\dashboard_refreshers.py storage.py llmo_core\openai_client.py` -> OK
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- 通常モード起動、`/healthz` -> 200、`/` -> 200
+- Browser 1365x768 / 1280x720 screenshots captured
+- Browser console warning/error 0、page error 0、`run_stderr.log` 空
+- DB delta: `run_session +2`, `keyword_result +40`, `question_set +1`, `schedule_plan +1`, `batch_job / batch_job_item` は増減なし
+
+### Evidence
+
+- `logs/normal_mode_usefulness_qa_20260524_201649/`
+
+### Next Owner
+
+- `batch custom_id uniqueness rerun blocker owner`
+
+## 2026-05-24 Normal Mode Execution QA
+
+### What Changed
+
+- 実装修正なし
+- read-only/demo listener を停止し、`KOTOMEGANE_READONLY_DEMO` 未設定の通常モードで 8083 を起動した
+- Browser 1365x768 / 1280x720 で read-only/demo banner が出ないことと、主要実行/保存/更新/batch/scheduler 系 CTA が enabled であることを確認した
+- 小さい live run として既存入力の `1回だけ分析` を 1 回実行し、`分析完了`、`失敗 0件`、今回の結果カード、保存済み結果、履歴詳細への反映を確認した
+
+### Preserved
+
+- DB schema、migration、provider payload、scheduler dispatch logic、scoring、billing rules、分析アルゴリズム、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+- 自動チェック設定の新規保存・有効化、まとめて分析開始、保存済み条件の保存/更新は実施なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- 通常モード起動、`/healthz` -> 200、`/` -> 200
+- Browser 1365x768 / 1280x720 screenshots captured
+- Browser console warning/error 0、`run_stderr.log` 空
+- live run DB delta: `run_session +1`, `keyword_result +40`; `question_set / schedule_plan / batch_job / batch_job_item` は増減なし
+
+### Evidence
+
+- `logs/normal_mode_execution_qa_20260524_2001/`
+
+### Next Owner
+
+- `saved-condition and automatic-check save smoke owner`
+
+## 2026-05-24 Final UX Completion
+
+### What Changed
+
+- 自動チェック推移グラフの少数データ時刻軸を、保存時刻の category tick 表示へ変更した
+- 1点だけの自動チェック推移で `09:59:59.9995` のような fractional tick が出ないようにした
+- 推移タブの補助文に、点が少ない間は横軸へ保存時刻をそのまま表示することを追加した
+
+### Preserved
+
+- DB schema、migration、provider payload、scheduler dispatch、scoring、billing rules、OpenAI/API/LLM 実行、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\charts.py ui\dashboard_refreshers.py`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 起動、`/healthz` -> 200、`/` -> 200
+- Browser 1365x768 / 1280x720 で設定タブと自動チェック推移グラフを確認
+- read-only/demo banner 表示、主要実行/保存/更新/削除/batch/scheduler 系 CTA disabled または block 表示
+- 少数データ時刻軸は `05/24 10:00` 表示、fractional tick なし
+- Browser console warn/error 0、`run_stderr.log` 空
+
+### Evidence
+
+- `logs/final_ux_completion_20260524_1923/`
+
+### Next Owner
+
+- `none - kotomegane UI/UX improvement complete`
+
+## 2026-05-24 Settings Comprehension Retest
+
+### What Changed
+
+- 設定タブの second-pass retest で、`今回だけまとめて分析` 内の過去 job selector が実行対象に見える点を特定した
+- `対象のまとめて分析` を `過去のまとめて分析・自動チェック履歴` に変更し、過去履歴 selector であることを明示した
+- `選択中:` を `履歴の選択中:` に変更し、実行対象ではなく履歴確認であることを分けた
+- `保存済み条件を選ぶ -> 保存済みを読み込む -> まとめて分析を開始` の手順 helper を追加した
+
+### Preserved
+
+- DB schema、migration、provider payload、scheduler dispatch、scoring、billing rules、OpenAI/API/LLM 実行、本番連携は変更なし
+- ベースカラー、大規模デザイン刷新、kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 起動、`/healthz` -> 200、`/` -> 200
+- Browser 1365x768 / 1280x720 で `1回だけ分析`、`保存済み条件` 作成、`今回だけまとめて分析`、`曜日を決めて自動チェック` の4タスクを retest
+- read-only/demo banner 表示、実行/保存/更新/削除/batch/scheduler 系 CTA disabled または block 表示、Browser console warn/error 0、`run_stderr.log` 空
+
+### Evidence
+
+- `logs/settings_comprehension_retest_20260524_1853/`
+
+### Next Owner
+
+- `自動チェック推移グラフの少数データ時刻軸 copy/format owner`
+
+## 2026-05-24 Settings / Schedule Information Architecture
+
+### What Changed
+
+- 設定タブの `保存済みの確認内容` を `保存済み条件` に寄せ、`保存名` label、保存済み条件 -> 今回だけまとめて分析 / 自動チェックの関係カードを追加した
+- `曜日を決めて自動分析` を `曜日を決めて自動チェック` に統一し、設定 form を `対象 -> 曜日 -> 時刻 -> 有効 -> 保存` の順で読める grouping へ変更した
+- 自動チェック対象 dropdown を `保存名 / 質問数 / 対象AI / 状態` までに短縮し、最後の結果保存時刻や先頭質問は補助 text / table 側へ移した
+- `システム監視: 停止中` / `この設定: 有効` の並びを `アプリ側の監視: 停止中` / `この予定: 有効` と説明文へ分け、read-only/demo やアプリ停止中でも予定の有効状態とは別だと読めるようにした
+- 結果詳細の冒頭に `次にやること` section を追加した
+
+### Preserved
+
+- DB schema、migration、provider payload、scheduler dispatch、scoring、billing rules、OpenAI/API/LLM 実行、本番連携は変更なし
+- kotomegane 以外のサービス変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py ui\detail_views.py`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 起動、`/healthz` -> 200、`/` 表示確認
+- Browser 1365x768 / 1280x720 で read-only/demo banner、disabled CTA、設定タブ、短縮 dropdown、自動チェック form、結果詳細 `次にやること` を確認
+- Browser console warn/error 0、`run_stderr.log` 空、`自動分析` は app/UI/current docs の現行表示から除去済み
+
+### Evidence
+
+- `logs/settings_schedule_information_architecture_20260524_1837/`
+
+### Next Owner
+
+- `自動チェック推移グラフの少数データ時刻軸 copy/format owner`
+
+## 2026-05-24 UI/UX Cognitive Load Review
+
+### Verification
+
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 を起動し、`/healthz` -> 200、`/` -> 200、read-only/demo banner を確認
+- Browser PC 1365x768 / 1280x720 で top flow、結果カード、保存済み結果 detail、履歴/推移、保存済み確認内容、自動チェック設定、dropdown を確認
+- Internet reference として Nielsen/NNG heuristics、progressive disclosure、scheduler setup UI、dashboard / AI visibility UI patterns を短く調査し、`logs/ux_cognitive_load_review_20260524_1800/references.md` に保存
+- 実装修正、DB schema 変更、migration 追加、live LLM/API 実行、provider batch submit / retrieve / import、scheduler dispatch 検証、Azure 検証は実施なし
+- Browser console warning/error なし。`run_stderr.log` は空。`run_stdout.log` に read-only/demo mode active と startup scheduler / maintenance skipped を記録
+
+### Result
+
+- 最大 severity: P2
+- P2: `保存済みの確認内容` と `自動チェックに使う確認内容` の概念対応、長い dropdown、縦長 schedule form、`システム監視: 停止中` と `この設定: 有効` の同時表示、結果詳細の next action 弱さ
+- P3: `自動分析` / `自動チェック` の表記揺れ、少数データ時の時刻軸の読みにくさ
+- 次 owner: `設定タブの確認内容/自動チェック情報設計 owner`
+
+### Evidence
+
+- `logs/ux_cognitive_load_review_20260524_1800/`
+
+## 2026-05-24 Schedule Settings UX Principle Review
+
+### Verification
+
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 を起動し、`/healthz` -> 200、`/` -> 200、read-only/demo banner を確認
+- Browser PC 1365x768 / 1280x720 で `詳細と設定を開く` -> `設定` -> `保存済みの確認内容` / `曜日を決めて自動チェック` を操作確認
+- 定期実行設定 UI を Nielsen 10 heuristics、Hick's Law、Fitts's Law、Gestalt / proximity、progressive disclosure、cognitive load、form design、information scent でレビュー
+- 実装修正、DB schema 変更、migration 追加、scheduler dispatch 検証、provider batch submit / retrieve / import、Azure 検証、live LLM/API 実行は実施なし
+- read-only/demo で manual / save / update / archive / batch / schedule / report 系 CTA が disabled または block 表示になることを確認
+- Browser console / run stdout/stderr に `Message too long` / `Connection lost` / WebSocket 系エラーなし
+
+### Result
+
+- P0: なし
+- P1: なし
+- P2: あり。`保存済みの確認内容` と `自動チェックに使う確認内容` の重複感、長い dropdown 表示、展開後約 1481px の縦長さにより、初見の `対象 -> 曜日 -> 時刻 -> 保存` 主動線が弱い
+- P3: あり。`システム監視: 停止中` と `この設定: 有効` の同時表示、`スケジュール名` と保存済み確認内容名の関係、catch-up copy の位置に軽い読解負荷あり
+- 次 owner: `設定タブの自動チェックフォーム copy/layout owner`
+
+### Evidence
+
+- `logs/schedule_settings_ux_review_20260524_1738/`
+
+## 2026-05-24 History / Settings Read-only QA
+
+### Verification
+
+- `KOTOMEGANE_READONLY_DEMO=1` で 8083 を起動し、`/healthz` -> 200、`/` -> 200、read-only/demo banner を確認
+- Browser PC 1365x768 で `詳細と設定を開く` から `今回の結果`、`自動チェックの推移`、`全実行履歴`、`設定`、`まとめて分析`、`曜日を決めて自動チェック` を操作確認
+- Browser PC 1280x720 でも `自動チェックの推移` と `設定` の主要導線を再確認し、horizontal overflow なし
+- read-only/demo で manual 実行、保存/更新/アーカイブ/入力保持、batch start/refresh/import、schedule save/duplicate/delete、report update が disabled または block されることを確認
+- DB schema hash / sqlite_master object count / table count / `run_session` / `keyword_result` / `query_plan` / `source_url` / all table-count hash は不変。追加で控えた DB file hash は startup/open 時点で変化したが、table growth と schema/object 差分はなし
+- Browser console / run stdout/stderr に `Message too long` / `Connection lost` / WebSocket 系エラーなし
+- 直感性評価は P0/P1 なし。履歴と設定まわりで次 owner が必要な実装問題なし
+
+### Evidence
+
+- `logs/history_settings_qa_20260524_1654/`
+
+### Preserved
+
+- 実装修正、DB schema 変更、migration 追加、live LLM/API 実行、provider batch submit / retrieve / import、scheduler dispatch 検証、Azure 検証は実施なし
+
+## 2026-05-24 Schedule Catch-up Copy Clarification
+
+### What Changed
+
+- `曜日を決めて自動チェック` に `停止中の予定はため込まず、次回起動後に直近1回分だけ実行します。` を追加し、PC / アプリ停止中の予定が複数回分連続実行される誤解を避けるようにした
+- `ON: 次回時刻から自動実行` を `ON: 次回予定から自動チェック` に変更した
+- `保存後は 09:00 から自動チェックします` を `保存後は 09:00 の予定で自動チェックします` に変更した
+- `週次などの定点で自動実行し` を `週次などの定点で予定し` に変更し、時刻保証ではなく予定設定であることを明確にした
+
+### Verified
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py`
+- `KOTOMEGANE_READONLY_DEMO=1` で起動し、Browser PC 1365x768 で `設定` -> `曜日を決めて自動チェック` を確認
+- 新文言の表示、旧文言 `ON: 次回時刻から自動実行` / `保存後は 09:00 から自動チェックします` が残っていないことを確認
+
+### Preserved
+
+- 実行ロジック、DB schema、migration、provider request payload、scheduler dispatch、batch import、scoring は変更なし
+
+## 2026-05-24 UI Operation Functional QA
+
+### Verification
+
+- 通常モードで 8083 を起動し、`KOTOMEGANE_READONLY_DEMO=1` なし、`/healthz` -> 200、`/` -> 200、read-only/demo banner なし、`1回だけ分析` enabled を確認
+- Browser PC 1365x768 で `1回だけ分析` を 1 回だけ手動実行。対象は ChatGPT/openai、1質問、query planning 後は内部4拡張 x 10回 = 40回答。`分析完了`、失敗0件を確認
+- DB schema hash / sqlite_master object count / table count は不変。`run_session` +1、`keyword_result` +40、`query_plan` +1、`source_url` +677。新規 run は `run_8195cdfec0cd4a0cba428370bb0b4251`
+- UI `今回の結果` に今回の質問と結果が表示され、`保存済みの結果` と `全実行履歴` に 2026-05-24 16:08 の手動実行が反映された
+- `自動チェックの推移` の大きなグラフは仕様どおり自動チェック scoped。手動 run は同タブの `全実行履歴` に反映されることを確認
+- Browser PC 1280x720 でも主要表示、read-only/demo banner なし、run button enabled を再確認
+- Browser console / run stdout/stderr に `Message too long` / `Connection lost` / WebSocket 系エラーなし
+- 直感性評価は P0/P1 なし。前回の複数質問入力が残る場合に今回送信数をさらに強調する余地を P2 として記録した
+
+### Evidence
+
+- `logs/user_flow_functional_20260524_1604/`
+
+### Preserved
+
+- 実装修正、DB schema 変更、migration 追加、scheduler dispatch 検証、provider batch submit / retrieve / import、Azure 検証は実施なし
+
+## 2026-05-24 Functional History Graph QA
+
+### Verification
+
+- 通常モードで 8083 を起動し、`KOTOMEGANE_READONLY_DEMO=1` なし、`/healthz` -> 200、`/` -> 200、read-only/demo banner なし、`1回だけ分析` enabled を確認
+- Browser PC 1365x768 で `1回だけ分析` を手動実行。対象は ChatGPT/openai、1質問、query planning 後は内部4拡張 x 10回 = 40回答。`分析完了`、失敗0件を確認
+- DB schema hash / sqlite_master object count は不変。`run_session` +1、`keyword_result` +40、`query_plan` +1、`source_url` +725。新規 run は `run_64abcb99a5444803a8877265cd212bf3`
+- UI `今回の結果` に今回の質問と結果が表示され、`保存済みの結果` と `全実行履歴` に 2026-05-24 15:16 の手動実行が反映された
+- `自動チェックの推移` の大きなグラフは仕様どおり自動チェック scoped。手動 run は同タブの `全実行履歴` に反映されることを確認
+- Browser PC 1280x720 でも主要表示、read-only/demo banner なし、run button enabled を再確認
+- Browser console / run stdout/stderr に `Message too long` / `Connection lost` / WebSocket 系エラーなし
+
+### Evidence
+
+- `logs/functional_history_graph_20260524_1512/`
+
+### Preserved
+
+- 実装修正、DB schema 変更、migration 追加、scheduler dispatch 検証、provider batch submit / retrieve / import、Azure 検証は実施なし
+
+## 2026-05-24 Saved Question Set Manual Tab Refresh Fix
+
+### What Changed
+
+- `設定` tab を手で開いた場合も、保存済み確認内容の lazy refresh が確実に走るようにした
+- NiceGUI tab の値が Python 側の tab object ではなく label string として届く経路でも、`設定` / `自動チェックの推移` を同じ tab として扱うようにした
+- `保存済みの確認内容` table と `曜日を決めて自動チェック` table が同じ saved question set を読める状態へ揃えた
+
+### Preserved
+
+- DB schema、migration、provider request payload、query planning、scoring、batch import、scheduler dispatch、billing rules は変更なし
+- read-only/demo mode の保存/更新/削除/実行系 disabled は維持
+- OpenAI/API/LLM/provider batch 実行なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py`
+- `$env:KOTOMEGANE_READONLY_DEMO='1'; .\.venv\Scripts\python.exe -c "import app; print('IMPORT_OK')"` -> `IMPORT_OK`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で起動し、`/healthz` -> 200、`/` -> 200
+- Browser PC 1280x720 / 1365x768 で `詳細と設定を開く` -> `設定` の手動 tab 操作を確認。保存済み確認内容 table は 1 row、`曜日を決めて自動チェック` table は 3 rows で、どちらも `定期分析UI確認 3質問 2026-05-23` を表示
+- Browser PC 1280x720 / 1365x768 で horizontal overflow なし、read-only/demo banner あり、実行/保存/更新/自動チェック保存/複製/削除 CTA disabled を確認
+- schema SHA256 `9dccf3e96f77b1227ea2ecdb834261f1e3fd1158da905dde8b4b25d1cde1ca1e` unchanged、object count `23` unchanged、table count `10` unchanged、table counts SHA256 `c97e89d0cddc4c757cc4d5ac40aee1cbfd7c674a573d8ecbbb6856c19cd0c544` unchanged
+
+## 2026-05-24 PC P1 WebSocket Payload Fix
+
+### What Changed
+
+- `詳細と設定を開く` 内の表示用 table rows から、画面に出さない `output_json` / `run_config_json` / `config_json` などの長い payload を送らないようにした
+- `設定` tab の保存済み確認内容、まとめて分析、自動チェック、export の admin refresh を初期構築から外し、tab / section を開いた時点の手動 lazy refresh に分けた
+- `まとめて分析` / `曜日を決めて自動チェック` の設定 section は初期 open しない形へ戻し、必要時だけ table/select を更新する
+
+### Preserved
+
+- DB schema、provider request payload、query planning、scoring、batch import、scheduler dispatch、billing rules は変更なし
+- OpenAI/API/LLM/provider batch 実行なし
+- read-only/demo mode の disabled 状態と保存/実行禁止ガードは維持
+- HUB / `start.bat` 用の `/healthz` lightweight contract は変更なし
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py ui\dashboard_view_models.py`
+- `.\.venv\Scripts\python.exe -c "import app; print('IMPORT_OK')"`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で起動し、`/healthz` -> 200、`/` -> 200
+- Browser PC 1365x768 / 1280x720 で `詳細と設定を開く`、`設定`、`まとめて分析`、`曜日を決めて自動チェック`、`自動チェックの推移` を確認し、`Message too long` / `Connection lost` なし
+- DB SHA256 `4A85B0516F54A89C0476A748DA67E2431B71F3191214EBAFD4A77AECE43E5D95` unchanged、schema SHA256 `49178db8370c7de945a63b5739c6228fa93680f1a90240f4f6c9f076efe47a3a` unchanged、object count `35` unchanged、table counts SHA256 `c97e89d0cddc4c757cc4d5ac40aee1cbfd7c674a573d8ecbbb6856c19cd0c544` unchanged
+
+## 2026-05-24 Read-only Demo QA P1 Fix
+
+### What Changed
+
+- `KOTOMEGANE_READONLY_DEMO=1` で、保存内容を書き換える UI 操作を disabled にした。対象は `今の入力を保存`、`選択中の確認内容を更新`、`アーカイブ / 再開`、`画面の入力だけ保持`、`自動チェックを保存`、`複製して AB 用に作る`、`削除`、`レポートを更新`
+- read-only/demo mode の実行系 CTA を低彩度の disabled 表示へ寄せ、`read-only/demo mode のため実行できません。` などの近接説明を追加した
+- `まとめて分析の画面を開く` は設定タブ内の `まとめて分析` セクションへ、`曜日を決めて自動分析` は `曜日を決めて自動チェック` セクションへ到達するようにした
+- mobile 600px 以下で `名称` と `重点テーマ` を縦1列で表示するよう補強した
+
+### Preserved
+
+- DB schema、provider request payload、query planning、scoring、batch import、scheduler dispatch、billing rules は変更なし
+- OpenAI/API/LLM/provider batch 実行なし
+- 実UIで保存/更新/削除/アーカイブ/実行/反映ボタンは押していない
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py storage.py ui\styles.py ui\admin_views.py ui\dashboard_refreshers.py`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `KOTOMEGANE_READONLY_DEMO=1` で起動し、`/healthz` -> 200、`/` -> 200
+- Browser desktop 1365x768: read-only banner、`1回だけ分析` の disabled / 低彩度表示 / 近接説明、保存/更新/アーカイブ/再開/反映系 disabled、ショートカット到達、horizontal overflow なしを確認
+- Browser mobile 390x844: read-only banner、disabled CTA、ショートカット到達、horizontal overflow なし、`名称` / `重点テーマ` の縦1列を確認
+- final read-only 起動前後で DB SHA256 `4A85B0516F54A89C0476A748DA67E2431B71F3191214EBAFD4A77AECE43E5D95` unchanged、schema SHA256 `9dccf3e96f77b1227ea2ecdb834261f1e3fd1158da905dde8b4b25d1cde1ca1e` unchanged、object count `23` unchanged、table counts SHA256 `7555565a751cc59c81b1a1b6fecc2b5f9ab55e39d48fdbe9bca6cfc894327af1` unchanged
+
+## 2026-05-24 UI/UX Final Device Polish
+
+### What Changed
+
+- read-only/demo mode で desktop / mobile を再確認し、mobile 390px で入力補助カラムと `重点テーマに「全国」を追加` / `重点テーマに「介護」を追加` ボタンが右へ寄る状態を修正した
+- 保存済み集計と保存済み結果一覧の `今回 1 問` / `最新の 1 問` 表現を、`今の入力で実行した結果ではなく` という境界表現へ変更した
+- まとめて分析の状態表示を `対象質問 3件` と `実送信 240件` のように分け、保存済み確認内容の元質問数と provider 送信件数を混同しない表示にした
+- README / CURRENT_STATE を current UI 表示に同期した
+
+### Preserved
+
+- DB schema、provider request payload、query planning、scoring、batch import、scheduler dispatch、billing rules は変更なし
+- OpenAI/API/LLM/provider batch 実行なし
+- read-only/demo mode の provider 実行系 button disabled は維持
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py storage.py ui\styles.py ui\dashboard_refreshers.py ui\admin_views.py`
+- `.\.venv\Scripts\python.exe -c "import app; print('IMPORT_OK')"`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 10 tests OK
+- `http://127.0.0.1:8083/healthz` -> 200
+- Browser desktop 1365x768: read-only/demo banner、provider 実行 button disabled、保存済み集計の旧 `今回 1 問` / `最新の 1 問` 文言なし、`対象質問 3件 / 実送信 240件` 表示を確認
+- Browser mobile 390x844: horizontal overflow なし、重点テーマ候補 button が viewport 内に収まることを確認
+
+## 2026-05-24 UX-ADD-01 Readonly Demo Mode
+
+### What Changed
+
+- `KOTOMEGANE_READONLY_DEMO=1` で UI 診断 / デモ用の read-only/demo 起動モードを追加した
+- read-only/demo mode では startup scheduler と result enrichment maintenance を開始しない
+- `llmo_core.factory.build_provider_client(...)` で provider client creation を hard block し、manual LLM/API send、provider batch submit、provider batch retrieve/import に進まないようにした
+- UI 上部に `read-only/demo mode` banner を表示し、該当モードでは provider 実行系ボタンを disabled にする
+- `run.ps1` は read-only/demo mode のとき provider API key check を skip できる
+
+### Preserved
+
+- 通常起動では scheduler / provider / batch / LLM/API 実行の既存経路を維持
+- DB schema、provider request payload、query planning、scoring、billing rules、`/healthz` contract は変更なし
+- UX-ADD-02 以降、Azure deployment、UI 全体 refactor は未着手
+
+### Verification
+
+- `.venv\Scripts\python.exe -m py_compile app.py scheduler_runtime.py llmo_core\factory.py runtime_mode.py tests\test_security_hardening.py`
+- `.venv\Scripts\python.exe -m unittest tests.test_security_hardening`
+- `KOTOMEGANE_READONLY_DEMO=1` import smoke で `_start_background_services()` 後も `scheduler_active=False`、startup scheduler / maintenance skipped message を確認
+- DB file SHA256 `92C4E97B846B953141AC0318D10052135D5EB42C6C6B5CBC6B024ECF20E7AE16` unchanged、schema hash `49178db8370c7de945a63b5739c6228fa93680f1a90240f4f6c9f076efe47a3a` / object count `35` unchanged
+- read-only/demo mode 起動後、`http://127.0.0.1:8083/healthz` -> 200、`http://127.0.0.1:8083/` -> 200
+- Browser desktop 1280x720 / mobile 390x844 で `read-only/demo mode` banner と provider 実行ボタン disabled を確認
+
+## 2026-05-24 UI/UX Residual RS-02 Provider Column
+
+### What Changed
+
+- `保存済みの結果` テーブルに `対象AI` 列を追加し、既存の `run_config_json.provider` から ChatGPT / Gemini / Claude の表示名を出すようにした
+
+### Preserved
+
+- DB schema、provider request payload、query planning、scoring、batch import、scheduler dispatch、billing rules は変更なし
+- O-03..O-09 の主要境界表示と Window 1 の mobile / copy 修正は維持
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\*.py` 相当
+- `.\.venv\Scripts\python.exe -c "import app; print('IMPORT_OK')"`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening`
+- `http://127.0.0.1:8083/healthz` -> 200
+- Browser desktop / mobile 390x844 で horizontal overflow なし、主要ボタンの縦書き化なし、`保存済みの結果` に `対象AI / ChatGPT` 表示を確認
+
+## 2026-05-24 UI/UX Refactor O-03..O-09 Implementation
+
+### What Changed
+
+- O-03 `Current Input Vs Saved Condition Boundary`: 入力カードに `今の入力` 見出しと境界説明を追加。設定タブを `保存済みの確認内容` として分離し、`今の入力を保存` / `保存済みを読み込む` / `選択中の確認内容を更新` を明示。保存済み一覧に質問数 / 対象AI / 最終実行 / 先頭質問プレビューを表示
+- O-04 `Scheduled Check Simplification`: `週あたり回数` を曜日選択からの読み取り表示へ変更。`選択中: 月・水・金 / 週3回`、`保存後は 09:00 から自動チェックします`、`システム監視` と `この設定` の状態表示、switch helper を追加
+- O-05 `Run Action Safety And State Boundary`: `1回だけ分析` / まとめて分析 / 結果反映の helper を追加。batch 状態表示に確認内容名 / 開始時刻 / provider / 件数を追加
+- O-06 `Current Result Vs Saved History Separation`: `全実行履歴`、`保存済みの結果`、未分析 empty state の `これはエラーではありません`、推移 empty state の説明を追加
+- O-07 `Multiple Question Results`: `下に表示する質問を選ぶ`、`質問一覧`、`選択中の質問の詳細`、保存済み詳細の文脈行、URL action label を追加
+- O-08 `Visual Grouping And Semantic Surface`: `詳細と設定を開く`、input / saved / schedule / current result の semantic panel background を追加
+- O-09 `Final QA And Documentation`: 本 entry と README / CURRENT_STATE 更新
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m py_compile app.py ui\admin_views.py ui\dashboard_refreshers.py ui\result_cards.py ui\detail_views.py ui\evidence_presenters.py ui\styles.py`
+- `.\.venv\Scripts\python.exe -c "import app; print('IMPORT_OK')"`
+- `.\.venv\Scripts\python.exe -m unittest tests.test_security_hardening` -> 8 tests OK
+- `http://127.0.0.1:8083/healthz` -> 200
+- Browser desktop 1280x720: `今の入力` / send helper / `詳細と設定を開く` / `下に表示する質問を選ぶ` を確認、horizontal overflow なし
+- Browser mobile 390x844: horizontal overflow なし
+
+### Non-Contact
+
+- DB schema 変更なし
+- provider request payload / query planning / scoring / batch import / scheduler dispatch / billing rules 変更なし
+- OpenAI/API/LLM/provider batch 実行なし
+- Azure deployment 変更なし
+
+## 2026-05-23 UI/UX Refactor Plan
+
+### What Changed
+
+- Added `docs/UI_UX_REFACTOR_PLAN_2026-05-23.md`.
+- Broke the non-engineer UI/UX diagnosis issue list into small owner packages:
+  - copy/label cleanup
+  - mobile P0 layout
+  - current input vs saved condition boundary
+  - scheduled check simplification
+  - run action safety and state boundary
+  - current result vs saved history separation
+  - multiple-question result detail
+  - visual grouping
+  - final QA/docs
+- Added a work-window prompt template so a separate instruction window can create one implementation window per owner.
+- Updated `docs/DOC_STATUS.md` so the plan is part of the recommended read order and product-plan source set.
+
+### Verification
+
+- Documentation-only plan creation.
+- No runtime code change.
+- No DB/schema change.
+- No API/LLM/provider batch execution.
+- No browser operation required for this planning window.
+
+## 2026-05-23 Run Guardrail Warn Mode Fix
+
+### What Changed
+
+- `analysis_core/metrics.py` に per-run guardrail の評価結果を追加し、`would_exceed_run_guardrail` と `run_guardrail_should_block` を返すようにした
+- `app.py` の手動実行と `定期分析｜複数質問をまとめて実行` は、`budget_guardrail_mode=warn` の場合に `run_budget_guardrail_usd` 超過見込みだけでは停止せず、警告して続行するようにした
+- `scheduler_runtime.py` の自動定期投入も同じ判定に揃え、`budget_guardrail_mode=stop` のときだけ provider submission 前に停止するようにした
+- README、ALGORITHM、CURRENT_STATE、DOC_STATUS、`docs/SCHEDULE_UI_CHANGE_2026-05-23.md` を更新し、3質問の単発 / 今すぐ一括 / 自動定期が既定の警告モードで停止しない current rule を明記した
+
+### Verification
+
+- `.venv\Scripts\python.exe -m py_compile app.py scheduler_runtime.py analysis_core\metrics.py tests\test_security_hardening.py`
+- `.venv\Scripts\python.exe -m unittest tests.test_security_hardening`
+- Local guardrail smoke: 3 questions x 5 expansions x 20 repeats相当の `planned_request_count=300` は `run_budget_guardrail_usd=1.2` を超えるが、`warn` では `run_guardrail_should_block=False`、`stop` では `True`
+- `.\stop.ps1` 後に `run.ps1` を再起動し、`http://127.0.0.1:8083/healthz` が 200 を返すことを確認
+- Browser確認で `http://127.0.0.1:8083/` の 3質問入力、設定タブ、自動定期分析の月〜日チェックボックス表示を確認
+
+## 2026-05-23 Schedule UI Documentation
+
+### What Changed
+
+- Added `docs/SCHEDULE_UI_CHANGE_2026-05-23.md` as the dedicated explanation of the schedule weekday UI change.
+- Documented that one schedule points to one saved `確認内容`, not one fixed question.
+- Documented that a saved `確認内容` can contain multiple `keywords`, so a schedule can target multiple questions.
+- Clarified that the previous weekday dropdown was intended to allow selection but was not reliable in the verified browser UI.
+- Added isolated old-widget verification showing the previous `ui.select(... value=[0]).props("multiple outlined use-chips")` kept `raw=[0]` after clicking `火`, clicking `月` again, and Backspace/Delete.
+- Clarified that the previous save path could keep `週あたり回数 = 1`, causing `normalize_schedule_weekdays(...)` to keep only the first selected weekday.
+- Updated README, ALGORITHM, and DOC_STATUS pointers.
+
+### Verification
+
+- Documentation-only update.
+- Old-widget probe used an isolated temporary page and did not touch app DB or scheduler state.
+- No DB write.
+- No schema change.
+- No provider/API/LLM call.
+- No scheduler execution.
+
+## 2026-05-23 Schedule Weekday UI Fix
+
+### What Changed
+
+- `app.py` の自動定期分析の曜日指定を dropdown select から曜日チェックボックスへ変更し、UI上で月〜日を直接選べるようにした
+- 保存時は選択済み曜日数を `週あたり回数` へ揃え、複数曜日を選んだのに先頭曜日だけへ丸められる状態を避けた
+- 実UI操作で 3 質問の確認内容を保存し、`月/水/金 09:00`、`火/木 13:00`、`土/日 10:00` の 3 件の自動定期分析登録を確認した
+
+### Preserved
+
+- LLM 実行、provider batch、query planning、scoring、DB schema、保存形式、HUB `/healthz` 判定は変更していない
 
 ## 2026-04-29 Hero Logo Crop Fix
 
@@ -921,6 +1755,50 @@
 - 2026-04-13 late に `ui/styles.py` / `app.py` / `ui/result_cards.py` / `analysis_core/topic_signals.py` を更新し、`コトメガネ` の左 drawer を明るいカード調へ戻したうえで、hero 直下に `直近の観測サマリー` を追加した。起動直後から `AIは誰を薦めたか / 今回の根拠 / 次に直すページ / 論点のつながり` を見せる current judgment へ変更した
 - 同日の更新で `質問と返答から見えた論点` カードを追加し、既存の topic signal に加えて、質問文・回答・引用URLタイトルから作る lightweight な共起ペア表示を導入した。`C:\textresearch` の full semantic network 直移植ではなく最小導線だが、URL列挙以外の付加価値を first view に載せた
 - 2026-04-13 late に `py_compile`、`import app`、8083 再起動、Playwright headless による起動確認を行い、明るい drawer、hero 下の観測サマリー 4 カード、論点チップと共起ペア表示まで確認した。スクリーンショットは `logs/kotomegane_ui_check.png`
+
+- 2026-06-08 Codex: `kotomegane welfare-equipment default competitor preset update`
+  - changed files:
+    - `config.py`
+    - `config\llmo_poc_settings.json`
+    - `analysis_core\source_evidence.py`
+    - `analysis_core\structures.py`
+    - `ui\comparison_candidate_builders.py`
+    - `ui\input_config_builders.py`
+    - `ALGORITHM.md`
+    - `docs\CURRENT_STATE_2026-03-30.md`
+    - `README.md`
+  - summary:
+    - Changed default market inputs from the old fertility-clinic sample to `介護保険 / 福祉用具レンタル`.
+    - Default target URL is `https://healthrent.duskin.jp/`.
+    - Default comparison targets include Yamashita, Panasonic Age-Free, France Bed, and Frontier.
+    - Added typed `competitor_presets` with aliases, official URL scopes, domain-scope type, and evaluation axes.
+    - Competitor alias matching now includes preset display names and aliases in local post-hoc evidence/answer-structure checks.
+    - Mixed corporate domains are kept as path/business scopes, not whole-domain hard filters.
+  - verification:
+    - `py -m compileall config.py analysis_core ui app.py`: passed.
+    - `load_config()` check: target domain `https://healthrent.duskin.jp/`, first keyword `介護保険で使える福祉用具レンタルの大手はどこ？`, competitor preset keys `yamashita`, `panasonic_agefree`, `francebed`, `frontier`.
+  - boundary:
+    - market-mode query-only provider request policy unchanged.
+    - no provider/API/LLM execution.
+    - no DB schema change.
+    - no runtime/server startup.
+
+- 2026-06-08 Codex: `kotomegane source-of-truth docs exact-target-url consistency repair only`
+  - changed files:
+    - `ALGORITHM.md`
+    - `README.md`
+    - `WORKLOG.md`
+  - summary:
+    - Tightened docs wording so the target URL is explicitly `https://healthrent.duskin.jp/`, not only the business name.
+    - Reconfirmed the existing source-of-truth state: default market `介護保険 / 福祉用具レンタル`, comparison targets Yamashita, Panasonic Age-Free, France Bed, and Frontier, and mixed domains evaluated by path/business scope.
+    - Reconfirmed `market` mode remains query-only; owned URL, brand aliases, competitor presets, and focus themes are provider-output local matching context only.
+  - verification:
+    - config JSON and `load_config()` checks are recorded in the paired Duskin docs-review artifact.
+    - no provider/API/LLM execution.
+  - boundary:
+    - provider/API/LLM execution: no
+    - DB write/schema change: no
+    - runtime/server startup: no
 
 ## Next Read Order
 

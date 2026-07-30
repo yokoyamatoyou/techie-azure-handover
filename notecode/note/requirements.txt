@@ -1,13 +1,1 @@
-nicegui
-requests
-beautifulsoup4
-openai
-pdfplumber
-pypdf>=6.7.5
-lxml-html-clean>=0.4.4
-python-docx
-pytest
-python-dotenv
-bleach
-opencv-python-headless==4.10.0.84
-rapidocr-onnxruntime
+-r ../requirements.txt

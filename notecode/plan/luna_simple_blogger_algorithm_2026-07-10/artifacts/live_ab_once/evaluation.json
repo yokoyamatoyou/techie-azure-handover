@@ -1,0 +1,272 @@
+{
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "low",
+  "send_count": 3,
+  "retry_count": 0,
+  "metrics": {
+    "A": {
+      "body_chars": 1230,
+      "body_floor": 1200,
+      "body_floor_reached": true,
+      "h1_count": 1,
+      "h2_count": 3,
+      "paragraph_count": 11,
+      "sentence_count": 32,
+      "sentence_chars": {
+        "mean": 38.44,
+        "median": 32.5,
+        "maximum": 101,
+        "population_stdev": 20.15
+      },
+      "paragraph_chars": {
+        "mean": 111.82,
+        "median": 103,
+        "maximum": 175,
+        "population_stdev": 30.03
+      },
+      "phrase_counts": {
+        "判断軸": 0,
+        "判断材料": 0,
+        "はじめの一歩": 0,
+        "第一歩": 0,
+        "効く": 0,
+        "確認": 0,
+        "整理": 0,
+        "説明": 1,
+        "判断": 0
+      },
+      "meta_sentence_count": 1,
+      "meta_sentence_ratio": 0.0312,
+      "narrator_counts": {
+        "私たち": 6,
+        "当社": 1,
+        "弊社": 0,
+        "わたしたち": 0
+      },
+      "narrator_total": 7,
+      "zero_anaphora_candidates": [],
+      "source_overlap": {
+        "label": "character_trigram_proxy_not_semantic_grounding",
+        "body_ratio": 0.6133,
+        "opening_ratio": 0.5573,
+        "unsupported_claim_status": "not_evaluable_statically"
+      }
+    },
+    "B1": {
+      "body_chars": 1220,
+      "body_floor": 1200,
+      "body_floor_reached": true,
+      "h1_count": 1,
+      "h2_count": 3,
+      "paragraph_count": 11,
+      "sentence_count": 36,
+      "sentence_chars": {
+        "mean": 33.89,
+        "median": 31.0,
+        "maximum": 67,
+        "population_stdev": 12.02
+      },
+      "paragraph_chars": {
+        "mean": 110.91,
+        "median": 110,
+        "maximum": 137,
+        "population_stdev": 19.81
+      },
+      "phrase_counts": {
+        "判断軸": 0,
+        "判断材料": 0,
+        "はじめの一歩": 0,
+        "第一歩": 0,
+        "効く": 0,
+        "確認": 0,
+        "整理": 0,
+        "説明": 0,
+        "判断": 0
+      },
+      "meta_sentence_count": 0,
+      "meta_sentence_ratio": 0.0,
+      "narrator_counts": {
+        "私たち": 5,
+        "当社": 0,
+        "弊社": 0,
+        "わたしたち": 0
+      },
+      "narrator_total": 5,
+      "zero_anaphora_candidates": [],
+      "source_overlap": {
+        "label": "character_trigram_proxy_not_semantic_grounding",
+        "body_ratio": 0.5804,
+        "opening_ratio": 0.7059,
+        "unsupported_claim_status": "not_evaluable_statically"
+      }
+    },
+    "B2": {
+      "body_chars": 1228,
+      "body_floor": 1200,
+      "body_floor_reached": true,
+      "h1_count": 1,
+      "h2_count": 3,
+      "paragraph_count": 11,
+      "sentence_count": 36,
+      "sentence_chars": {
+        "mean": 34.11,
+        "median": 31.0,
+        "maximum": 67,
+        "population_stdev": 12.85
+      },
+      "paragraph_chars": {
+        "mean": 111.64,
+        "median": 117,
+        "maximum": 137,
+        "population_stdev": 19.53
+      },
+      "phrase_counts": {
+        "判断軸": 0,
+        "判断材料": 0,
+        "はじめの一歩": 0,
+        "第一歩": 0,
+        "効く": 0,
+        "確認": 0,
+        "整理": 0,
+        "説明": 0,
+        "判断": 0
+      },
+      "meta_sentence_count": 0,
+      "meta_sentence_ratio": 0.0,
+      "narrator_counts": {
+        "私たち": 4,
+        "当社": 1,
+        "弊社": 0,
+        "わたしたち": 0
+      },
+      "narrator_total": 5,
+      "zero_anaphora_candidates": [
+        {
+          "sentence_index": 8,
+          "text": "展示会では、食材やメニューを紹介し、自社開発製品やサポートについてもご案内します。",
+          "competing_entity_in_previous_sentence": true,
+          "status": "manual_review_candidate"
+        }
+      ],
+      "source_overlap": {
+        "label": "character_trigram_proxy_not_semantic_grounding",
+        "body_ratio": 0.5976,
+        "opening_ratio": 0.7059,
+        "unsupported_claim_status": "not_evaluable_statically"
+      }
+    }
+  },
+  "costs": {
+    "A": {
+      "input_tokens": 2254,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 2251,
+      "uncached_input_tokens": 3,
+      "output_tokens_including_reasoning": 1053,
+      "reasoning_tokens": 67,
+      "input_usd": 0.00281675,
+      "output_usd": 0.006318,
+      "total_usd": 0.00913475
+    },
+    "B1": {
+      "input_tokens": 2254,
+      "cached_input_tokens": 2251,
+      "cache_write_tokens": 0,
+      "uncached_input_tokens": 3,
+      "output_tokens_including_reasoning": 1071,
+      "reasoning_tokens": 86,
+      "input_usd": 0.0002281,
+      "output_usd": 0.006426,
+      "total_usd": 0.0066541
+    },
+    "B2": {
+      "input_tokens": 3248,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 3245,
+      "uncached_input_tokens": 3,
+      "output_tokens_including_reasoning": 1164,
+      "reasoning_tokens": 177,
+      "input_usd": 0.00405925,
+      "output_usd": 0.006984,
+      "total_usd": 0.01104325
+    }
+  },
+  "arm_summary": {
+    "A": {
+      "calls": 1,
+      "latency_seconds": 8.27,
+      "cost_usd": 0.00913475
+    },
+    "B": {
+      "calls": 2,
+      "latency_seconds": 12.188,
+      "cost_usd": 0.01769735
+    },
+    "B_to_A_latency_ratio": 1.474,
+    "B_to_A_cost_ratio": 1.937
+  },
+  "b_stage2_change": {
+    "paragraph_similarity_ratio": 0.8,
+    "change_block_count": 3,
+    "changes": [
+      {
+        "tag": "replace",
+        "before_indexes": [
+          4,
+          5
+        ],
+        "after_indexes": [
+          4,
+          5
+        ],
+        "before": [
+          "展示会というと、商品を見ていただく場を思い浮かべるかもしれません。私たちにとっては、食材を使うお客様と向き合い、どんな料理やメニューにつながるのかを考える場でもあります。自社開発製品やサポートについてもご案内し、お問い合わせを受け付けています。"
+        ],
+        "after": [
+          "展示会では、食材やメニューを紹介し、自社開発製品やサポートについてもご案内します。外食店や量販店、学校、病院・施設事業所など、食材を使うお客様のニーズに合わせて、新たな食材やメニューをご提案する場です。お問い合わせも受け付けています。"
+        ]
+      },
+      {
+        "tag": "replace",
+        "before_indexes": [
+          8,
+          9
+        ],
+        "after_indexes": [
+          8,
+          9
+        ],
+        "before": [
+          "同じころ、山陰酸素工業の開発部門が液体窒素の冷熱を利用した急速冷凍食品の開発を始めました。その後、食品メーカーから技術指導を受け、会社を発足。地元食品卸業の合流などの変遷を経て、現在に至ります。"
+        ],
+        "after": [
+          "同じころ、山陰酸素工業の開発部門が液体窒素の冷熱を利用した急速冷凍食品の開発を始めました。その後、食品メーカーから技術指導を受け、当社が発足しました。地元食品卸業の合流などの変遷を経て、現在に至ります。"
+        ]
+      },
+      {
+        "tag": "replace",
+        "before_indexes": [
+          13,
+          14
+        ],
+        "after_indexes": [
+          13,
+          14
+        ],
+        "before": [
+          "社内報『フラット！』では、さんれいフーズの情報を発信しています。春号では「サンドイッチ＆デリ ひだまりランチ」も紹介しました。展示会で食材やメニューを提案する仕事も、日々の情報を伝える仕事も、食をめぐらせる動きの一つです。"
+        ],
+        "after": [
+          "社内報『フラット！』では、さんれいフーズの情報を発信しています。2026年春号では、「サンドイッチ＆デリ ひだまりランチ」も紹介しました。食材やメニューを提案すること、社内の取り組みを伝えることも、「食の幸せ」をつないでいく動きの一つです。"
+        ]
+      }
+    ]
+  },
+  "pricing_basis": {
+    "input_per_mtok": 1.0,
+    "cached_input_per_mtok": 0.1,
+    "cache_write_multiplier": 1.25,
+    "output_per_mtok": 6.0
+  },
+  "semantic_source_audit_status": "manual_review_required"
+}

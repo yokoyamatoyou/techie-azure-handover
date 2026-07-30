@@ -117,11 +117,17 @@ def infer_answer_structure(
         if any(_contains_named_term(haystack, alias) for alias in aliases)
     ]
     owned_hosts = _build_owned_hosts(analysis_context, config)
+    preset_competitor_terms = [
+        term
+        for preset in (config.competitor_presets if config else [])
+        for term in [preset.display_name, *preset.aliases]
+    ]
     competitor_terms = dedupe_preserve_order(
         [
             str(item or "")
             for item in [
                 *(analysis_context.get("competitor_terms") or (config.competitor_terms if config else [])),
+                *preset_competitor_terms,
                 *(payload.get("competitor_mentions") or []),
             ]
         ]

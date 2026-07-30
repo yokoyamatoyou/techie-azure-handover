@@ -626,6 +626,13 @@ def generate_improvement_suggestion(issue: Dict, mode: str = "simple") -> Dict:
 def format_check_result(result: Dict, mode: str = "simple") -> Dict:
     """チェック結果を表示モードに応じてフォーマット"""
 
+    # Context-adjusted safe/review candidates remain in raw evidence for the
+    # engineer view, but must not become a marketer-facing warning or score hit.
+    actionable_issues = [
+        issue for issue in result.get("issues", [])
+        if issue.get("legal_decision", "action_required") == "action_required"
+    ]
+
     # ステータス判定
     if result["risk_level"] == "high":
         status = "要対応"
@@ -639,7 +646,7 @@ def format_check_result(result: Dict, mode: str = "simple") -> Dict:
 
     # 項目リスト作成
     items = []
-    for issue in result["issues"][:10]:  # 上位10件
+    for issue in actionable_issues[:10]:  # 上位10件
         risk = issue.get("risk_level", "")
         if risk in ["high", "high_risk"]:
             icon = "✕"
@@ -674,6 +681,8 @@ def format_check_result(result: Dict, mode: str = "simple") -> Dict:
         "status_color": status_color,
         "score": 100 - result["risk_score"],  # 安全度として表示
         "summary": result["summary"],
+        "review_needed_count": result.get("summary", {}).get("review_needed_count", 0),
+        "safe_context_count": result.get("summary", {}).get("safe_context_count", 0),
         "items": items,
         "recommendations": result["recommendations"],
         "faq": faq if mode == "simple" else []

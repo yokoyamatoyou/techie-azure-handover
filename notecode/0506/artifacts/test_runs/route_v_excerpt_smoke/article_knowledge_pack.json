@@ -1,0 +1,27 @@
+{
+  "article_knowledge_pack": {
+    "pack_id": "pack_local_001",
+    "source_card_ids": [
+      "manual_17c129b87b1f"
+    ],
+    "confirmed_facts": [
+      {
+        "claim_id": "C001",
+        "claim": "Alpha plan includes source-backed setup support. The source explains this near a",
+        "supporting_fact_ids": [
+          "F001"
+        ],
+        "confidence": "medium",
+        "preferred_expression": "Alpha plan includes source-backed setup support. The source explains this near a",
+        "risk_flags": []
+      }
+    ],
+    "conflicts": [],
+    "deduped_themes": [
+      "manual source"
+    ],
+    "do_not_infer": [
+      "ソースにない実績、価格、日付、効果を追加しない"
+    ]
+  }
+}

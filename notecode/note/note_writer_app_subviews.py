@@ -8,6 +8,21 @@ from typing import Any, Callable, Mapping, Sequence
 from nicegui import ui
 
 
+BASE_TEMPLATE_LABELS = {
+    "branding": "branding",
+    "ai": "ai",
+    "announcement": "announcement",
+    "case_study": "case_study",
+}
+FOCUS_DEFAULT_LABELS = {
+    "analysis": "analysis",
+    "explanation": "explanation",
+    "experience": "experience",
+}
+LEVEL_LABELS = {"low": "low", "med": "med", "high": "high"}
+EVIDENCE_LABELS = {"strict": "strict", "normal": "normal"}
+
+
 @dataclass(frozen=True)
 class CustomGenreEditPayload:
     key: str
@@ -251,6 +266,41 @@ def open_custom_genre_edit_dialog(
     dialog.open()
 
 
+def open_custom_genre_edit_dialog_with_actions(
+    *,
+    genre: Mapping[str, Any],
+    normalize_meta: Callable[[Any], Mapping[str, Any]],
+    base_template_options: Sequence[str],
+    focus_default_options: Sequence[str],
+    level_options: Sequence[str],
+    evidence_options: Sequence[str],
+    update_genre: Callable[[str, str, str, Mapping[str, Any]], None],
+    notify: Callable[..., None],
+    log_usage: Callable[..., None],
+    refresh_custom_genres: Callable[[], None],
+    refresh_article_type_select: Callable[[], None],
+) -> None:
+    log_usage("custom_genre", "open_edit_dialog", key=str(genre.get("key", "") or ""))
+
+    def _save_edit(payload: CustomGenreEditPayload) -> None:
+        update_genre(payload.key, payload.label, payload.prompt, payload.meta)
+        notify("更新しました", color="positive")
+        log_usage("custom_genre", "save_edit", key=str(genre.get("key", "") or ""))
+        refresh_custom_genres()
+        refresh_article_type_select()
+
+    open_custom_genre_edit_dialog(
+        genre=genre,
+        normalize_meta=normalize_meta,
+        base_template_options=base_template_options,
+        focus_default_options=focus_default_options,
+        level_options=level_options,
+        evidence_options=evidence_options,
+        on_validation_error=lambda message: notify(message, color="negative"),
+        on_save=_save_edit,
+    )
+
+
 def open_custom_genre_delete_dialog(
     *,
     genre: Mapping[str, Any],
@@ -268,6 +318,28 @@ def open_custom_genre_delete_dialog(
             ui.button("キャンセル", on_click=dialog.close).props("flat")
             ui.button("削除", on_click=do_delete).props("color=negative")
     dialog.open()
+
+
+def open_custom_genre_delete_dialog_with_actions(
+    *,
+    genre: Mapping[str, Any],
+    delete_genre: Callable[[str], None],
+    notify: Callable[..., None],
+    log_usage: Callable[..., None],
+    refresh_custom_genres: Callable[[], None],
+    refresh_article_type_select: Callable[[], None],
+) -> None:
+    def _delete_genre(genre_key: str) -> None:
+        delete_genre(genre_key)
+        notify("削除しました", color="positive")
+        log_usage("custom_genre", "delete", key=str(genre.get("key", "") or ""))
+        refresh_custom_genres()
+        refresh_article_type_select()
+
+    open_custom_genre_delete_dialog(
+        genre=genre,
+        on_confirm_delete=_delete_genre,
+    )
 
 
 def open_privacy_blur_dialog_view(

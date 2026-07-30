@@ -34,6 +34,7 @@
 - query planning、短文化、拡張質問、query identity の持ち方は共通
 - query order は `query_then_repeat`
 - 同じ質問を連続送信し、prompt caching 効率を優先する
+- 標準の単発確認は、元質問 + 拡張質問3件を5回実行する（1元質問あたり20リクエスト）。定期/Batchの保存済み repeat 設定は別管理とする。
 
 ## Query Plan Rule
 

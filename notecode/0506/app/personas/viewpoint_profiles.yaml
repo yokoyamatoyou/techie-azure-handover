@@ -1,0 +1,16 @@
+viewpoint_profiles:
+  self_perspective_watashitachi:
+    viewpoint_mode: "self_perspective"
+    narrator: "私たち"
+    forbidden_terms:
+      - "同社"
+      - "同サービス"
+      - "第三者として"
+    allowed_external_voice: "attributed_quotes_only"
+  formal_self_perspective_tousha:
+    viewpoint_mode: "self_perspective"
+    narrator: "当社"
+    forbidden_terms:
+      - "同社"
+      - "同サービス"
+    allowed_external_voice: "attributed_quotes_only"

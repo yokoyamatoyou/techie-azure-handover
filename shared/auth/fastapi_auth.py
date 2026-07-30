@@ -23,8 +23,28 @@ logger = logging.getLogger(__name__)
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 # 開発モードフラグ — テスト時にトークン検証をスキップ
-_DEV_MODE = os.environ.get("AUTH_DEV_MODE", "").lower() in ("1", "true", "yes")
 _DEV_TENANT_ID = os.environ.get("DEV_TENANT_ID", "dev-tenant-00000000")
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _environment_name() -> str:
+    return (
+        os.environ.get("ENVIRONMENT")
+        or os.environ.get("ASPNETCORE_ENVIRONMENT")
+        or os.environ.get("CONTAINER_ENV")
+        or ""
+    ).strip().lower()
+
+
+def _dev_mode_enabled() -> bool:
+    if not _truthy(os.environ.get("AUTH_DEV_MODE")):
+        return False
+    if _environment_name() in {"prod", "production"}:
+        return _truthy(os.environ.get("ALLOW_AUTH_DEV_MODE_IN_PUBLIC"))
+    return True
 
 
 async def require_auth(
@@ -36,7 +56,7 @@ async def require_auth(
     開発モード (AUTH_DEV_MODE=1) ではトークン検証をスキップし、
     DEV_TENANT_ID を返す。
     """
-    if _DEV_MODE:
+    if _dev_mode_enabled():
         return {
             "user_id": "dev-user",
             "email": "dev@localhost",
@@ -66,4 +86,4 @@ async def require_auth(
 
 async def get_current_tenant(request: Request) -> str:
     """リクエストからテナント ID を取得"""
-    return getattr(request.state, "tenant_id", _DEV_TENANT_ID if _DEV_MODE else "")
+    return getattr(request.state, "tenant_id", _DEV_TENANT_ID if _dev_mode_enabled() else "")

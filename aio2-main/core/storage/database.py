@@ -101,6 +101,12 @@ def init_database() -> None:
     conn.close()
 
 
+def _get_initialized_connection() -> sqlite3.Connection:
+    """Return a connection after ensuring the schema exists."""
+    init_database()
+    return get_connection()
+
+
 def save_analysis_run(
     url: str,
     scores: Dict[str, int],
@@ -111,7 +117,7 @@ def save_analysis_run(
 ) -> int:
     """Persist a run and its flattened issue list."""
     init_database()
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -163,7 +169,7 @@ def save_crawl_pages(run_id: int, pages: List[Dict[str, Any]]) -> int:
     if not run_id or not pages:
         return 0
 
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     saved = 0
     for page in pages:
@@ -211,7 +217,7 @@ def update_run_artifacts(
         return
 
     values.append(int(run_id))
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     cursor.execute(f"UPDATE analysis_runs SET {', '.join(updates)} WHERE id = ?", values)
     conn.commit()
@@ -220,7 +226,7 @@ def update_run_artifacts(
 
 def get_run(run_id: int) -> Optional[Dict[str, Any]]:
     """Fetch a single run row."""
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM analysis_runs WHERE id = ?", (int(run_id),))
     row = cursor.fetchone()
@@ -256,7 +262,7 @@ def get_history(
     )
     values.append(int(limit))
 
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     cursor.execute(query, values)
     rows = cursor.fetchall()
@@ -269,7 +275,7 @@ def get_previous_run(url: str, current_run_id: Optional[int] = None) -> Optional
     if not url:
         return None
 
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     if current_run_id:
         cursor.execute(
@@ -304,7 +310,7 @@ def get_run_detail(run_id: int) -> Optional[Dict[str, Any]]:
     if not run_row:
         return None
 
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -327,7 +333,7 @@ def get_run_detail(run_id: int) -> Optional[Dict[str, Any]]:
 
 def compare_runs(run_id_1: int, run_id_2: int) -> Dict[str, Any]:
     """Compare two saved runs by score deltas."""
-    conn = get_connection()
+    conn = _get_initialized_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM analysis_runs WHERE id IN (?, ?)", (run_id_1, run_id_2))
     runs = [dict(row) for row in cursor.fetchall()]

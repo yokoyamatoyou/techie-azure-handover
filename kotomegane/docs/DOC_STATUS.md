@@ -20,9 +20,13 @@
    - first view の削減、色統一、文言置換、overflow 対策の実装用 plan
 9. `docs/COMPETITIVE_VALUE_VISUALIZATION_PLAN_2026-04-24.md`
    - 既存アルゴリズムを変えず、競合比較・引用元影響・負け質問を低認知負荷で見せるための実装 plan
-10. `docs/OPENAI_RUNTIME_NOTES.md`
+10. `docs/UI_UX_REFACTOR_PLAN_2026-05-23.md`
+   - 非エンジニア視点の UI/UX 診断 issue を細かい owner package に分ける実装計画
+11. `docs/SCHEDULE_UI_CHANGE_2026-05-23.md`
+   - 自動定期分析の曜日チェックボックス化、旧UI挙動、複数質問/複数曜日登録、3質問実行時の guardrail 挙動の現在仕様
+12. `docs/OPENAI_RUNTIME_NOTES.md`
    - OpenAI runtime note
-11. `README.md`
+13. `README.md`
    - セットアップ / 起動
 
 ## Current Source Of Truth
@@ -50,6 +54,10 @@
   - first view の削減、suite 色統一、input/result copy 更新、overflow hardening の実装 plan
 - `docs/COMPETITIVE_VALUE_VISUALIZATION_PLAN_2026-04-24.md`
   - 共通ヘッダを維持し、新アルゴリズムなしで競合比較・引用元影響・負け質問を可視化する実装 plan
+- `docs/UI_UX_REFACTOR_PLAN_2026-05-23.md`
+  - UI/UX 診断 issue を owner package、実装順、検証条件へ分解する current implementation plan
+- `docs/SCHEDULE_UI_CHANGE_2026-05-23.md`
+  - 自動定期分析の曜日 UI、保存仕様、3質問実行時の guardrail current rule
 
 ### Session Notes
 

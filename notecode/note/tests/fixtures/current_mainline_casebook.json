@@ -1,0 +1,182 @@
+{
+  "cases": {
+    "speaker_auto_branding_company_intro": {
+      "source_values": [
+        "https://www.kyotokogyo.co.jp/strength/",
+        "https://www.kyotokogyo.co.jp/about/coprof/",
+        "https://www.kyotokogyo.co.jp/about/history/"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://www.kyotokogyo.co.jp/about/coprof/",
+          "source_type": "url",
+          "content": "京都工業株式会社はデータ入力やスキャニングを通じて、企業の情報整理を支援しています。業務ごとの運用に合わせて入力体制を整える会社です。"
+        },
+        {
+          "title": "強み",
+          "locator": "https://www.kyotokogyo.co.jp/strength/",
+          "source_type": "url",
+          "content": "長年の入力実績と確認体制を強みとしています。大量案件にも対応できる運用体制を整えています。"
+        },
+        {
+          "title": "沿革",
+          "locator": "https://www.kyotokogyo.co.jp/about/history/",
+          "source_type": "url",
+          "content": "1964年に創業しました。受託入力の経験を積み重ね、現在の支援体制を築いてきました。"
+        }
+      ],
+      "article_type": "branding",
+      "user_prompt_text": "自社の事業内容のデータエントリーと、自社の歴史をかいてください",
+      "audience_profile_input": "一般読者"
+    },
+    "speaker_selected_branding_company_intro": {
+      "source_values": [
+        "https://www.kyotokogyo.co.jp/strength/",
+        "https://www.kyotokogyo.co.jp/about/coprof/",
+        "https://www.kyotokogyo.co.jp/about/history/"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://www.kyotokogyo.co.jp/about/coprof/",
+          "source_type": "url",
+          "content": "京都工業株式会社はデータ入力やスキャニングを通じて、企業の情報整理を支援しています。業務ごとの運用に合わせて入力体制を整える会社です。"
+        },
+        {
+          "title": "強み",
+          "locator": "https://www.kyotokogyo.co.jp/strength/",
+          "source_type": "url",
+          "content": "長年の入力実績と確認体制を強みとしています。大量案件にも対応できる運用体制を整えています。"
+        },
+        {
+          "title": "沿革",
+          "locator": "https://www.kyotokogyo.co.jp/about/history/",
+          "source_type": "url",
+          "content": "1964年に創業しました。受託入力の経験を積み重ね、現在の支援体制を築いてきました。"
+        }
+      ],
+      "article_type": "branding",
+      "user_prompt_text": "自社の事業内容のデータエントリーと、自社の歴史をかいてください",
+      "speaker_profile_input": "運営担当として語る",
+      "audience_profile_input": "一般読者"
+    },
+    "note_first_post_company_intro_with_dx_context": {
+      "source_values": [
+        "https://www.kyotokogyo.co.jp/strength/",
+        "https://www.kyotokogyo.co.jp/about/coprof/",
+        "https://www.kyotokogyo.co.jp/about/history/",
+        "https://www.kyotokogyo.co.jp/service/input_scaning/"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://www.kyotokogyo.co.jp/about/coprof/",
+          "source_type": "url",
+          "content": "京都工業株式会社はデータ入力やスキャニングを通じて、企業の情報整理を支援しています。業務ごとの運用に合わせて入力体制を整える会社です。"
+        },
+        {
+          "title": "強み",
+          "locator": "https://www.kyotokogyo.co.jp/strength/",
+          "source_type": "url",
+          "content": "長年の入力実績と確認体制を強みとしています。大量案件にも対応できる運用体制を整えています。"
+        },
+        {
+          "title": "沿革",
+          "locator": "https://www.kyotokogyo.co.jp/about/history/",
+          "source_type": "url",
+          "content": "1964年に創業しました。受託入力の経験を積み重ね、現在の支援体制を築いてきました。"
+        },
+        {
+          "title": "データ入力・スキャニング",
+          "locator": "https://www.kyotokogyo.co.jp/service/input_scaning/",
+          "source_type": "url",
+          "content": "データ入力・エントリ業務をヒアリングから承ります。充実したスタッフ体制で、国内一貫で入力・チェック・納品まで対応します。お問い合わせのあと、ヒアリング、お見積り、発注・業務スタート、入力・媒体作成、納品・事後提案の流れで進みます。どのようなデータ活用をされたいのか、お悩みや課題からヒアリングさせていただきます。"
+        }
+      ],
+      "article_type": "branding",
+      "user_prompt_text": "noteに初めて投稿するので、会社紹介記事を作成してください。一般読者、DXを推進する方向けでDXの最初の段階はアナログデータのデジタル化の文脈。",
+      "audience_profile_input": "一般読者"
+    },
+    "ambiguous_intro_vs_howto": {
+      "source_values": [
+        "https://example.com/a",
+        "https://example.com/b"
+      ],
+      "article_type": "branding",
+      "user_prompt_text": "noteで会社紹介記事の書き方も含めて、自社紹介の方向性を整理したいです。",
+      "audience_profile_input": "一般読者"
+    },
+    "source_context_insufficient_company_intro": {
+      "source_values": [
+        "https://www.kyotokogyo.co.jp/about/coprof/"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://www.kyotokogyo.co.jp/about/coprof/",
+          "source_type": "url",
+          "content": "会社概要"
+        }
+      ],
+      "article_type": "branding",
+      "user_prompt_text": "noteに初めて投稿するので、自社説明を事務的な口調になりすぎないように表示してください。",
+      "audience_profile_input": "一般読者"
+    }
+  },
+  "captured_prompt_echo_block_result": {
+    "title": "一般読者に伝えたい、自社の事業内容のデータエントリーと、自社の歴史をかいてください",
+    "lead": "運営担当として語るとして、一般読者に向けて、自社の事業内容のデータエントリーと、自社の歴史をかいてくださいから見える価値と現場の工夫を整理します。",
+    "body": "## 私たちが向き合っている課題\n\n自社の事業内容のデータエントリーと、自社の歴史をかいてください、と求められたときに大切なのは、単に説明を並べることではありません。初めて触れる方にも輪郭が伝わる言葉で、自社が何をしている会社かを示し、その強みや歩みを事実ベースで置くことだと捉えています。",
+    "full_text": "一般読者に伝えたい、自社の事業内容のデータエントリーと、自社の歴史をかいてください\n\n運営担当として語るとして、一般読者に向けて、自社の事業内容のデータエントリーと、自社の歴史をかいてくださいから見える価値と現場の工夫を整理します。\n\n## 私たちが向き合っている課題\n\n自社の事業内容のデータエントリーと、自社の歴史をかいてください、と求められたときに大切なのは、単に説明を並べることではありません。",
+    "user_prompt": "自社の事業内容のデータエントリーと、自社の歴史をかいてください",
+    "pipeline_check": {
+      "input_contract": {
+        "article_type": "branding",
+        "speaker_profile": "運営担当として語る",
+        "audience_profile": "一般読者",
+        "prompt_raw": "自社の事業内容のデータエントリーと、自社の歴史をかいてください",
+        "topic": "自社の事業内容のデータエントリーと、自社の歴史をかいてください"
+      },
+      "hard_soft_eval": {
+        "mode": "enforce",
+        "hard_failed": false,
+        "metrics": {
+          "instructional_fragment_count": 0
+        }
+      },
+      "final_quality_eval": {
+        "hard_failed": false,
+        "metrics": {
+          "instructional_fragment_count": 0
+        }
+      },
+      "contextual_naturalness_report": {
+        "passed": true,
+        "issue_count": 0,
+        "soft_issue_count": 0,
+        "semantic_issue_count": 0,
+        "instructional_fragment_count": 0,
+        "semantic_layout": {
+          "semantic_issue_count": 0,
+          "heading_alignment_mean": 0.46
+        }
+      },
+      "contract_alignment": {
+        "alignment_score": 0.88,
+        "must_cover_count": 1,
+        "must_cover_reflection_rate": 1.0,
+        "category_mismatch_detected": false,
+        "prompt_anchor_coverage": 0.92,
+        "anchor_term_coverage": 0.86,
+        "section_focus_coverage": 1.0,
+        "section_focus_total": 1,
+        "anchor_terms": [
+          "データエントリー",
+          "歴史"
+        ]
+      }
+    },
+    "quality_pipeline_check": {}
+  }
+}

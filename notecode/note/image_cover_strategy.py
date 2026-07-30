@@ -349,10 +349,10 @@ def _company_intro_business_display_text(title: str, lead: str = "") -> str:
         return "ガス・電気・住まいを支える"
     if "データ化" in source and "デジタル化" in source:
         return "データ化・デジタル化事業"
-    if "データ入力" in source and _has_any(source, ("市場調査", "Webリサーチ", "業務整理")):
-        return "データ入力と業務整理"
     if "データ入力" in source and "スキャニング" in source:
         return "データ入力とスキャニング"
+    if "データ入力" in source and _has_any(source, ("市場調査", "Webリサーチ", "業務整理")):
+        return "データ入力と業務支援"
     if "LNG" in source and _has_any(source, ("地域", "エネルギー", "ガス")):
         return "LNGと地域のエネルギー"
     if "ガス" in source and "電気" in source:
@@ -603,8 +603,24 @@ def build_display_copy_prompt(
     core_subject = extract_core_subject(title, lead, article_type=article_type) or "未抽出"
     focus_terms = extract_focus_terms(title, lead, article_type=article_type)
     focus_text = " / ".join(focus_terms) if focus_terms else "未抽出"
+    if str(article_type or "").strip().lower() == "company_introduction":
+        copy_direction = "\n".join(
+            [
+                "- 会社紹介では、問い・相談導線・判断軸ではなく、事業領域、サービス、設備、地域、現在の仕事を短く示す",
+                "- 「相談」「問い合わせ」「判断軸」「見方」のような検討フックに寄せない",
+                "- 沿革の年号だけを主役にせず、現在扱っている業務やサービスが伝わる語を優先する",
+            ]
+        )
+    else:
+        copy_direction = "\n".join(
+            [
+                "- 問い、違和感、判断軸を使ってよい",
+                "- 形は「具体テーマ + 読者の問い」または「読者の状況 + 判断軸」に寄せる",
+                "- 主題エンティティまたは記事固有の判断軸を残す",
+            ]
+        )
     prompt = f"""
-記事内容から、note/はてなブログの見出し画像に1回だけ入れる短い日本語コピーを作ってください。
+記事内容から、ブログの見出し画像に1回だけ入れる短い日本語コピーを作ってください。
 
 条件:
 - 6〜18文字
@@ -612,9 +628,7 @@ def build_display_copy_prompt(
 - 記事タイトルとは別のカバー用コピーにする
 - 記事タイトルや本文の主題に合う
 - 説明ラベルではなく、読者が開く理由になる短いカバーコピーにする
-- 問い、違和感、判断軸を使ってよい
-- 形は「具体テーマ + 読者の問い」または「読者の状況 + 判断軸」に寄せる
-- 主題エンティティまたは記事固有の判断軸を残す
+{copy_direction}
 - 「どこから相談できる？」「何を見ればいい？」のような具体テーマのない一般質問にしない
 - 読者を釣る煽りや、本文にない成果・効果を入れない
 - 抽象的なスローガンだけにしない

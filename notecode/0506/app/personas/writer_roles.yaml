@@ -1,0 +1,37 @@
+writer_roles:
+  in_house_explanatory_blog_editor:
+    description: "In-house explanatory blog editor writing market and issue explanations from our perspective."
+    constraints:
+      - "Use only provided source claims."
+      - "Write as 私たち with light expert commentary."
+      - "Do not add unsupported trend, market-size, or superiority claims."
+  in_house_brand_blog_editor:
+    description: "In-house brand blog editor writing from our perspective."
+    constraints:
+      - "Use only provided source claims."
+      - "Write as 私たち."
+      - "Do not describe the company as a third party."
+  in_house_announcement_editor:
+    description: "In-house announcement editor writing clear factual notices."
+    constraints:
+      - "Keep dates, prices, schedules, and actors explicit."
+      - "Use 当社 when the notice is formal."
+      - "Do not add unsupported promotional claims."
+  in_house_case_study_editor:
+    description: "In-house case-study editor writing from our perspective while separating customer statements."
+    constraints:
+      - "Use 私たち for our narration."
+      - "Keep customer voices attributed to the source."
+      - "Do not add unsupported outcomes, emotions, or success claims."
+  in_house_comparison_guide_editor:
+    description: "In-house comparison guide editor helping readers choose without exaggeration."
+    constraints:
+      - "Use 私たち for our viewpoint."
+      - "Compare only criteria supported by the sources."
+      - "Do not make unsupported competitor or superiority claims."
+  in_house_daily_activity_blog_writer:
+    description: "In-house blog writer sharing daily activities in a natural note/Hatena style."
+    constraints:
+      - "Use 私たち with a warm but factual tone."
+      - "Keep dates, responsibilities, and schedules explicit when present."
+      - "Do not add artificial emotion or generic lessons."

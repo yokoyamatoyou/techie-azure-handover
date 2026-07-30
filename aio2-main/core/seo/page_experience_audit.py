@@ -22,6 +22,17 @@ def _grade_cls(cls_score: float) -> str:
     return "poor"
 
 
+_GRADE_LABELS_JA = {
+    "good": "良好",
+    "needs_improvement": "改善が必要な水準",
+    "poor": "不良",
+}
+
+
+def _grade_label_ja(grade: str) -> str:
+    return _GRADE_LABELS_JA.get(grade, grade)
+
+
 def audit_page_experience(
     soup: BeautifulSoup,
     page_url: str,
@@ -122,14 +133,14 @@ def audit_page_experience(
             cwv_status = "warn"
 
     if lcp_grade == "poor":
-        add_cwv_issue("fail", "LCP 推定が poor です。画像・JS・HTMLサイズの見直しが必要です。")
+        add_cwv_issue("fail", f"LCP の簡易推定が{_grade_label_ja(lcp_grade)}です。画像・JS・HTMLサイズの見直しが必要です。")
     elif lcp_grade == "needs_improvement":
-        add_cwv_issue("warn", "LCP 推定が needs_improvement です。主要画像やJSの軽量化を検討してください。")
+        add_cwv_issue("warn", f"LCP の簡易推定が{_grade_label_ja(lcp_grade)}です。主要画像やJSの軽量化を検討してください。")
 
     if cls_grade == "poor":
-        add_cwv_issue("fail", "CLS 推定が poor です。画像や埋め込みの予約領域を確保してください。")
+        add_cwv_issue("fail", f"CLS の簡易推定が{_grade_label_ja(cls_grade)}です。画像や埋め込みの予約領域を確保してください。")
     elif cls_grade == "needs_improvement":
-        add_cwv_issue("warn", "CLS 推定が needs_improvement です。画像サイズ指定や固定UIの影響を確認してください。")
+        add_cwv_issue("warn", f"CLS の簡易推定が{_grade_label_ja(cls_grade)}です。画像サイズ指定や固定UIの影響を確認してください。")
 
     if images_without_dimensions:
         add_cwv_issue("warn", f"width/height 未指定の画像が {images_without_dimensions} 件あります。CLS 悪化要因になりやすいです。")

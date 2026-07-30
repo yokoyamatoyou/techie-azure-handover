@@ -1,0 +1,1272 @@
+{
+  "version": "genre-sweep-2026-03-30-v2",
+  "created_at": "2026-03-31T00:00:00+09:00",
+  "notes": [
+    "current UI の 7 article types 固定",
+    "canonical route 8分類のみ使用",
+    "baseline 7x3 / stabilization fresh 7x2",
+    "experimental prompt stack live rerun 3 cases を別 phase で保持"
+  ],
+  "baseline_cases": [
+    {
+      "case_id": "bl-explanatory-decision-axis",
+      "genre": "explanatory_article",
+      "theme_label": "実務判断の解説",
+      "source_mode": "no_source",
+      "article_type": "explanatory_article",
+      "user_prompt_text": "AI導入支援ツールを入れた直後に、機能追加より運用定着を優先すべきかを判断するための解説記事。判断軸、見落としやすい前提、現場で先に見るべきサインを整理する。",
+      "audience_profile_input": "導入初期の実務担当者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "解説担当として語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "concept"
+      }
+    },
+    {
+      "case_id": "bl-explanatory-misread-metric",
+      "genre": "explanatory_article",
+      "theme_label": "誤解されやすい概念の整理",
+      "source_mode": "grounded",
+      "article_type": "explanatory_article",
+      "user_prompt_text": "問い合わせ件数が減ったことを定着成功と見なしてよいか、誤解されやすい評価指標として整理する解説記事。資料の事実を使いながら、何を合わせて見るべきかを説明する。",
+      "audience_profile_input": "カスタマーサクセス責任者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "専門家として語る",
+      "source_values": [
+        "https://fixture.techie/explanatory/adoption-signal-overview",
+        "https://fixture.techie/explanatory/helpdesk-signal-notes"
+      ],
+      "source_documents": [
+        {
+          "title": "定着状況の見方メモ",
+          "locator": "https://fixture.techie/explanatory/adoption-signal-overview",
+          "source_type": "url",
+          "content": "問い合わせ件数の減少だけでは定着成功と判断できない。初回設定完了率、権限設定の再編集率、FAQ閲覧後の操作完了率を合わせて見る必要がある。"
+        },
+        {
+          "title": "ヘルプデスク観測メモ",
+          "locator": "https://fixture.techie/explanatory/helpdesk-signal-notes",
+          "source_type": "url",
+          "content": "問い合わせは減っていても、管理者だけが設定を肩代わりしているケースがある。実務担当者の操作ログが薄いままなら定着ではなく依存の固定化が起きている。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "concept"
+      }
+    },
+    {
+      "case_id": "bl-explanatory-prereq-before-rollout",
+      "genre": "explanatory_article",
+      "theme_label": "導入前に押さえる前提",
+      "source_mode": "no_source",
+      "article_type": "explanatory_article",
+      "user_prompt_text": "AIを使った記事作成支援を現場へ広げる前に、担当者体制、レビュー責任、禁止事項の共有で何を先に決めておくべきかを整理する解説記事。",
+      "audience_profile_input": "小規模チームの運営責任者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "編集担当として語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "concept"
+      }
+    },
+    {
+      "case_id": "bl-daily-small-change",
+      "genre": "daily_story",
+      "theme_label": "小さな現場の変化",
+      "source_mode": "no_source",
+      "article_type": "daily_story",
+      "user_prompt_text": "新しい原稿確認フローを始めて三日目に感じた、小さな現場の変化を書く日常記事。大げさに成功談へ寄せず、作業の空気がどう変わったかを共有する。",
+      "audience_profile_input": "同じように少人数で運営する読者",
+      "content_goal_key": "interest",
+      "writing_focus_key": "experience",
+      "tone_profile_key": "warm",
+      "length_mode_key": "short",
+      "speaker_profile_input": "現場担当として語る",
+      "ui_journey": {
+        "purpose_key": "daily",
+        "target_key": "day_to_day"
+      }
+    },
+    {
+      "case_id": "bl-daily-tried-and-felt-unease",
+      "genre": "daily_story",
+      "theme_label": "試してわかった違和感",
+      "source_mode": "no_source",
+      "article_type": "daily_story",
+      "user_prompt_text": "毎朝の進行共有をテンプレート化してみたものの、かえって話しにくくなった日に感じた違和感と、その日の学びを書く日常記事。",
+      "audience_profile_input": "チーム運営に悩む担当者",
+      "content_goal_key": "interest",
+      "writing_focus_key": "experience",
+      "tone_profile_key": "warm",
+      "length_mode_key": "short",
+      "speaker_profile_input": "現場担当として語る",
+      "ui_journey": {
+        "purpose_key": "daily",
+        "target_key": "day_to_day"
+      }
+    },
+    {
+      "case_id": "bl-daily-learning-log-grounded",
+      "genre": "daily_story",
+      "theme_label": "日々の気づきと学び",
+      "source_mode": "grounded",
+      "article_type": "daily_story",
+      "user_prompt_text": "一日の終わりに残した振り返りメモをもとに、日々の気づきと学びを共有する日常記事。作業を早くする話ではなく、伝え方のズレに気づいた流れを中心にする。",
+      "audience_profile_input": "同じ現場で発信する担当者",
+      "content_goal_key": "interest",
+      "writing_focus_key": "experience",
+      "tone_profile_key": "warm",
+      "length_mode_key": "short",
+      "speaker_profile_input": "現場担当として語る",
+      "source_values": [
+        "https://fixture.techie/daily/review-note-20260310",
+        "https://fixture.techie/daily/review-note-20260311"
+      ],
+      "source_documents": [
+        {
+          "title": "振り返りメモ 2026-03-10",
+          "locator": "https://fixture.techie/daily/review-note-20260310",
+          "source_type": "url",
+          "content": "同じ説明を二回したのに伝わっていなかった。内容より、相手が次に何をするかを先に示した方が理解が早かった。"
+        },
+        {
+          "title": "振り返りメモ 2026-03-11",
+          "locator": "https://fixture.techie/daily/review-note-20260311",
+          "source_type": "url",
+          "content": "確認依頼の文章を短くしただけでは改善せず、期限と必要な判断を一文目に置くと返答が早くなった。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "daily",
+        "target_key": "day_to_day"
+      }
+    },
+    {
+      "case_id": "bl-branding-company-overview",
+      "genre": "branding",
+      "theme_label": "会社紹介",
+      "source_mode": "grounded",
+      "article_type": "branding",
+      "user_prompt_text": "医療機関向けの運用支援SaaSを提供する会社紹介記事。何をしている会社か、どんな場面で役立つか、どんな姿勢で伴走しているかを資料に沿って自然に伝える。",
+      "audience_profile_input": "導入前に概要を知りたい読者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "会社の輪郭と伴走姿勢を根拠付きで伝える",
+      "source_values": [
+        "https://fixture.techie/branding/company-profile",
+        "https://fixture.techie/branding/company-support-policy"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://fixture.techie/branding/company-profile",
+          "source_type": "url",
+          "content": "テティエ株式会社は、医療機関と製薬企業向けに、導入定着を支援する業務SaaSを提供する。主力は初期設定の整備、教育導線の設計、問い合わせ整理を一体で支えることにある。"
+        },
+        {
+          "title": "導入支援方針",
+          "locator": "https://fixture.techie/branding/company-support-policy",
+          "source_type": "url",
+          "content": "機能追加よりも、現場が迷わず使い始められる状態を優先する。導入初期は問い合わせを週次で見直し、説明不足を手順へ戻す運用を続けている。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "company"
+      }
+    },
+    {
+      "case_id": "bl-branding-service-overview",
+      "genre": "branding",
+      "theme_label": "サービス紹介",
+      "source_mode": "grounded",
+      "article_type": "branding",
+      "user_prompt_text": "オンボーディング支援サービスの紹介記事。誰がどんな場面で使うと効果が出やすいか、導入後に何が楽になるかを、資料の事実に沿って紹介する。",
+      "audience_profile_input": "導入を検討している実務責任者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "ブランド担当として語る",
+      "core_message_input": "利用場面と導入後の変化を具体的に伝える",
+      "source_values": [
+        "https://fixture.techie/branding/service-overview",
+        "https://fixture.techie/branding/service-scenes"
+      ],
+      "source_documents": [
+        {
+          "title": "サービス概要",
+          "locator": "https://fixture.techie/branding/service-overview",
+          "source_type": "url",
+          "content": "このサービスは、初回設定の手順整理、担当者別の案内分岐、FAQ整備をまとめて支援する。導入初期に管理者へ負荷が偏りやすい組織で使われることが多い。"
+        },
+        {
+          "title": "利用シーンメモ",
+          "locator": "https://fixture.techie/branding/service-scenes",
+          "source_type": "url",
+          "content": "複数部門が関わる導入では、設定の順番と確認ポイントを揃えるだけで問い合わせが減る。通知設定より前に権限設定を案内すると、初回の迷いを減らしやすい。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "product_service"
+      }
+    },
+    {
+      "case_id": "bl-branding-values-stance",
+      "genre": "branding",
+      "theme_label": "価値観/姿勢紹介",
+      "source_mode": "grounded",
+      "article_type": "branding",
+      "user_prompt_text": "機能の多さより、現場で迷わない設計を重視する会社の姿勢紹介記事。資料にある言葉を踏まえつつ、理念だけでなく日々の運用姿勢として読めるようにする。",
+      "audience_profile_input": "会社の考え方を知りたい読者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "warm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "価値観を抽象語だけでなく運用姿勢として伝える",
+      "source_values": [
+        "https://fixture.techie/branding/company-profile-values",
+        "https://fixture.techie/branding/company-strength-values",
+        "https://fixture.techie/branding/values-note",
+        "https://fixture.techie/branding/ops-review-policy"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://fixture.techie/branding/company-profile-values",
+          "source_type": "url",
+          "content": "テティエ株式会社は、導入初期の運用定着を支援する業務SaaSを提供する。初回設定、役割分担、FAQ整備をまとめて支えることを事業の中心に置く。"
+        },
+        {
+          "title": "支援の強み",
+          "locator": "https://fixture.techie/branding/company-strength-values",
+          "source_type": "url",
+          "content": "機能の多さではなく、現場が迷いにくい導線を先に整えることを強みとする。問い合わせの内容を週次で見直し、説明不足を運用へ戻す体制を持つ。"
+        },
+        {
+          "title": "価値観メモ",
+          "locator": "https://fixture.techie/branding/values-note",
+          "source_type": "url",
+          "content": "私たちは、導入初期の不安を減らすことを価値の中心に置く。複雑さを増やすより、現場で迷わない順番に整えることを優先する。"
+        },
+        {
+          "title": "運用見直し方針",
+          "locator": "https://fixture.techie/branding/ops-review-policy",
+          "source_type": "url",
+          "content": "問い合わせを責める材料にせず、説明や手順が足りなかった箇所を見つける材料にする。週次レビューでは、誰が迷ったかではなく、どの案内が伝わっていなかったかを確認する。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "company"
+      }
+    },
+    {
+      "case_id": "bl-announcement-spec-change",
+      "genre": "announcement",
+      "theme_label": "仕様変更告知",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "user_prompt_text": "2026年4月15日に記事公開フローの承認手順を変更するお知らせ。変更点、対象者、事前準備、当日の確認事項、旧手順の扱いを含める。",
+      "audience_profile_input": "既存利用者",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "変更点と確認事項を迷わず把握できるようにする",
+      "source_values": [
+        "https://fixture.techie/announcement/review-flow-change",
+        "https://fixture.techie/announcement/review-flow-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "承認フロー変更のお知らせ",
+          "locator": "https://fixture.techie/announcement/review-flow-change",
+          "source_type": "url",
+          "content": "2026年4月15日10時から、記事公開前の承認を一段階から二段階へ変更する。対象は編集担当者と承認者で、旧手順は2026年4月30日まで参照専用で残る。"
+        },
+        {
+          "title": "承認フロー FAQ",
+          "locator": "https://fixture.techie/announcement/review-flow-faq",
+          "source_type": "url",
+          "content": "事前準備は承認者の再設定と通知先の確認。当日の確認事項は下書き保存、差し戻し通知、公開日時の再指定の三点。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "bl-announcement-ops-change",
+      "genre": "announcement",
+      "theme_label": "受付/運用変更告知",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "user_prompt_text": "2026年5月1日からサポート受付時間と一次返信方針を変更するお知らせ。対象、変更後の時間帯、急ぎの連絡方法、移行期間の扱いを明確にする。",
+      "audience_profile_input": "契約中の利用者",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "広報担当として語る",
+      "core_message_input": "受付方法の変更と急ぎの連絡手段を誤解なく伝える",
+      "source_values": [
+        "https://fixture.techie/announcement/support-hours",
+        "https://fixture.techie/announcement/support-hours-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "サポート運用変更",
+          "locator": "https://fixture.techie/announcement/support-hours",
+          "source_type": "url",
+          "content": "2026年5月1日から平日の受付時間を9時から18時へ変更する。一次返信は4営業時間以内を目安とし、障害連絡のみ専用窓口を維持する。"
+        },
+        {
+          "title": "サポート運用 FAQ",
+          "locator": "https://fixture.techie/announcement/support-hours-faq",
+          "source_type": "url",
+          "content": "急ぎの障害連絡は専用フォームを使う。移行期間は4月24日から4月30日までで、旧メール窓口でも受け付けるが返信は新方針に準じる。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "bl-announcement-start-stop-migrate",
+      "genre": "announcement",
+      "theme_label": "提供開始/停止/移行告知",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "user_prompt_text": "旧レポート画面を停止し、新ダッシュボードへ移行するお知らせ。提供開始日、旧画面の停止日、対象者、移行前に確認すること、サポート期間を含める。",
+      "audience_profile_input": "管理者ユーザー",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "移行の時期と事前確認を一読でわかる形にする",
+      "source_values": [
+        "https://fixture.techie/announcement/dashboard-migration",
+        "https://fixture.techie/announcement/dashboard-migration-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "ダッシュボード移行告知",
+          "locator": "https://fixture.techie/announcement/dashboard-migration",
+          "source_type": "url",
+          "content": "新ダッシュボードは2026年6月3日に提供開始する。旧レポート画面は2026年7月1日に停止する。対象は管理者ユーザーで、旧レポートの保存設定は引き継がれない。"
+        },
+        {
+          "title": "ダッシュボード移行 FAQ",
+          "locator": "https://fixture.techie/announcement/dashboard-migration-faq",
+          "source_type": "url",
+          "content": "移行前に確認することは、共有リンクの再設定、通知先メールの見直し、旧CSVの保存有無である。サポート期間は停止日から30日間。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "bl-case-introduction",
+      "genre": "case_study",
+      "theme_label": "導入事例",
+      "source_mode": "grounded",
+      "article_type": "case_study",
+      "user_prompt_text": "新しい記事依頼フォームを導入した事例。導入前の混乱、導入後に何が揃ったか、再現条件として何を先に整えたかを共有する。",
+      "audience_profile_input": "同じ課題を持つ実務責任者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "導入支援担当として語る",
+      "core_message_input": "導入前後の差だけでなく再現条件まで共有する",
+      "source_values": [
+        "https://fixture.techie/case/form-before",
+        "https://fixture.techie/case/form-after"
+      ],
+      "source_documents": [
+        {
+          "title": "依頼フォーム導入前メモ",
+          "locator": "https://fixture.techie/case/form-before",
+          "source_type": "url",
+          "content": "記事依頼はチャット、口頭、スプレッドシートに散らばっていた。依頼者は締切だけを伝え、目的や対象読者が後から追加されることが多かった。"
+        },
+        {
+          "title": "依頼フォーム導入後メモ",
+          "locator": "https://fixture.techie/case/form-after",
+          "source_type": "url",
+          "content": "依頼フォームでは目的、対象読者、公開日、レビュー担当を最初に入力する形へ変えた。再現条件として、選択肢を増やしすぎず、必須項目を四つに絞ったことが効いた。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "case",
+        "target_key": "implementation"
+      }
+    },
+    {
+      "case_id": "bl-case-improvement",
+      "genre": "case_study",
+      "theme_label": "改善事例",
+      "source_mode": "grounded",
+      "article_type": "case_study",
+      "user_prompt_text": "ヘルプ記事の構成を導入し直した事例。導入前は何が読みづらかったか、どう進めて直したか、改善が出た条件は何かを共有する。",
+      "audience_profile_input": "運用改善を担当する編集者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "導入支援担当として語る",
+      "core_message_input": "改善の前後差と条件を具体的に共有する",
+      "source_values": [
+        "https://fixture.techie/case/help-article-audit",
+        "https://fixture.techie/case/help-article-rewrite",
+        "https://fixture.techie/case/help-article-process"
+      ],
+      "source_documents": [
+        {
+          "title": "導入前の監査メモ",
+          "locator": "https://fixture.techie/case/help-article-audit",
+          "source_type": "url",
+          "content": "導入前の旧記事は背景説明が長く、操作手順が後ろにまとまっていた。読者は何を先にクリックするかをすぐ判断できなかった。"
+        },
+        {
+          "title": "導入後の見直しメモ",
+          "locator": "https://fixture.techie/case/help-article-rewrite",
+          "source_type": "url",
+          "content": "導入後は最初に対象者と所要時間を置き、手順ごとに確認ポイントを一行で添えた。背景説明を別節へ逃がし、本文では操作順だけを先に見せた。"
+        },
+        {
+          "title": "導入手順メモ",
+          "locator": "https://fixture.techie/case/help-article-process",
+          "source_type": "url",
+          "content": "導入の進め方は、読者の最初の操作を先に洗い出し、必要な背景説明は後段へ退避する手順を取った。導入後の確認では、操作完了率と差し戻し理由を合わせて見た。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "case",
+        "target_key": "implementation"
+      }
+    },
+    {
+      "case_id": "bl-case-learning",
+      "genre": "case_study",
+      "theme_label": "学びの事例",
+      "source_mode": "grounded",
+      "article_type": "case_study",
+      "user_prompt_text": "役割別の案内へ導入し直して学びが残った事例。最初は何がうまくいかなかったか、見直しをどう進めたか、次に同じ失敗を避ける条件を整理する。",
+      "audience_profile_input": "導入計画を立てる担当者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "うまくいかなかった背景と次に避ける条件まで共有する",
+      "source_values": [
+        "https://fixture.techie/case/rollout-failure",
+        "https://fixture.techie/case/rollout-recovery",
+        "https://fixture.techie/case/rollout-process"
+      ],
+      "source_documents": [
+        {
+          "title": "導入前の失敗メモ",
+          "locator": "https://fixture.techie/case/rollout-failure",
+          "source_type": "url",
+          "content": "導入前は初回設定の説明会を一回で済ませ、全員に同じ資料を配ったが、管理者と実務担当の必要情報が混ざっていた。結果として質問が増え、設定待ちが長引いた。"
+        },
+        {
+          "title": "導入後の再設計メモ",
+          "locator": "https://fixture.techie/case/rollout-recovery",
+          "source_type": "url",
+          "content": "導入後の見直しでは管理者先行で設定し、その後に実務担当向けの短い手順を分けて案内した。再発防止の条件は、役割ごとに最初の一歩を分けることとFAQリンクを同梱することだった。"
+        },
+        {
+          "title": "導入手順の見直しメモ",
+          "locator": "https://fixture.techie/case/rollout-process",
+          "source_type": "url",
+          "content": "導入の進め方は、管理者が先に環境を整え、その後に実務担当へ役割別手順を配る二段階に変えた。質問が多い箇所はFAQへ戻し、翌週の説明会で補足した。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "case",
+        "target_key": "implementation"
+      }
+    },
+    {
+      "case_id": "bl-industry-market-shift",
+      "genre": "industry_analysis",
+      "theme_label": "市場の変化",
+      "source_mode": "no_source",
+      "article_type": "industry_analysis",
+      "user_prompt_text": "AIを使ったコンテンツ運用市場で、生成機能そのものより、導入後の運用定着支援が評価される方向へ変わっている流れを整理する業界記事。",
+      "audience_profile_input": "導入判断を行う責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "アナリストとして語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "industry"
+      }
+    },
+    {
+      "case_id": "bl-industry-evaluation-shift",
+      "genre": "industry_analysis",
+      "theme_label": "評価軸の変化",
+      "source_mode": "grounded",
+      "article_type": "industry_analysis",
+      "user_prompt_text": "記事生成支援ツールの評価軸が、出力品質単体から運用定着とレビューしやすさへ変わっている流れを、資料の要点を使いながら整理する。",
+      "audience_profile_input": "SaaSの選定を担う責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "アナリストとして語る",
+      "source_values": [
+        "https://fixture.techie/industry/review-benchmark",
+        "https://fixture.techie/industry/adoption-survey"
+      ],
+      "source_documents": [
+        {
+          "title": "レビュー体制ベンチマーク",
+          "locator": "https://fixture.techie/industry/review-benchmark",
+          "source_type": "url",
+          "content": "評価項目として、生成速度よりもレビュー負荷、修正指示の伝えやすさ、運用ルールへの適合が重視されている。"
+        },
+        {
+          "title": "導入定着調査メモ",
+          "locator": "https://fixture.techie/industry/adoption-survey",
+          "source_type": "url",
+          "content": "初期導入では出力品質の満足度が高くても、運用ルールへ組み込めず継続利用が止まるケースがある。継続率が高いチームは、レビューと承認の導線が整理されている。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "industry"
+      }
+    },
+    {
+      "case_id": "bl-industry-ops-trend",
+      "genre": "industry_analysis",
+      "theme_label": "導入/運用トレンド",
+      "source_mode": "no_source",
+      "article_type": "industry_analysis",
+      "user_prompt_text": "記事生成ツールの導入トレンドとして、全社一斉導入よりも小さく始めてレビュー体制を固める流れが増えている理由を整理する。",
+      "audience_profile_input": "導入計画を考えるマネージャー",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "アナリストとして語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "industry"
+      }
+    },
+    {
+      "case_id": "bl-comparative-tool-compare",
+      "genre": "comparative_review",
+      "theme_label": "ツール比較",
+      "source_mode": "no_source",
+      "article_type": "comparative_review",
+      "user_prompt_text": "コンテンツ運用SaaSを比較する記事。価格、レビュー体制、導入初期の使いやすさを軸に、どのタイプのチームに向くかまで整理する。",
+      "audience_profile_input": "比較検討中の担当者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "price",
+        "review_flow",
+        "onboarding"
+      ]
+    },
+    {
+      "case_id": "bl-comparative-selection-criteria",
+      "genre": "comparative_review",
+      "theme_label": "選定観点比較",
+      "source_mode": "grounded",
+      "article_type": "comparative_review",
+      "user_prompt_text": "記事作成支援ツールの選定観点比較。価格、承認フロー、サポート密度の三軸で、どの判断を優先するチームに向くかを整理する。",
+      "audience_profile_input": "導入比較を担当する責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "source_values": [
+        "https://fixture.techie/compare/tool-a",
+        "https://fixture.techie/compare/tool-b",
+        "https://fixture.techie/compare/tool-c"
+      ],
+      "source_documents": [
+        {
+          "title": "Tool A",
+          "locator": "https://fixture.techie/compare/tool-a",
+          "source_type": "url",
+          "content": "Tool A は月額5万円から導入でき、単一チーム向けの承認フローを持つ。サポートはメール中心で、導入初期テンプレートが多い。"
+        },
+        {
+          "title": "Tool B",
+          "locator": "https://fixture.techie/compare/tool-b",
+          "source_type": "url",
+          "content": "Tool B は月額9万円で、複数部門の承認フローとCS同席の導入支援を提供する。レビュー工程を標準化しやすい。"
+        },
+        {
+          "title": "Tool C",
+          "locator": "https://fixture.techie/compare/tool-c",
+          "source_type": "url",
+          "content": "Tool C は月額12万円で、厳格な権限管理と専任CSを特徴とする。大規模運用や監査要件が重い組織向け。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "price",
+        "approval_flow",
+        "support_density"
+      ]
+    },
+    {
+      "case_id": "bl-comparative-fit-by-usecase",
+      "genre": "comparative_review",
+      "theme_label": "用途別の向き不向き比較",
+      "source_mode": "grounded",
+      "article_type": "comparative_review",
+      "user_prompt_text": "社内ナレッジ共有SaaSを用途別に比較する記事。少人数導入、部門横断運用、監査対応の三つの用途で向き不向きを整理する。",
+      "audience_profile_input": "比較検討中の管理者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "source_values": [
+        "https://fixture.techie/compare/knowledge-a",
+        "https://fixture.techie/compare/knowledge-b",
+        "https://fixture.techie/compare/knowledge-c"
+      ],
+      "source_documents": [
+        {
+          "title": "Product A",
+          "locator": "https://fixture.techie/compare/knowledge-a",
+          "source_type": "url",
+          "content": "Product A は100名以下のチーム向けで、初期設定テンプレートが多い。月額5万円から使え、メールサポートが基本である。"
+        },
+        {
+          "title": "Product B",
+          "locator": "https://fixture.techie/compare/knowledge-b",
+          "source_type": "url",
+          "content": "Product B は複数部門の運用を想定し、柔軟な承認フロー設定とCS同席の導入支援を提供する。月額9万円。"
+        },
+        {
+          "title": "Product C",
+          "locator": "https://fixture.techie/compare/knowledge-c",
+          "source_type": "url",
+          "content": "Product C は厳格な権限管理と監査ログを備え、専任CSが付く。月額12万円で大規模組織向け。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "use_case",
+        "governance",
+        "support_density"
+      ]
+    }
+  ],
+  "stabilization_cases": [
+    {
+      "case_id": "st-explanatory-ops-prerequisites-grounded",
+      "genre": "explanatory_article",
+      "theme_label": "運用設計で失敗しやすい前提",
+      "source_mode": "grounded",
+      "article_type": "explanatory_article",
+      "user_prompt_text": "承認フローを増やす前に、役割分担とレビュー期限を決めておかないと何が起こるかを整理する解説記事。資料の観測事実を踏まえ、失敗しやすい前提を説明する。",
+      "audience_profile_input": "運用設計を見直す責任者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "専門家として語る",
+      "source_values": [
+        "https://fixture.techie/explanatory/review-deadline",
+        "https://fixture.techie/explanatory/role-split"
+      ],
+      "source_documents": [
+        {
+          "title": "レビュー期限メモ",
+          "locator": "https://fixture.techie/explanatory/review-deadline",
+          "source_type": "url",
+          "content": "承認者が複数いても、レビュー期限が曖昧だと待ち時間が増える。遅延の主因は人数ではなく、誰がいつ判断するかが曖昧なことにある。"
+        },
+        {
+          "title": "役割分担メモ",
+          "locator": "https://fixture.techie/explanatory/role-split",
+          "source_type": "url",
+          "content": "編集担当、承認者、公開担当の責務が分かれていないと、差し戻し理由が口頭共有に戻りやすい。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "concept"
+      }
+    },
+    {
+      "case_id": "st-explanatory-keep-manual-step",
+      "genre": "explanatory_article",
+      "theme_label": "既存フローを残す判断基準",
+      "source_mode": "no_source",
+      "article_type": "explanatory_article",
+      "user_prompt_text": "AIで自動化できる工程があっても、人手の確認を残した方がよい場面を整理する解説記事。全部自動化しない判断基準を実務目線で説明する。",
+      "audience_profile_input": "運用改善を進める担当者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "解説担当として語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "concept"
+      }
+    },
+    {
+      "case_id": "st-daily-bad-day-retrospective",
+      "genre": "daily_story",
+      "theme_label": "うまくいかなかった日の振り返り",
+      "source_mode": "no_source",
+      "article_type": "daily_story",
+      "user_prompt_text": "新しい確認フローを始めた日に、かえって返答が遅くなってしまった日の振り返りを書く。落ち込んだ話ではなく、どこで詰まったかを淡々と共有する。",
+      "audience_profile_input": "同じ業務を回す担当者",
+      "content_goal_key": "interest",
+      "writing_focus_key": "experience",
+      "tone_profile_key": "warm",
+      "length_mode_key": "short",
+      "speaker_profile_input": "現場担当として語る",
+      "ui_journey": {
+        "purpose_key": "daily",
+        "target_key": "day_to_day"
+      }
+    },
+    {
+      "case_id": "st-daily-routine-small-decision",
+      "genre": "daily_story",
+      "theme_label": "習慣化で変わった小さな判断",
+      "source_mode": "grounded",
+      "article_type": "daily_story",
+      "user_prompt_text": "毎日の終わりに三行だけ残す振り返りが、翌日の判断を少し楽にした話を書く。メモの内容をもとに、気づきが積み上がる感じを自然に共有する。",
+      "audience_profile_input": "日々の改善を続けたい読者",
+      "content_goal_key": "interest",
+      "writing_focus_key": "experience",
+      "tone_profile_key": "warm",
+      "length_mode_key": "short",
+      "speaker_profile_input": "現場担当として語る",
+      "source_values": [
+        "https://fixture.techie/daily/routine-note-a",
+        "https://fixture.techie/daily/routine-note-b"
+      ],
+      "source_documents": [
+        {
+          "title": "routine note A",
+          "locator": "https://fixture.techie/daily/routine-note-a",
+          "source_type": "url",
+          "content": "返信が遅れた理由を書くだけでなく、最初に必要な判断を書いておくと翌朝の着手が早くなった。"
+        },
+        {
+          "title": "routine note B",
+          "locator": "https://fixture.techie/daily/routine-note-b",
+          "source_type": "url",
+          "content": "迷った作業を三行で残すと、翌日は同じ迷い方をしにくくなった。大きな改善ではないが、判断の初速がそろった。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "daily",
+        "target_key": "day_to_day"
+      }
+    },
+    {
+      "case_id": "st-branding-service-difference",
+      "genre": "branding",
+      "theme_label": "導入支援の強み紹介",
+      "source_mode": "grounded",
+      "article_type": "branding",
+      "user_prompt_text": "導入支援サービスの強み紹介記事。ツールそのものではなく、初期設定と定着支援でどこが違うのかを資料ベースで説明する。",
+      "audience_profile_input": "複数サービスを比較する担当者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "ブランド担当として語る",
+      "core_message_input": "機能差ではなく導入支援の違いを具体化する",
+      "source_values": [
+        "https://fixture.techie/branding/service-difference",
+        "https://fixture.techie/branding/service-support-detail"
+      ],
+      "source_documents": [
+        {
+          "title": "違いの整理",
+          "locator": "https://fixture.techie/branding/service-difference",
+          "source_type": "url",
+          "content": "このサービスは、機能の数ではなく、初回設定と役割別案内を整える支援を強みにする。問い合わせを減らすより、迷いにくい導線を先に作る。"
+        },
+        {
+          "title": "支援詳細メモ",
+          "locator": "https://fixture.techie/branding/service-support-detail",
+          "source_type": "url",
+          "content": "導入初期は週次レビューで、設定詰まりと案内不足を切り分ける。FAQ追加だけで済ませず、手順と責任分担も見直す。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "product_service"
+      }
+    },
+    {
+      "case_id": "st-branding-why-we-work-this-way",
+      "genre": "branding",
+      "theme_label": "なぜその姿勢を取るかの紹介",
+      "source_mode": "no_source",
+      "article_type": "branding",
+      "user_prompt_text": "私たちが『迷わず使い始められる状態を先につくる』ことを重視する理由を紹介する記事。理念の説明ではなく、日々の仕事の姿勢として読めるようにする。",
+      "audience_profile_input": "会社の考え方を知りたい読者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "warm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "姿勢の理由を日々の運用とつなげて伝える",
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "company"
+      }
+    },
+    {
+      "case_id": "st-announcement-maintenance",
+      "genre": "announcement",
+      "theme_label": "メンテナンス告知",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "user_prompt_text": "2026年6月20日の深夜メンテナンス告知。停止対象、停止時間、影響範囲、事前に避けてほしい操作、復旧確認の方法を含める。",
+      "audience_profile_input": "既存利用者",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "広報担当として語る",
+      "core_message_input": "停止対象と事前に避ける操作を誤解なく伝える",
+      "source_values": [
+        "https://fixture.techie/announcement/maintenance",
+        "https://fixture.techie/announcement/maintenance-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "メンテナンス告知",
+          "locator": "https://fixture.techie/announcement/maintenance",
+          "source_type": "url",
+          "content": "2026年6月20日23時から24時30分まで、公開予約機能を停止する。閲覧と下書き保存は継続するが、公開日時の新規設定はできない。"
+        },
+        {
+          "title": "メンテナンス FAQ",
+          "locator": "https://fixture.techie/announcement/maintenance-faq",
+          "source_type": "url",
+          "content": "事前に避けてほしい操作は、停止時間直前の公開予約変更と一括承認である。復旧確認は管理画面の予約一覧とステータス表示で行う。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "st-announcement-deadline-change",
+      "genre": "announcement",
+      "theme_label": "締切変更告知",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "user_prompt_text": "月次レポート提出締切を変更するお知らせ。新しい締切、対象者、旧締切で提出済みの場合の扱い、問い合わせ先を含める。",
+      "audience_profile_input": "管理者ユーザー",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "新しい締切と提出済みデータの扱いを一読でわかる形にする",
+      "source_values": [
+        "https://fixture.techie/announcement/report-deadline",
+        "https://fixture.techie/announcement/report-deadline-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "締切変更告知",
+          "locator": "https://fixture.techie/announcement/report-deadline",
+          "source_type": "url",
+          "content": "月次レポートの提出締切を、2026年7月分から翌月3営業日へ変更する。対象は管理者ユーザーである。旧締切で提出済みのデータはそのまま有効。"
+        },
+        {
+          "title": "締切変更 FAQ",
+          "locator": "https://fixture.techie/announcement/report-deadline-faq",
+          "source_type": "url",
+          "content": "問い合わせ先はサポートフォームのみで、電話窓口は使わない。旧締切に合わせた自動通知は2026年6月末で停止する。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "st-case-slow-adoption",
+      "genre": "case_study",
+      "theme_label": "定着までに時間がかかった事例",
+      "source_mode": "grounded",
+      "article_type": "case_study",
+      "user_prompt_text": "導入後の定着までに時間がかかった事例。どこで詰まったか、導入手順をどう変えて進んだか、似たケースで先に用意すべき条件を共有する。",
+      "audience_profile_input": "導入後の定着に悩む担当者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "導入支援担当として語る",
+      "core_message_input": "定着遅延の原因と再現条件を具体的に共有する",
+      "source_values": [
+        "https://fixture.techie/case/adoption-delay",
+        "https://fixture.techie/case/adoption-recovery",
+        "https://fixture.techie/case/adoption-process"
+      ],
+      "source_documents": [
+        {
+          "title": "定着遅延メモ",
+          "locator": "https://fixture.techie/case/adoption-delay",
+          "source_type": "url",
+          "content": "導入自体は完了したが、管理者だけが設定を更新し、実務担当は閲覧にとどまっていた。操作の最初の一歩が部署ごとに違ったことが原因だった。"
+        },
+        {
+          "title": "回復施策メモ",
+          "locator": "https://fixture.techie/case/adoption-recovery",
+          "source_type": "url",
+          "content": "部署別に最初の操作を分けた短い手順を用意し、週次で質問を回収したところ利用が進んだ。再現条件は、役割別の初動整理とFAQの更新サイクルを固定すること。"
+        },
+        {
+          "title": "定着改善の進め方",
+          "locator": "https://fixture.techie/case/adoption-process",
+          "source_type": "url",
+          "content": "進め方は、部署ごとに初回操作を分けた短い案内を用意し、週次で質問を集めてFAQを更新する二段階運用だった。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "case",
+        "target_key": "implementation"
+      }
+    },
+    {
+      "case_id": "st-case-unexpected-load",
+      "genre": "case_study",
+      "theme_label": "想定外の運用負荷から学んだ事例",
+      "source_mode": "grounded",
+      "article_type": "case_study",
+      "user_prompt_text": "承認手順を導入し直した結果、かえって運用負荷が上がった事例。想定外だった点、見直し後の変化、次に同じ負荷を生まない条件を整理する。",
+      "audience_profile_input": "運用設計を見直す担当者",
+      "content_goal_key": "explain",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "想定外の負荷が生まれた理由と次の条件を共有する",
+      "source_values": [
+        "https://fixture.techie/case/review-load-before",
+        "https://fixture.techie/case/review-load-after",
+        "https://fixture.techie/case/review-load-process"
+      ],
+      "source_documents": [
+        {
+          "title": "導入前の負荷メモ",
+          "locator": "https://fixture.techie/case/review-load-before",
+          "source_type": "url",
+          "content": "導入前の運用では、承認者を増やしたことで差し戻し理由の確認が分散し、投稿までの時間が延びた。承認そのものより、判断理由の受け渡しが負荷になっていた。"
+        },
+        {
+          "title": "導入後の見直しメモ",
+          "locator": "https://fixture.techie/case/review-load-after",
+          "source_type": "url",
+          "content": "導入後の見直しでは、承認者を減らすのではなく、差し戻し理由を選択式と自由記述へ整理したことで再確認が減った。再発防止の条件は、判断理由の記録形式を先に決めることだった。"
+        },
+        {
+          "title": "導入手順の見直し",
+          "locator": "https://fixture.techie/case/review-load-process",
+          "source_type": "url",
+          "content": "導入の進め方は、差し戻し理由の分類を先に定め、承認者へ共通の入力欄を配ったうえで一週間だけ試験運用した。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "case",
+        "target_key": "implementation"
+      }
+    },
+    {
+      "case_id": "st-industry-competition-axis",
+      "genre": "industry_analysis",
+      "theme_label": "競争軸の再編",
+      "source_mode": "grounded",
+      "article_type": "industry_analysis",
+      "user_prompt_text": "記事生成支援市場で、競争軸が『生成品質』だけでなく『レビューしやすさ』と『運用組み込みやすさ』へ広がっている流れを、資料に沿って整理する。",
+      "audience_profile_input": "市場動向を追う責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "アナリストとして語る",
+      "source_values": [
+        "https://fixture.techie/industry/competition-axis",
+        "https://fixture.techie/industry/operation-fit"
+      ],
+      "source_documents": [
+        {
+          "title": "競争軸メモ",
+          "locator": "https://fixture.techie/industry/competition-axis",
+          "source_type": "url",
+          "content": "比較検討時に、出力品質と同じくらい、レビューしやすさと責任分担への組み込みやすさが問われるようになっている。"
+        },
+        {
+          "title": "運用適合メモ",
+          "locator": "https://fixture.techie/industry/operation-fit",
+          "source_type": "url",
+          "content": "継続利用率の高い導入では、承認フローとログの残し方まで設計されている。単発生成の精度だけでは比較されにくくなっている。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "industry"
+      }
+    },
+    {
+      "case_id": "st-industry-governance-shift",
+      "genre": "industry_analysis",
+      "theme_label": "運用責任の置き方の変化",
+      "source_mode": "no_source",
+      "article_type": "industry_analysis",
+      "user_prompt_text": "AIを使った記事運用で、現場任せではなく、責任の持ち方とレビュー基準を先に決める流れが増えている理由を整理する業界記事。",
+      "audience_profile_input": "導入責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "アナリストとして語る",
+      "ui_journey": {
+        "purpose_key": "explain",
+        "target_key": "industry"
+      }
+    },
+    {
+      "case_id": "st-comparative-small-team",
+      "genre": "comparative_review",
+      "theme_label": "小規模導入向け比較",
+      "source_mode": "grounded",
+      "article_type": "comparative_review",
+      "user_prompt_text": "小規模チームが記事作成支援ツールを選ぶときの比較記事。価格、初期設定、レビューの軽さを軸に、向くチームを整理する。",
+      "audience_profile_input": "少人数チームの責任者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "calm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "source_values": [
+        "https://fixture.techie/compare/small-a",
+        "https://fixture.techie/compare/small-b",
+        "https://fixture.techie/compare/small-c"
+      ],
+      "source_documents": [
+        {
+          "title": "small A",
+          "locator": "https://fixture.techie/compare/small-a",
+          "source_type": "url",
+          "content": "A は初期設定テンプレートが多く、月額費用が低い。承認フローは単純だが、複雑な権限制御には向かない。"
+        },
+        {
+          "title": "small B",
+          "locator": "https://fixture.techie/compare/small-b",
+          "source_type": "url",
+          "content": "B はレビューコメントが残しやすく、導入時の伴走がある。月額は中価格帯で、複数担当の引き継ぎに向く。"
+        },
+        {
+          "title": "small C",
+          "locator": "https://fixture.techie/compare/small-c",
+          "source_type": "url",
+          "content": "C は権限制御が強いが、初期設定の負荷がやや高い。少人数より、運用ルールが厳しい組織向け。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "price",
+        "initial_setup",
+        "review_lightness"
+      ]
+    },
+    {
+      "case_id": "st-comparative-cross-department",
+      "genre": "comparative_review",
+      "theme_label": "部門横断運用向け比較",
+      "source_mode": "no_source",
+      "article_type": "comparative_review",
+      "user_prompt_text": "複数部門で記事作成を回す組織向けの比較記事。承認フロー、責任分担、監査のしやすさを軸に、向くサービスを整理する。",
+      "audience_profile_input": "部門横断運用を考える管理者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "approval_flow",
+        "ownership",
+        "auditability"
+      ]
+    }
+  ],
+  "experimental_cases": [
+    {
+      "case_id": "exp-branding-values-stance",
+      "genre": "branding",
+      "theme_label": "姿勢紹介 rerun",
+      "source_mode": "grounded",
+      "article_type": "branding",
+      "body_generation_experiment": "experimental_prompt_stack",
+      "user_prompt_text": "機能の多さより、現場で迷わない設計を重視する会社の姿勢紹介記事。資料にある言葉を踏まえつつ、理念だけでなく日々の運用姿勢として読めるようにする。",
+      "audience_profile_input": "会社の考え方を知りたい読者",
+      "content_goal_key": "trust",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "warm",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "価値観を抽象語だけでなく運用姿勢として伝える",
+      "source_values": [
+        "https://fixture.techie/branding/company-profile-values",
+        "https://fixture.techie/branding/company-strength-values",
+        "https://fixture.techie/branding/values-note",
+        "https://fixture.techie/branding/ops-review-policy"
+      ],
+      "source_documents": [
+        {
+          "title": "会社概要",
+          "locator": "https://fixture.techie/branding/company-profile-values",
+          "source_type": "url",
+          "content": "テティエ株式会社は、導入初期の運用定着を支援する業務SaaSを提供する。初回設定、役割分担、FAQ整備をまとめて支えることを事業の中心に置く。"
+        },
+        {
+          "title": "支援の強み",
+          "locator": "https://fixture.techie/branding/company-strength-values",
+          "source_type": "url",
+          "content": "機能の多さではなく、現場が迷いにくい導線を先に整えることを強みとする。問い合わせの内容を週次で見直し、説明不足を運用へ戻す体制を持つ。"
+        },
+        {
+          "title": "価値観メモ",
+          "locator": "https://fixture.techie/branding/values-note",
+          "source_type": "url",
+          "content": "私たちは、導入初期の不安を減らすことを価値の中心に置く。複雑さを増やすより、現場で迷わない順番に整えることを優先する。"
+        },
+        {
+          "title": "運用見直し方針",
+          "locator": "https://fixture.techie/branding/ops-review-policy",
+          "source_type": "url",
+          "content": "問い合わせを責める材料にせず、説明や手順が足りなかった箇所を見つける材料にする。週次レビューでは、誰が迷ったかではなく、どの案内が伝わっていなかったかを確認する。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "introduce",
+        "target_key": "company"
+      }
+    },
+    {
+      "case_id": "exp-announcement-spec-change",
+      "genre": "announcement",
+      "theme_label": "仕様変更告知 rerun",
+      "source_mode": "grounded",
+      "article_type": "announcement",
+      "body_generation_experiment": "experimental_prompt_stack",
+      "user_prompt_text": "2026年4月15日に記事公開フローの承認手順を変更するお知らせ。変更点、対象者、事前準備、当日の確認事項、旧手順の扱いを含める。",
+      "audience_profile_input": "既存利用者",
+      "content_goal_key": "action",
+      "writing_focus_key": "explanation",
+      "tone_profile_key": "formal",
+      "length_mode_key": "short",
+      "speaker_profile_input": "運営担当として語る",
+      "core_message_input": "変更点と確認事項を迷わず把握できるようにする",
+      "source_values": [
+        "https://fixture.techie/announcement/review-flow-change",
+        "https://fixture.techie/announcement/review-flow-faq"
+      ],
+      "source_documents": [
+        {
+          "title": "承認フロー変更のお知らせ",
+          "locator": "https://fixture.techie/announcement/review-flow-change",
+          "source_type": "url",
+          "content": "2026年4月15日10時から、記事公開前の承認を一段階から二段階へ変更する。対象は編集担当者と承認者で、旧手順は2026年4月30日まで参照専用で残る。"
+        },
+        {
+          "title": "承認フロー FAQ",
+          "locator": "https://fixture.techie/announcement/review-flow-faq",
+          "source_type": "url",
+          "content": "事前準備は承認者の再設定と通知先の確認。当日の確認事項は下書き保存、差し戻し通知、公開日時の再指定の三点。"
+        }
+      ],
+      "ui_journey": {
+        "purpose_key": "announce",
+        "target_key": "standard"
+      }
+    },
+    {
+      "case_id": "exp-comparative-cross-department",
+      "genre": "comparative_review",
+      "theme_label": "部門横断運用向け比較 rerun",
+      "source_mode": "no_source",
+      "article_type": "comparative_review",
+      "body_generation_experiment": "experimental_prompt_stack",
+      "user_prompt_text": "複数部門で記事作成を回す組織向けの比較記事。承認フロー、責任分担、監査のしやすさを軸に、向くサービスを整理する。",
+      "audience_profile_input": "部門横断運用を考える管理者",
+      "writing_focus_key": "analysis",
+      "tone_profile_key": "formal",
+      "length_mode_key": "adaptive",
+      "speaker_profile_input": "比較検証担当として語る",
+      "ui_journey": {
+        "purpose_key": "compare",
+        "target_key": "tool_service",
+        "detail_key": "fit_explain"
+      },
+      "comparison_axes": [
+        "approval_flow",
+        "ownership",
+        "auditability"
+      ]
+    }
+  ]
+}

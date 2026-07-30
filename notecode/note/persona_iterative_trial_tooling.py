@@ -64,6 +64,18 @@ def _load_ui_label_maps() -> Dict[str, Dict[str, str]]:
 
 def load_ui_live_case_definitions(path: str | Path = DEFAULT_UI_LIVE_FIXTURE_PATH) -> List[Dict[str, Any]]:
     fixture_path = Path(path)
+    if not fixture_path.exists() and fixture_path == DEFAULT_UI_LIVE_FIXTURE_PATH:
+        archived_fixture_path = (
+            PROJECT_ROOT.parent
+            / "archive"
+            / "cleanup_20260501_1043_phase2"
+            / "notecode"
+            / "新しいフォルダー"
+            / "新しいフォルダー (5)"
+            / "ui_live_genre_sweep_test.py"
+        )
+        if archived_fixture_path.exists():
+            fixture_path = archived_fixture_path
     module = ast.parse(fixture_path.read_text(encoding="utf-8"), filename=str(fixture_path))
     for node in module.body:
         if not isinstance(node, ast.Assign):

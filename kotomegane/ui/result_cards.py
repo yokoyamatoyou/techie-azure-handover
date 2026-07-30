@@ -370,6 +370,12 @@ def render_hero_observation_snapshot(
                 ui.label(page_gap_card["urgent_headline"]).classes("hero-observation-value mt-3")
                 ui.label(page_gap_card["urgent_summary"]).classes("text-[14px] leading-6 text-support mt-3")
                 _render_topic_chip_row("優先して足す軸", topic_signals["action_topics"][:4], "signal-neutral")
+                # Same cross-service link convention/URL as the page header nav
+                # (app.py) - contextual entry point at the moment the gap is
+                # identified, not a new integration or shared identifier.
+                ui.link("コトミガキで改善する", "http://127.0.0.1:8081", new_tab=True).classes(
+                    "nav-link text-[13px] mt-3"
+                ).style("padding:4px 10px;border:1px solid var(--border);border-radius:8px;display:inline-block;")
 
 
 def render_latest_result_cards(
@@ -443,7 +449,7 @@ def render_latest_result_cards(
                 ui.label(" ".join(reason_lines[:2]) or verdict_summary).classes("text-[14px] leading-6 text-support mt-3 text-wrap-anywhere support-clamp-3")
                 with ui.row().classes("w-full gap-2 mt-4 flex-wrap"):
                     if previous_delta_summary.get("available"):
-                        ui.label(f"前回比 {previous_delta_summary['target_hit_rate_delta']:+.1f}pt").classes(
+                        ui.label(f"前回の保存結果との差 {previous_delta_summary['target_hit_rate_delta']:+.1f}pt").classes(
                             "signal-chip signal-positive" if float(previous_delta_summary["target_hit_rate_delta"]) >= 0 else "signal-chip signal-negative"
                         )
             with ui.card().classes("section-card result-highlight-card result-highlight-quiet p-5 flex-1 min-w-[320px]"):
@@ -495,7 +501,7 @@ def render_waiting_latest_result_state(
                     ui.label("今の入力では未分析").classes("section-font section-title text-[28px] font-bold")
                 ui.label("未実行").classes("scope-status-chip current-status-chip")
             if has_saved_results:
-                ui.label("入力中の条件ではまだ分析していません。前回の保存結果は下の累積傾向と履歴だけに分けて表示します。").classes(
+                ui.label("今の入力ではまだ分析していません。これはエラーではありません。前回の保存結果は下の累積傾向と履歴だけに分けて表示します。").classes(
                     "text-[15px] leading-7 soft-label mt-2"
                 )
             else:

@@ -1,0 +1,65 @@
+[
+  {
+    "source_id": "manual_17c129b87b1f",
+    "source_type": "manual",
+    "title": "manual source",
+    "chunks": [
+      {
+        "chunk_id": "manual_17c129b87b1f_chunk_001",
+        "source_id": "manual_17c129b87b1f",
+        "source_type": "manual",
+        "text": "Alpha plan includes source-backed setup support. The source explains this near a short service overview. Beta plan is not selected for this smoke test.",
+        "source_span_ids": [
+          "manual_001"
+        ],
+        "source_locations": [
+          "manual:1"
+        ],
+        "char_start": 0,
+        "char_end": 151
+      }
+    ],
+    "metadata": {
+      "source_label": "manual source",
+      "source_priority": 1,
+      "retrieved_at": "2026-06-20T05:21:37.945626+00:00",
+      "extraction_method": "manual_text",
+      "platform_style_target_id": "note_hatena_natural_blog",
+      "platform_style_target": {
+        "output_platforms": [
+          "note",
+          "hatena_blog"
+        ],
+        "intent": "Japanese owned-media blog that stays source-grounded while reading naturally on note and Hatena Blog.",
+        "preprocessing_rules": [
+          "preserve source spans before style decisions",
+          "carry headings as structure signals when present",
+          "do not turn platform guidance into unsupported facts",
+          "prefer section-ready chunks over one long raw source"
+        ],
+        "structure_signals": [
+          "heading_readability",
+          "theme_before_body",
+          "section_navigation",
+          "paragraph_rhythm"
+        ],
+        "research_refs": [
+          "https://note.com/info/n/nab7ce24947ac",
+          "https://note.com/help/pg/howto",
+          "https://help.hatenablog.com/entry/markup/hatena/contents",
+          "https://help.hatenablog.com/entry/text-hatena"
+        ]
+      },
+      "source_text_char_limit": 12000,
+      "max_chars_per_chunk": 4000,
+      "original_text_chars": 151,
+      "included_text_chars": 151,
+      "excluded_text_chars": 0,
+      "extraction_confidence": "medium",
+      "can_proceed": true,
+      "source_over_limit": false,
+      "preprocessing_method": "deterministic_source_packet_v1"
+    },
+    "warnings": []
+  }
+]

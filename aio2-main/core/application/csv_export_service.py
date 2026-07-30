@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from core.application.time_display import format_jst_datetime
 from core.config import config
 
 EXPORTS_DIR = config.POC_OUTPUT_DIR / "exports"
@@ -15,6 +17,12 @@ def sanitize_csv_cell(value: Any) -> str:
     if text.startswith(("=", "+", "-", "@", "\t", "\r")):
         return f"'{text}"
     return text
+
+
+def _structured_csv_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return "" if value is None else str(value)
 
 
 def _write_csv(filename_prefix: str, fieldnames: List[str], rows: Iterable[Dict[str, Any]]) -> Path:
@@ -36,18 +44,24 @@ def export_priority_actions_csv(snapshot: Dict[str, Any], run_row: Dict[str, Any
         rows.append(
             {
                 "run_id": run_row.get("id"),
-                "analyzed_at": run_row.get("analyzed_at"),
+                "analyzed_at": format_jst_datetime(run_row.get("analyzed_at")),
                 "url": run_row.get("url"),
                 "priority_rank": index,
+                "action_id": action.get("action_id"),
                 "area": action.get("area"),
+                "category": action.get("category"),
                 "label": action.get("label"),
                 "title": action.get("title"),
                 "action": action.get("action"),
                 "detail": action.get("detail"),
                 "role": action.get("role"),
                 "effort": action.get("effort"),
+                "urgency": action.get("urgency"),
                 "kpi": action.get("kpi"),
                 "impact": action.get("impact"),
+                "audience": _structured_csv_value(action.get("audience")),
+                "evidence": _structured_csv_value(action.get("evidence")),
+                "status": action.get("status"),
             }
         )
 
@@ -56,15 +70,21 @@ def export_priority_actions_csv(snapshot: Dict[str, Any], run_row: Dict[str, Any
         "analyzed_at",
         "url",
         "priority_rank",
+        "action_id",
         "area",
+        "category",
         "label",
         "title",
         "action",
         "detail",
         "role",
         "effort",
+        "urgency",
         "kpi",
         "impact",
+        "audience",
+        "evidence",
+        "status",
     ]
     return _write_csv("priority-actions", fieldnames, rows)
 
@@ -85,4 +105,9 @@ def export_history_csv(rows: List[Dict[str, Any]]) -> Path:
         "top_action",
         "result_path",
     ]
-    return _write_csv("analysis-history", fieldnames, rows)
+    display_rows = []
+    for row in rows:
+        display_row = dict(row)
+        display_row["analyzed_at"] = format_jst_datetime(row.get("analyzed_at"))
+        display_rows.append(display_row)
+    return _write_csv("analysis-history", fieldnames, display_rows)

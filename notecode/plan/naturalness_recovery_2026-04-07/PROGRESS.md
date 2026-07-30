@@ -1,0 +1,1153 @@
+# naturalness_recovery_2026-04-07 PROGRESS
+
+## Current Goal
+
+- blank `branding/company_introduction` の `hidden_late_validation_v1` keep result を docs lock し、leakage / scope guard の立証範囲と残る naturalness acceptance issue を分けて固定する
+- non-company-introduction `branding` の `branding_operational_source_contract_v1` keep result を docs / rollback boundary に同期し、source contract / branding craft / guard として runtime へ戻した範囲を固定する
+- `comparative_review` の `comparative_review_source_contract_v1` keep result を docs / rollback boundary に同期し、persona 名ではなく source contract / 比較記事の作法 / guard / retry条件として runtime へ戻した範囲を固定する
+- `company_introduction_operational_source_contract_v1` keep result を docs / rollback boundary に同期し、persona 名ではなく source contract / craft / guard / retry条件として runtime へ戻した範囲を固定する
+- `company_introduction` source-presentation / source-packet validation の学びを、runtime keep の前段 evidence として固定する
+
+## Current Status
+
+- Package status: active / not closed
+- Current phase: hidden late validation v1 keep / branding operational source contract v1 keep / comparative review source contract v1 keep / company_introduction_operational_source_contract_v1 keep / docs sync / closeout
+- Status: `COMPANY_INTRODUCTION_OPERATIONAL_SOURCE_CONTRACT_V1_RUNTIME_KEEP_WITH_EXISTING_KEEP_BEHAVIOR_UNCHANGED`
+- Hypothesis:
+  - `hidden_late_validation_v1` は leakage / scope guard として keep し、company intro target の残課題は hidden checklist 不足ではなく `heading_reanchor` + `ending_bucket_monotony` / `company_intro_naturalness_not_improved` 側として扱う
+  - `branding_operational_source_contract_v1` は non-company-introduction branding の runtime source contract / craft guard として keep し、persona / editor / trial 名は runtime prompt と visible output に戻さない
+  - `comparative_review_source_contract_v1` は comparative_review の runtime source contract / 比較記事 craft guard として keep し、persona / editor / trial 名は runtime strategy にしない
+  - `company_introduction_operational_source_contract_v1` は company_introduction の runtime source contract / craft guard として keep し、persona / editor / trial 名は runtime prompt と visible output に戻さない
+  - `company_introduction` の追加 direct trial / source-packet dry-run validation は、source presentation / slot 名 / source packet が主要制御点である evidence として保持する
+- Owner scope:
+  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\README.md`
+  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\TASK.md`
+  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\PROGRESS.md`
+  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\ROLLBACK.md`
+  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\EXECUTION_PROMPT.md`
+  - `C:\tetie\notecode\docs\pipeline_current_first_triage_prompt_2026-04-18.md`
+  - `C:\tetie\notecode\docs\pipeline_current_first_triage_stop_report_2026-04-18.md`
+  - `C:\tetie\notecode\docs\management_prompt_after_failed_pipeline_current_first_triage_2026-04-18.md`
+  - `C:\tetie\notecode\docs\management_stop_report_after_failed_pipeline_current_first_triage_2026-04-18.md`
+  - `C:\tetie\notecode\docs\parked_package_prompt_naturalness_recovery_2026-04-18.md`
+  - `C:\tetie\notecode\docs\management_prompt_explicit_reopen_simple_note_pipeline_company_intro_acceptance_2026-04-18.md`
+  - `C:\tetie\notecode\docs\management_prompt_after_simple_note_pipeline_company_intro_acceptance_reopen_2026-04-18.md`
+  - `C:\tetie\notecode\docs\simple_note_pipeline_company_intro_acceptance_reopen_prompt_2026-04-18.md`
+  - `C:\tetie\notecode\docs\simple_note_pipeline_company_intro_current_business_first_recovery_prompt_2026-04-18.md`
+  - `C:\tetie\notecode\logs\simple_note_company_intro_acceptance_reopen_live_validation_20260418-171330\summary.json`
+- Attempts used:
+  - `pipeline.py` current-first triage 3/3 exhausted and rolled back (2026-04-18 stop report)
+  - `simple_note_pipeline/pipeline.py` acceptance reopen は fail-closed keep を current mainline に残して close
+- Current keep diff:
+  - `hidden_late_validation_v1` と fail-close payload diagnostics は rollback せず keep
+  - `branding_operational_source_contract_v1` は rollback せず keep
+  - `comparative_review_source_contract_v1` は rollback せず keep
+  - `company_introduction_operational_source_contract_v1` は rollback せず runtime keep
+  - touched runtime/test files:
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - `hidden_late_validation_v1` active scope は `branding + semantic_article_key=company_introduction` のみ
+  - `branding_operational_source_contract_v1` active scope は `article_type=branding` かつ `semantic_article_key=""` / `branding` のみ
+  - `branding_operational_source_contract_v1` は `semantic_article_key=company_introduction` を明示的に除外する
+  - `comparative_review_source_contract_v1` active scope は `article_type=comparative_review` のみ
+  - `comparative_review_source_contract_v1` は company_introduction を変更しない
+  - `company_introduction_operational_source_contract_v1` active scope は `article_type=branding` かつ `semantic_article_key=company_introduction` のみ
+  - `company_introduction` source-presentation direct trial は runtime keep 前の evidence として保持する
+  - `company_intro_hidden_persona_contract_v1` の過去 rollback は維持する
+  - article-type fixed routing table は追加していない
+  - acceptance 緩和は未実施
+- Next phase:
+  - next code hypothesis は未開始
+  - `company_introduction_operational_source_contract_v1` は runtime keep として closeout する
+  - 次の implementation window は不要
+  - company_introduction を次に見るなら、regression / scope expansion / acceptance residual が明示された場合だけ owner scope / source contract / guard / acceptance を narrow に設計する
+  - `ending_monotony` を緩めすぎて flat artifact を success に戻さない
+
+## 2026-04-28 Slim Audit / Complexity Risk Freeze
+
+- audit status:
+  - `SLIM_AUDIT_READY_SINGLE_OWNER`
+  - `NO_IMMEDIATE_DELETION_SAFE`
+  - `TEXT_MAINLINE_COMPLETION_CANDIDATE_WITH_COMPLEXITY_RISK`
+- scope:
+  - docs-only audit / freeze
+  - product code / prompt / persona / threshold / repair / guard / UI / image / pipeline は変更しない
+  - live rerun / full-flow rerun は実施しない
+- latest validation baseline:
+  - `C:\tetie\notecode\logs\branding_routing_live_validation_20260428-215240\`
+  - `BRANDING_ROUTING_LIVE_VALIDATION_PASS`
+  - generic branding `2/2 pass`
+  - explicit company/product/announcement/comparative guard pass
+  - product code changed: `NO`
+- bloat / conflict read:
+  - core algorithm はまだ `source/input contract -> persona selection -> source packet -> single-pass generation -> quality/hidden late check -> optional single repair 1回 -> fail-closed acceptance` に収まっている
+  - complexity risk は補助層の重複にある
+  - `prompt_builder.py` は generic branding hint と company_introduction craft / repair guard が重なりやすい
+  - `current_mainline_persona_trial.py` は generic branding / product_introduction / company_introduction の late_return を持つが、company_introduction は新しい事業内容・対応範囲方向へ切れている
+  - `input_contract.py` は source fit / source substance / prompt surface / must-cover を同居させており、削除ではなく boundary observation 対象
+  - `current_mainline_profile_resolver.py` は小さいが branding semantic fallback の入口なので immediate deletion しない
+  - `simple_note_pipeline/pipeline.py` は source contract preparation / optional repair acceptance / hard fail を束ねる大きな owner で、今は freeze する
+- conflict judgment:
+  - generic branding hint `ブランド記事として、迷いが生まれる場面と判断材料を自然につなぐ。` と generic branding late_return は軽い重複候補だが、同方向であり current pass 後に即削除しない
+  - company_introduction prompt wording は重複しているが、latest completion candidate を支える source contract / hidden late / fail-closed boundary と絡むため触らない
+  - product_introduction が branding family を借りている点は current red symptom ではないため freeze
+  - source packet / runtime source contract / writer brief の重複は意味役割が近いが、source外 claim 抑止と writer-facing shape の両方に使われているため immediate deletion safe ではない
+  - low-quality stop / repair rejection / hard fail の境界は重複気味だが fail-closed behavior を支えているため削らない
+- next owner proposal:
+  - current window: `no implementation owner`
+  - next separate window で management が slim implementation を開く場合だけ、rank 1 candidate は `prompt_builder.py generic branding hint cleanup`
+  - 実装種別は deletion ではなく behavior-preserving cleanup / equivalence check
+- freeze list:
+  - company_introduction 成功を支える prompt / source contract / hidden late
+  - fail-closed hard source-contract behavior
+  - single repair acceptance
+  - source fit pre-generation stop
+  - GPT Image 2 / UI
+  - product_introduction borrowed branding-family behavior
+  - `pipeline.py` acceptance / hard-fail boundary
+- AGENTS / WORKLOG:
+  - AGENTS update: 不要
+  - WORKLOG update: この docs-only audit を記録する
+
+## 2026-04-28 Branding Anchor Live Validation Pass
+
+- validation:
+  - `BRANDING_ANCHOR_LIVE_VALIDATION_PASS`
+  - artifact: `C:\tetie\notecode\logs\branding_anchor_live_validation_20260428-233408`
+  - product code changed in validation window: `NO`
+  - product code hash diff: `NO_PRODUCT_CODE_HASH_DIFF`
+- scope:
+  - docs-only record
+  - product code / prompt / persona / threshold / repair / guard / UI / image / pipeline は変更しない
+  - additional generation: 不要
+  - additional improvement: 不要
+  - new owner: 作らない
+- generic branding with source anchor:
+  - `3/3 pass`
+  - `OK / body present`
+  - `semantic_article_key=branding`
+  - `persona_family=branding_operational`
+  - front anchor `true`
+- generic branding without source anchor:
+  - `2/2 expected block`
+  - `INP_SOURCE_CONTEXT_INSUFFICIENT`
+  - body `0`
+  - LLM calls `0`
+- guard:
+  - company_introduction `pass`
+  - product_introduction `pass`
+  - announcement `pass`
+  - case_study `pass`
+  - comparative_review `pass`
+- judgment:
+  - `BRANDING_ANCHOR_FIX_VALIDATED_NO_FURTHER_OWNER`
+  - branding anchor issue は validation pass
+  - current text mainline は completion candidate 維持
+  - complexity risk は維持
+  - freeze list は継続
+  - next implementation owner: `none`
+  - 次に実装する場合は、新しい artifact-backed blocker が出た時のみ `1 issue = 1 owner`
+
+## 2026-04-29 Product Introduction Accept Body Validation Close
+
+- validation:
+  - `PRODUCT_INTRODUCTION_ACCEPT_BODY_VALIDATED`
+  - artifact: `C:\tetie\notecode\logs\product_introduction_accept_body_validation_20260429-003843`
+  - product code changed in validation window: `NO`
+  - product code hash diff: `NO_PRODUCT_CODE_HASH_DIFF`
+- scope:
+  - focused validation only
+  - product code / prompt / persona / repair / threshold / source contract / full retry / broad refactor は変更しない
+  - full-flow rerun: `not_run`
+  - broad smoke matrix: `not_run`
+  - image generation: `not_requested_not_run`
+- accept live body:
+  - `B_should_accept_provider_business_saas`: `OK`, body present `1112` chars, semantic `product_introduction`, front anchors `初回設定` / `FAQ` / `役割分担`, wrong article type drift `0`
+  - `C_should_accept_clear_onboarding_service_category`: `OK`, body present `1161` chars, semantic `product_introduction`, front anchors `オンボーディング支援サービス` / `業務SaaS` / `初回設定` / `FAQ` / `役割分担`, wrong article type drift `0`
+- guard:
+  - old NG no-anchor product_introduction rerun: `INP_SOURCE_CONTEXT_INSUFFICIENT`, body `0`, LLM call `0`
+  - focused product_introduction tests: `10 passed, 397 deselected`
+  - focused non-target guard tests: `7 passed, 313 deselected`
+  - existing non-target guard artifact reviewed: `C:\tetie\notecode\logs\branding_anchor_live_validation_20260428-233408`
+- judgment:
+  - previous pending reason `SYS_LLM_CLIENT_REQUIRED` は current environment で解消
+  - product_introduction accept body validation は close
+  - current text mainline は completion candidate 維持
+  - complexity risk は維持
+  - next implementation owner: `none`
+
+## 2026-04-29 Slim Audit After Product Introduction Close
+
+- audit:
+  - `SLIM_AUDIT_READY_NO_CODE`
+  - report: `C:\tetie\notecode\docs\slim_audit_after_product_introduction_close_2026-04-29.md`
+- scope:
+  - read-only slim audit
+  - product code / prompt / persona / repair / threshold / source contract / full retry / broad refactor は変更しない
+  - cleanup implementation は開始しない
+  - full-flow rerun / broad smoke matrix は実施しない
+- inspected:
+  - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
+  - `C:\tetie\notecode\note\newalgorithm_pipeline\input_contract.py`
+  - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+  - support read-only: `current_mainline_persona_trial.py` / `current_mainline_profile_resolver.py` / `current_mainline_runner.py`
+- classification:
+  - immediate deletion safe: `none`
+  - behavior-preserving cleanup candidate: `prompt_builder.py generic branding hint cleanup`
+  - observe only / freeze: `input_contract.py` source readiness, `pipeline.py` source contract / hidden late / repair acceptance / hard fail, persona/profile resolver boundary
+  - do-not-touch: product_introduction accept body anchors, company_introduction source contract / hidden late, comparative_review / announcement contract wording, GPT Image 2 / UI / note_writer_app, full retry / threshold
+- next owner:
+  - current window: `none`
+  - future implementation window を明示的に開く場合だけ `prompt_builder.py` single owner
+  - future decision label: `SLIM_CLEANUP_READY_SINGLE_OWNER`
+- product code changed:
+  - `NO`
+
+## 2026-04-29 Slim Cleanup Freeze Decision
+
+- management judgment:
+  - `NO_ACTION_FREEZE`
+- basis:
+  - text mainline remains `COMPLETION_CANDIDATE_WITH_COMPLEXITY_RISK`
+  - product_introduction is now `PRODUCT_INTRODUCTION_ACCEPT_BODY_VALIDATED`
+  - slim audit found `immediate deletion safe: none`
+  - rank 1 candidate remains `prompt_builder.py generic branding hint cleanup`, but only as a future behavior-preserving cleanup candidate
+- decision:
+  - do not open a cleanup implementation owner now
+  - do not edit product code / prompt / persona / repair / threshold / source contract / full retry / broad refactor
+  - do not delete generic branding hint without a separate equivalence-check owner
+  - keep `prompt_builder.py` / `input_contract.py` / `pipeline.py` frozen unless a new artifact-backed blocker appears
+- future reopen condition:
+  - a new artifact-backed blocker appears
+  - generic branding hint duplication becomes an observed runtime problem
+  - `prompt_builder.py` must be touched for another narrow owner and equivalence checks are fixed first
+- product code changed:
+  - `NO`
+
+## 2026-04-29 Text Mainline Final Category Validation
+
+- validation:
+  - `FINAL_CATEGORY_IMAGE_VALIDATION_NEEDS_REVIEW`
+  - artifact: `C:\tetie\notecode\新しいフォルダー\新しいフォルダー (8)\final_blog_category_3each_image_validation_20260429-123353`
+  - product code changed: `NO`
+  - product code hash diff: `0`
+- scope:
+  - validation only
+  - product code / body prompt / image prompt implementation / display copy implementation / UI implementation / persona / repair / threshold / source contract / GPT Image 2 API params は変更しない
+  - broad test suite: `not_run`
+- text result:
+  - selected articles: `27/27`
+  - categories: announcement / company_introduction / product_introduction / branding / comparative_review / case_study / explanatory_article / daily_story / industry_analysis
+  - runtime reason: all selected records `OK`
+  - title review: blocker `0`
+  - body review: blocker `0`
+  - internal / source-contract / repair / validation term leakage: blocker `0`
+- image-linked result:
+  - selected image variants: `54/54`
+  - image prompt `editorial` / `編集調` hits: `0`
+  - needs review: several with_text display copies look sentence-fragment-like, and images remain visually similar across bright office / laptop / business-person compositions
+- judgment:
+  - text mainline remains `COMPLETION_CANDIDATE_WITH_COMPLEXITY_RISK`
+  - no implementation owner opened
+  - watch items stay in manual review / observation, not prompt or product-code change
+
+## 2026-04-22 Company Introduction Operational Source Contract V1 Keep Sync
+
+- implementation keep:
+  - hypothesis:
+    - `company_introduction_operational_source_contract_v1`
+  - owner files:
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - runtime scope:
+    - active for `article_type=branding`
+    - active for `semantic_article_key=company_introduction`
+    - inactive for non-target article types
+    - case_study / announcement / non-company-introduction branding / comparative_review keep behavior は維持
+  - source contract:
+    - required:
+      - `current_business`
+      - `customer_situation_or_entry_point`
+      - `support_scope_boundary`
+      - `operating_process_steps`
+      - `pre_contact_decision`
+    - optional:
+      - `proof_signal`
+    - guard-only:
+      - `source_limit`
+  - craft compression:
+    - 会社紹介を顧客接点 / 支援範囲 / 進め方 / 相談前判断へ戻す
+    - source presentation / slot 名 / source packet を主要制御点として扱う
+    - `strengths` / `achievements` / `message` / `contact` / `company_posture` required-first は do-not-retry 側に維持する
+    - runtime prompt へ persona / editor / trial names は入れない
+    - `source_limit` は本文に出さず guard-only とする
+    - article-type fixed routing table は追加していない
+- retry boundary:
+  - allowed:
+    - missing required slot
+    - unsupported claim
+    - wrong article type drift
+    - brochure-only
+    - generic-company-copy
+    - abstract-philosophy-only
+    - source_limit visible leakage
+  - forbidden:
+    - ending monotony only
+    - general naturalness
+    - polish
+    - length only
+    - preference-only rewrite
+- live validation:
+  - artifact:
+    - `C:\tetie\notecode\logs\company_introduction_operational_source_contract_v1_live_validation_20260422-185418\combined_report.md`
+    - `C:\tetie\notecode\logs\company_introduction_operational_source_contract_v1_live_validation_20260422-185418\combined_summary.json`
+  - full operational source:
+    - `9/9`
+  - thin process source:
+    - `6/6`
+  - company-profile negative:
+    - `3/3 expected reject`
+  - unsupported induced guard:
+    - `5/5 detected / rejected`
+  - non-target live:
+    - `4/4 inactive / pass`
+  - persona / editor / trial leakage:
+    - `0`
+  - source_limit visible leakage:
+    - `0`
+  - active live retry_count:
+    - `0`
+  - retry boundary:
+    - `6/6`
+  - disallowed retry ids:
+    - `[]`
+  - errors:
+    - `[]`
+  - residual:
+    - `None`
+  - pass gate:
+    - `overall=true`
+- keep judgment:
+  - `company_introduction_operational_source_contract_v1` is runtime keep
+  - rollback 不要
+  - `company_intro_hidden_persona_contract_v1` の rollback / failed status は解除しない
+  - source presentation / slot 名 / source packet が主要制御点という学びを維持する
+  - case_study / announcement / non-company-introduction branding / comparative_review の既存 keep は壊していない
+  - article-type fixed routing table は追加していない
+  - next implementation window は不要
+
+## 2026-04-22 Company Introduction Source Presentation Direct Trial Learning Sync
+
+- scope:
+  - docs / WORKLOG sync only
+  - production code / tests / AGENTS は変更していない
+  - この時点では runtime 実装には進んでいなかった
+  - `case_study_sparse_source_contract_v1` / `announcement_01_base_revise_v1` / `branding_operational_source_contract_v1` / `comparative_review_source_contract_v1` は触っていない
+- trial status:
+  - この時点では direct trial learning であり、runtime keep ではなかった
+  - 後続の `company_introduction_operational_source_contract_v1` runtime keep の前段 evidence として扱う
+  - `company_intro_hidden_persona_contract_v1` の rollback / failed status は維持する
+  - persona 名を runtime prompt に入れる前提にはしない
+- fixed trial condition:
+  - best persona / editor / regeneration 条件を固定
+  - source presentation 4種 x 3 runs
+  - trial 時点で production code / tests / docs / AGENTS / WORKLOG は未変更
+- result summary:
+  - `baseline`: middle-late similarity avg `0.343`, coverage `3/3 full`, unsupported `0`, leakage `0`, brochure `1`, generic `0`, abstract close `1`, naturalness `strong 3/3`
+  - `operational packet`: middle-late similarity avg `0.325`, coverage `3/3 full`, unsupported `0`, leakage `0`, brochure `0`, generic `0`, abstract close `0`, naturalness `strong 3/3`
+  - `company-profile packet`: middle-late similarity avg `0.332`, coverage `3/3 full`, unsupported `0`, leakage `0`, brochure `9`, generic `3`, abstract close `1`, naturalness `acceptable 3/3`
+  - `sparse operational packet`: middle-late similarity avg `0.345`, coverage `3/3 full`, unsupported `0`, leakage `0`, brochure `0`, generic `0`, abstract close `0`, naturalness `acceptable-thin 3/3`
+- learning:
+  - GPT-5.4 mini は指示追従性が高いため、最初に渡す source presentation / slot 名 / source packet の形が出力方向を強く決める
+  - company_introduction の brochure tone は、persona 不足より source の渡し方に誘発されていた可能性が高い
+  - `strengths` / `achievements` / `message` / `contact` / `company_posture` を前面に出す company-profile packet は、強み・メッセージ・寄り添う・安心へ寄りやすい
+  - `customer_situation_or_entry_point` / `support_scope_boundary` / `operating_process_steps` / `pre_contact_decision` は、会社紹介のまま工程・支援範囲・相談前判断へ戻しやすい
+  - `sparse operational packet` は抽象理念には寄らないが、`current_business` がないため何の会社かが薄くなる
+- best current source presentation:
+  - `operational packet`
+  - brochure tone / generic company copy / abstract close が `0`
+  - 顧客接点、支援範囲の境界、進め方、相談前判断が source-backed な判断材料として出た
+- future runtime compression candidate at that time:
+  - required candidate: `current_business` / `customer_situation_or_entry_point` / `support_scope_boundary` / `operating_process_steps` / `pre_contact_decision`
+  - optional candidate: `proof_signal`
+  - guard-only candidate: `source_limit`
+  - not required candidate: `company_posture`
+  - avoid source-contract slot names: `strengths` / `achievements` / `message` / `contact`
+  - `source_limit` は visible article ではなく unsupported claim guard としてだけ使う候補
+  - `company_posture` を required にすると理念寄りへ戻りやすい
+- next trial:
+  - この時点では runtime 実装へ進まなかった
+  - `operational packet` の follow-up source-packet direct/dry-run validation は下記 learning として記録済み
+
+## 2026-04-22 Company Introduction Source Packet Dry-Run Validation Learning Sync
+
+- scope:
+  - docs / WORKLOG sync only
+  - production code / tests / AGENTS は変更していない
+  - この時点では runtime 実装には進んでいなかった
+  - この時点では company_introduction keep 扱いはしていなかった
+  - `company_intro_hidden_persona_contract_v1` の rollback / failed status は維持する
+  - `case_study_sparse_source_contract_v1` / `announcement_01_base_revise_v1` / `branding_operational_source_contract_v1` / `comparative_review_source_contract_v1` は触っていない
+- validation status:
+  - この時点では runtime pipeline は実行していない
+  - source packet preflight + direct/dry-run validation
+  - validation 時点で production code / tests / docs / AGENTS / WORKLOG は未変更
+  - validation 時点では runtime 実装 / keep 扱い / rollback 解除はしていない
+- scenario / run count:
+  - full operational source: `3 sources x 3 runs = 9`
+  - thin process source: `2 sources x 3 runs = 6`
+  - company-profile negative: `3 cases`
+  - unsupported claim guard: `5 induced cases`
+  - non-target guard: `4 article types`
+  - total: `27 validations`
+- preflight result:
+  - full operational source: `pass`
+  - thin process source: `warn-boundary`
+  - company-profile negative: `fail`
+  - unsupported guard: `pass + guard-risk`
+  - non-target: `inactive`
+- final validation:
+  - full operational source: `pass`
+    - required 5 slots reflected
+    - unsupported `0`
+    - leakage `0`
+    - brochure / generic / abstract `0`
+  - thin process source: `warn-pass`
+    - process thin
+    - `support_scope_boundary` / `pre_contact_decision` で厚み補完
+    - source外の手順追加なし
+  - company-profile negative: `expected reject`
+    - operational coverage fail
+    - brochure / generic drift detected `3/3`
+  - unsupported guard: `guard pass`
+    - `5/5` detected / rejected
+    - source_limit visible leakage `0`
+  - non-target guard: `pass`
+    - announcement / branding / case_study / comparative_review inactive
+- learning:
+  - GPT-5.4 mini は source presentation / slot 名 / packet 形状への追従性が高い
+  - company_introduction の崩れは、persona 不足より source の渡し方で誘発される場合がある
+  - `strengths` / `achievements` / `message` / `contact` / `company_posture` は brochure / generic drift を誘発しやすい
+  - operational packet は、会社紹介を顧客接点・支援範囲・進め方・相談前判断へ戻しやすい
+  - `source_limit` は本文に出さず guard-only として扱う
+- runtime candidate judgment at that time:
+  - operational packet preflight は runtime candidate として pass 寄り
+  - 後続の `company_introduction_operational_source_contract_v1` live validation で runtime keep に昇格した
+  - required candidate: `current_business` / `customer_situation_or_entry_point` / `support_scope_boundary` / `operating_process_steps` / `pre_contact_decision`
+  - optional candidate: `proof_signal`
+  - guard-only candidate: `source_limit`
+  - avoid: `strengths` / `achievements` / `message` / `contact` / `company_posture` required 化
+  - guard candidate: unsupported claim / source_limit visible leakage / brochure-only / generic-company-copy / abstract-philosophy-only / wrong article type drift
+  - forbidden retry trigger: ending monotony only / general naturalness / polish / length only / preference-only rewrite
+- next if continuing:
+  - この docs sync 時点では runtime 実装へ進まなかった
+  - 後続の implementation は source contract / craft / guard / acceptance を `simple_note_pipeline` owner の narrow implementation candidate として設計した
+  - persona 名を runtime prompt に入れる前提にはしない
+  - article-type fixed routing table は追加しない
+
+## 2026-04-22 Comparative Review Source Contract V1 Keep Sync
+
+- implementation keep:
+  - hypothesis:
+    - `comparative_review_source_contract_v1`
+  - owner files:
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - runtime scope:
+    - active for `article_type=comparative_review`
+    - inactive for non-target article types
+    - comparative_review contract は company_introduction を定義しない
+  - source contract:
+    - required:
+      - `comparison_context`
+      - `evaluation_axes`
+      - `option_differences`
+      - `fit_conditions`
+      - `tradeoffs_or_cautions`
+      - `decision_next_step`
+    - optional:
+      - `price_or_plan`
+      - `source_limit`
+  - craft compression:
+    - 勝敗・ランキングではなく条件別判断へ戻す
+    - 同じ評価軸で複数候補を比べる
+    - 向く条件、避ける条件、確認順を後半まで維持する
+    - 価格、プラン、成果、ベンダー優位は source-backed の場合だけ書く
+    - persona / editor / trial names are not runtime strategy
+    - article-type fixed routing table は追加していない
+- retry boundary:
+  - allowed:
+    - missing required slot
+    - unsupported price / plan / result / vendor claim
+    - wrong article type drift
+    - `ranking_drift`
+    - `absolute_winner_drift`
+    - `exaggerated_superiority`
+    - fit_conditions missing
+    - tradeoff_or_caution missing
+  - forbidden:
+    - `ending_bucket_monotony` only
+    - general naturalness
+    - polish
+    - length only
+    - preference-only rewrite
+- live validation:
+  - artifact:
+    - `C:\tetie\notecode\logs\comparative_review_source_contract_v1_live_validation_20260422-142920\combined_report.md`
+    - `C:\tetie\notecode\logs\comparative_review_source_contract_v1_live_validation_20260422-142920\combined_summary.json`
+  - comparative full source:
+    - `3/3 success`
+  - comparative sparse / source-limited:
+    - `2/2 success`
+  - unsupported price / plan / result / vendor guard:
+    - success
+  - non-target announcement guard:
+    - success
+  - visible persona / editor / trial leakage:
+    - `0`
+  - retry count:
+    - `2 optional repair invocations`
+  - disallowed retry ids:
+    - `0`
+  - retry only allowed causes:
+    - `true`
+  - pass gate:
+    - `overall=true`
+- tests:
+  - focused simple note / quality:
+    - `192 passed`
+  - UI matrix:
+    - `29 passed`
+  - shared bundle:
+    - `327 passed, 2 failed`
+    - `st05ab10 comparative_axis_lock = SYS_LLM_CLIENT_REQUIRED`
+    - `st08b4 industry_analysis title/lead residual`
+    - these are recorded as shared-check residuals, not comparative_review_source_contract_v1 rollback reasons
+- keep judgment:
+  - `comparative_review_source_contract_v1` is runtime keep
+  - rollback 不要
+  - company introduction は reopen / change しない
+  - case_study / announcement / branding keep behavior は維持
+  - article-type fixed routing table は追加していない
+  - persona / editor / trial names are not runtime strategy
+  - shared residual は fixed 扱いにしない
+
+## 2026-04-22 Branding Operational Source Contract V1 Keep Sync
+
+- implementation keep:
+  - hypothesis:
+    - `branding_operational_source_contract_v1`
+  - owner files:
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - runtime scope:
+    - active for `article_type=branding`
+    - active for `semantic_article_key=""` or `semantic_article_key=branding`
+    - explicitly inactive for `semantic_article_key=company_introduction`
+  - source contract:
+    - required:
+      - `customer_touchpoint`
+      - `operating_behavior`
+      - `decision_principle`
+      - `support_process`
+      - `brand_posture_in_action`
+    - optional:
+      - `proof_signal`
+  - craft compression:
+    - 顧客接点を前半へ出す
+    - 運用順と支援範囲で具体化する
+    - 判断原則を置く
+    - ブランド姿勢は理念ではなく行動として見せる
+    - philosophy-only / advertising-copy / abstract-value-only close を避ける
+    - source外の成果、顧客名、受賞、価格、提携先を足さない
+- retry boundary:
+  - allowed:
+    - missing required slot
+    - unsupported claim
+    - wrong article type drift
+    - `philosophy_only` / `advertising_copy` / `abstract_value_only`
+    - `customer_touchpoint_buried`
+  - forbidden:
+    - `ending_bucket_monotony` only
+    - general naturalness
+    - polish
+    - length only
+- live validation:
+  - artifact:
+    - `C:\tetie\notecode\logs\branding_operational_source_contract_v1_live_validation_20260422-125158\combined_report.md`
+    - `C:\tetie\notecode\logs\branding_operational_source_contract_v1_live_validation_20260422-125158\combined_summary.json`
+  - branding operational full source:
+    - `3/3 success`
+  - branding operational sparse source:
+    - `2/2 success`
+  - unsupported claim guard:
+    - success
+  - non-target announcement guard:
+    - success
+  - visible persona / experiment leakage:
+    - `0`
+  - retry count:
+    - `0`
+  - retry only allowed causes:
+    - `true`
+  - pass gate:
+    - `overall=true`
+- tests:
+  - focused simple note / quality:
+    - `183 passed`
+  - UI matrix:
+    - `29 passed`
+  - shared bundle:
+    - `327 passed, 2 failed`
+    - `test_st08b4_industry_analysis_title_and_lead_do_not_echo_prompt` is the already documented known unrelated industry-analysis title / lead mismatch
+    - `test_st05ab10_ui_short_comparative_axis_lock_fixture_uses_specific_fit_carry_for_caution` returned `SYS_LLM_CLIENT_REQUIRED` on a comparative_review fixture outside branding owner scope
+    - these are recorded as shared-check residuals, not branding rollback reasons
+- keep judgment:
+  - `branding_operational_source_contract_v1` is runtime keep
+  - rollback 不要
+  - company introduction は reopen しない
+  - article-type fixed routing table は追加していない
+  - persona / editor / trial names are not runtime strategy
+
+## 2026-04-21 Hidden Late Validation V1 Keep Sync
+
+- implementation keep:
+  - owner files:
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - helper:
+    - `_build_hidden_late_validation_contract`
+    - `_evaluate_hidden_late_validation`
+    - `_hidden_late_validation_improved`
+    - `_has_visible_forbidden_heading`
+  - diagnostics:
+    - `hidden_late_validation`
+    - `failure_candidate_summary`
+  - acceptance 緩和は未実施
+- active scope:
+  - `branding + semantic_article_key=company_introduction` のみ
+  - non-target branding / non-branding / daily branch は active repair scope に入れない
+- first live validation:
+  - artifact:
+    - `C:\tetie\notecode\logs\hidden_late_validation_v1_live_validation_20260421-192054\combined_report.md`
+    - `C:\tetie\notecode\logs\hidden_late_validation_v1_live_validation_20260421-192054\triage_report.md`
+  - company intro target は `1/3 success`
+  - forbidden heading leakage は `0`
+  - hidden token visible leakage は `0`
+  - guard は OK
+  - hidden trigger は `0`
+  - target recovery repeatability は未立証
+- fail payload diagnostics live validation:
+  - artifact:
+    - `C:\tetie\notecode\logs\hidden_late_validation_v1_fail_payload_live_validation_20260421-195723\combined_report.md`
+    - `C:\tetie\notecode\logs\hidden_late_validation_v1_fail_payload_live_validation_20260421-195723\combined_summary.json`
+  - company intro target は `2/3 success`
+  - fail-close payload に `hidden_late_validation` と `failure_candidate_summary` が残った
+  - fail run の `hidden_late_validation_failure_count = 0`
+  - fail 主因は hidden checklist 不足ではなく `company_intro_naturalness_not_improved`
+  - flagged issue は `heading_reanchor` + `ending_bucket_monotony`
+  - forbidden heading leakage は `0`
+  - hidden token visible leakage は `0`
+  - guard は OK
+- keep judgment:
+  - `hidden_late_validation_v1` は leakage / scope guard として keep
+  - rollback 不要
+  - company intro naturalness は package close ではない
+  - next narrow action はまだ開始しない
+
+## 2026-04-18 Management Re-Evaluate After Simple Note Pipeline Company Intro Acceptance Reopen
+
+- separate-window result lock:
+  - latest reopen touched files は
+    - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+    - `C:\tetie\notecode\note\tests\test_simple_note_pipeline.py`
+  - keep diff は rollback していない
+  - latest result source:
+    - `C:\tetie\notecode\logs\simple_note_company_intro_acceptance_reopen_live_validation_20260418-171330\summary.json`
+- visible read:
+  - `V1` は `2/2 non-worse`
+  - `V2` は `1/1 non-worse`
+  - `G1` は `2/2 no visible regression`
+  - `V3` は `3/3` で `SYS_PIPELINE_FAILURE`
+- judgment:
+  - latest same-owner reopen は `V3 fail-closed keep`
+  - unsafe history-first success path は blocked できた
+  - ただし `success=true` の current-business-first artifact はまだ立証していないため package close とは書かない
+  - current keep diff を baseline にすれば legal な `1 owner / 1 hypothesis` はまだ残る
+  - next owner は `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py` のまま維持する
+  - next narrow hypothesis は current keep diff baseline 上の current-business-first recovery に切り替える
+- action:
+  - current package は active / not closed のまま維持する
+  - current implementation prompt を `simple_note_pipeline_company_intro_current_business_first_recovery_prompt_2026-04-18.md` に切り替える
+  - `simple_note_pipeline_company_intro_acceptance_reopen_prompt_2026-04-18.md` は historical reopen prompt として残す
+
+## 2026-04-18 Explicit Reopen Decision
+
+- user judgment:
+  - next owner candidate は `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+  - reopen prompt を作成する
+- management read:
+  - `prompt_builder.py` と `newalgorithm_pipeline/pipeline.py` は failed / rollback 済み / unchanged retry 禁止のまま維持
+  - 残差は downstream acceptance / scope gating に閉じて reopen できる
+- action:
+  - current package の parked judgment を解除
+  - next owner を `simple_note_pipeline/pipeline.py` に固定
+  - current implementation prompt を `simple_note_pipeline_company_intro_acceptance_reopen_prompt_2026-04-18.md` に切り替える
+
+## 2026-04-18 Park Decision
+
+- user judgment:
+  - current package は `park`
+- management read:
+  - legal な `1 owner / 1 hypothesis` は current do-not と stop boundary を守る限り未確定
+  - multiple owner reopen を前提にしない next implementation prompt は作らない
+- action:
+  - current package を parked / not fixed に切り替える
+  - current startup prompt を parked-package prompt に切り替える
+  - future reopen は explicit user decision を前提にする
+
+## 2026-04-18 Management Re-Evaluate After Failed Pipeline Current-First Triage
+
+- separate-window result lock:
+  - `pipeline.py` owner の `pipeline_current_first_triage` は rollback 済み
+  - kept diff はない
+  - latest result doc:
+    - `C:\tetie\notecode\docs\pipeline_current_first_triage_stop_report_2026-04-18.md`
+- visible read:
+  - `V1` は `2/2 non-worse`
+  - `V2` は `1/1 non-worse`
+  - `G1` は `2/2 no visible regression`
+  - `V3` は `3/3 fail`
+  - title / first heading / first section のいずれかが history-first に戻る variance を止められなかった
+- judgment:
+  - `pipeline.py` upstream source ordering / hint ownership triage 単独は current winner ではない
+  - same hypothesis を unchanged で reopen しない
+  - current package の next owner は未確定に戻す
+  - next implementation prompt はまだ作らない
+- stop boundary confirmed:
+  - same owner hypothesis 3 failures
+  - owner scope を超えないと前進できない可能性が高い
+  - multiple owner reopen が必要な可能性がある
+  - current success path regression は現時点で未確認
+- next action:
+  - source-of-truth と execution prompt を management re-evaluate 用に切り替える
+  - legal な `1 owner / 1 hypothesis` が残るかを別の management judgment で決める
+
+## 2026-04-18 Management Re-Evaluate After Failed Prompt Builder Retry
+
+- separate-window result lock:
+  - `prompt_builder.py` owner の `heading_drift_reconstruction_simplification_first` は rollback 済み
+  - kept diff はない
+  - current package docs / WORKLOG は今回更新前まで未同期だった
+- visible read:
+  - V1 は partial / non-worse
+  - G1 は no visible regression
+  - V2 は still awkward variance
+  - V3 は mandatory gate fail
+  - V3 run2 は title history-first
+  - V3 run3 は first section history-first
+- judgment:
+  - `prompt_builder.py` wording simplification 単独は current winner ではない
+  - same hypothesis を unchanged で reopen しない
+  - next owner は `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+  - next narrow hypothesis は company intro opener の current-first anchor を upstream source ordering / hint ownership で triage する line に固定する
+- why not continue `prompt_builder.py`:
+  - failure が `title -> first heading -> first section` の opener reanchor に残っており、prompt wording 単独で収束しなかった
+  - `G1` non-target guard は保てているため、broad prompt rewrite ではなく target opener ownership の upstream fix を先に narrow に見るほうが妥当
+- stop boundary:
+  - same owner hypothesis 3 failures
+  - owner scope を超えないと前進できない
+  - multiple owner reopen が必要
+  - current success path regression
+
+## 2026-04-13 Management Final Judgment
+
+- source-of-truth first:
+  - `prompt_builder.py` current-business-first keep line is the best current line for blank company introduction
+- prompt-only:
+  - remains a floor
+  - not the strongest baseline
+  - not best practice
+- skeleton / planning:
+  - remains conditional signal only
+  - not a reopen candidate
+  - not a winner
+- do-not-retry:
+  - `natural_blog_core.py`
+    - first section history clamp 仮説
+  - `newalgorithm_pipeline/output_formatter.py`
+    - formatter-only surface polish 仮説
+  - `newalgorithm_pipeline/input_contract.py`
+    - upstream distilled summary 単独仮説
+- web compare boundary:
+  - public web article compare supports the current-business-first pattern
+  - direct GPT web compare remains unavailable
+  - WEB 勝利はまだ主張しない
+- package honesty:
+  - first impression は前進
+  - overall naturalness / polish / repeatability は未 close
+  - goal 到達率の management estimate は `70%前後`
+- next action:
+  - superseded by `company_introduction_operational_source_contract_v1` runtime keep closeout
+  - next implementation window is not needed unless a new regression / scope expansion / acceptance residual is explicitly opened
+
+## Evidence Boundary
+
+- source-of-truth:
+  - `README.md`
+  - `TASK.md`
+  - `PROGRESS.md`
+- evidence only:
+  - deepresearch docs
+  - public web article compare
+  - separate experiment reports
+- when they conflict:
+  - current package source-of-truth wins
+
+## 2026-04-11 Execution Note
+
+- 2026-04-11 時点で user request により、separate-window 実装は `phase 05 keep diff live confirmation` 単独ではなく、`10 loop 前後の autonomous self-repair and simplification` として実施する
+- 最新 production-like baseline は `2026-04-11 09:47:38` の `gen-f914d30e`
+- same-day live check では `ui-short-branding-company-grounded` が `runtime_reason_code = OK` かつ `rubric.total_score = 8/10` だが、`human_visible_ai_feel = flat_or_repetitive` が残った
+- 現時点の practical problem は `warning を検知できない` ではなく、`warning を internal repair / fail-closed へ昇格できていない` こと
+- current separate-window execution note の正本は
+  - `C:\tetie\notecode\docs\autonomous_naturalness_repair_plan_2026-04-11.md`
+  - `C:\tetie\notecode\docs\current_mainline_tomorrow_first_prompt_2026-04-11.md`
+  を参照する
+- separate-window では `generic / algorithm step-optimized / prompt-only persona` の 3-way compare を 10 loop 前後で回す
+- prompt-only persona は `日本語ブログ作成者の細かめ persona 指示` を与える比較対象として固定し、必要なら `best practice = prompt-only` の最終判断を許可する
+- loop priority は historical execution note として保持する
+  - current default route を意味しない
+  - `simple_note_pipeline/pipeline.py`
+  - `simple_note_pipeline/prompt_builder.py`
+  - `newalgorithm_pipeline/input_contract.py`
+  を first line とし、prompt accretion ではなく simplification を含めて判定した
+- same-day research note:
+  - 骨格ベース research の優位は `content planning / source alignment / ordering` にあり、visible prose template の強制ではない
+  - current compare loops では `skeleton responsibility too wide` が疑われ、`role hidden / prose free` へ寄せる revised proposal を作成した
+  - proposal doc:
+    - `C:\tetie\notecode\docs\skeleton_role_revision_proposal_2026-04-11.md`
+
+## 2026-04-12 Route Interpretation Reframe
+
+- route policy review verdict:
+  - `REVISE_ROUTE_INTERPRETATION_DOCS_FIRST`
+- current default:
+  - `grounded generic default`
+- planning route:
+  - `opt-in only`
+- provisional priors:
+  - `company / announcement -> generic prior`
+  - `daily -> generic or prompt-like prior until grounding safe majority`
+  - `technical explain -> split out of current package; planning only if ordering benefit is source-backed`
+- split reopen first owner candidate:
+  - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+- why docs first:
+  - current package docs still mix `historical loops` and `future default`, so the next implementation step would otherwise inherit an outdated route assumption
+
+## 2026-04-12 Planning Opt-In Gate Calibration Closeout
+
+- implementation owner:
+  - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+- keep decision:
+  - `planning_opt_in_v1` の composite calibration は keep
+- artifact:
+  - `C:\tetie\notecode\logs\codex_planning_opt_in_gate_validation\20260412-215007-fivecase-live-pipeline\combined_report.md`
+  - `C:\tetie\notecode\logs\codex_planning_opt_in_gate_validation\20260412-215007-fivecase-live-pipeline\combined_report.json`
+- validation summary:
+  - `ui-short-branding-company-grounded` は `ordering_benefit_unclear` で refusal
+  - `ui-short-announcement-dense-must-cover` は `grounded_sections_insufficient` で refusal
+  - `bl-daily-learning-log-grounded` は `grounded_sections_insufficient` で refusal
+  - `bl-explanatory-misread-metric` は `article_type_prior = coverage_first_prior` かつ `grounded_sections_insufficient` で refusal
+  - `ui-short-case-study-explain` は `planning_opt_in_section_path` かつ `activation_path = dense_grounding_composite` で opt-in
+- tests:
+  - `pytest note\tests\test_newalgorithm_phase03_pipeline.py -k "st07aaad or st07aaae or st07aaaf" -q`
+  - `pytest note\tests\test_newalgorithm_phase03_pipeline.py -k planning_opt_in -q`
+  - `pytest note\tests\test_current_mainline_ui_matrix.py note\tests\test_current_mainline_runner.py note\tests\test_current_mainline_regressions.py -q`
+  - all passed
+- known unrelated failure:
+  - `pytest note\tests\test_newalgorithm_phase03_pipeline.py -q` は owner 外の既存失敗 `test_st08b4_industry_analysis_title_and_lead_do_not_echo_prompt` で停止
+- interpretation:
+  - `distinct_fact_clusters >= 3` 単独依存で全 refusal になる状態は解消した
+  - ただし `technical explain` を拾うために gate 緩和を継続するのではなく、coverage-first source readiness の別問題として切る
+
+## Baseline
+
+- current success path:
+  - `C:\tetie\notecode\note\current_mainline_runner.py`
+  - `-> C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+  - `-> C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+- current visible artifact baseline:
+  - `C:\tetie\notecode\logs\latest_generation_output.txt`
+  - `C:\tetie\notecode\logs\latest_generation_output.json`
+  - `C:\tetie\notecode\logs\latest_generation_quality_report.json`
+- latest attempt id:
+  - `gen-f914d30e`
+- archive snapshot:
+  - `C:\tetie\notecode\archive\pre_2026-04-02_work_records_2026-04-06\`
+- active reference package:
+  - `C:\tetie\notecode\plan\visible_output_integrity_2026-04-06\`
+- completed reference package:
+  - `C:\tetie\notecode\plan\output_surface_reduction_2026-04-06\`
+  - `C:\tetie\notecode\plan\orchestration_surface_reduction_2026-04-06\`
+- frozen reference package:
+  - `C:\tetie\notecode\plan\architecture_target_refactor_2026-04-06\`
+- keep decision inherited from frozen reference:
+  - `hybrid target architecture`
+  - repo-level interpretation: `keep core, refactor boundaries`
+- package theme:
+  - `keep core, recover visible naturalness`
+
+## Current Evidence
+
+- 2026-04-13 parallel evidence sprint:
+  - Lane A public web article compare:
+    - company intro pattern は `現在事業 / 現在の役割から入る`
+    - history は 2 段目以降で現在事業の背景として使う
+    - 社名反復は lead 後に落とす
+    - 段落は短めで breathing を作る
+    - local compare の偏りは大きくない
+  - Lane B prompt-only:
+    - `keep as floor`
+    - strongest baseline ではない
+    - current keep line を超えない
+  - Lane C skeleton / planning:
+    - `stop`
+    - `conditional signal only`
+    - overall winner ではない
+  - Lane D input_contract:
+    - `rollback / stop`
+    - next mainline owner 候補へ上げない
+  - public web / deepresearch note:
+    - deepresearch は evidence only
+    - public web article compare は current-business-first keep line の補助根拠
+    - direct GPT web compare unavailable は継続
+
+- 2026-04-10 company-introduction retry loop:
+  - baseline:
+    - `gen-b1732c2d`
+    - `branding/company_introduction`
+    - `latest_generation_output.json` は brochure 寄り / narrator ambiguity / `創業社長でやってきたが` fragment を含む
+  - keep diff:
+    - `input_contract.py`
+      - blank-prompt company intro の source-backed `topic_statement` fallback
+    - `current_mainline_runner.py`
+      - regenerate 時に derived contract fields を剥がして再 resolve
+    - `simple_note_pipeline/pipeline.py`
+      - blank-prompt company intro で compact-plan scaffold を無効化
+    - `simple_note_pipeline/prompt_builder.py`
+      - company-intro `SECTION_SHADOW` の slim 化
+      - company-intro structure / heading progression の `must_cover` 寄せ
+  - rollback diff:
+    - company-intro dynamic progression の初回版は `ending_bucket_max_run = 25` まで悪化したため rollback
+  - latest best replay:
+    - `C:\tetie\notecode\logs\attempt06_company_intro_replay.json`
+    - `C:\tetie\notecode\logs\attempt06_company_intro_replay.txt`
+    - `ai_index_score = 0.2439`
+    - `ending_bucket_max_run = 10`
+    - `heading_reanchor_miss_count = 0`
+    - `omission_ambiguity_score = 0.0`
+    - LLM calls: `section -> section`
+
+- `branding-trust` A bridge acceptance:
+  - touched owner:
+    - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+  - focused tests:
+    - `test_st07aabc_branding_trust_discourse_bridge_builds_compact_plan_compatible_ledger`
+    - `test_st07aabd_branding_trust_single_pass_activates_controlled_realization_with_discourse_bridge`
+  - live rerun result on `ui-short-branding-trust`:
+    - `semantic_article_key = branding`
+    - `planned_vs_actual_heading_overlap.overlap_ratio = 1.0`
+    - `must_cover_reflection_rate = 0.6667`
+    - `controlled_realization.active = true`
+    - `controlled_realization.final_alignment_rate = 1.0`
+    - visible artifact は trust / explanation として accept
+  - compare against saved B artifact:
+    - current accepted run は `overlap = 1.0`
+    - saved `variant_b_current_compact_plan` は `overlap = 0.0`
+    - current accepted run は `must_cover_reflection_rate = 0.6667`
+    - saved `variant_b_current_compact_plan` は `must_cover_reflection_rate = 0.0`
+  - closeout decision:
+    - `newalgorithm_pipeline/pipeline.py` でこれ以上 branch を増やさない
+    - `branding-trust` は current bridge diff で close し、次は Phase 04 に進む
+
+- Phase 04 company-introduction source-aware prune acceptance:
+  - touched owner:
+    - `C:\tetie\notecode\note\natural_blog_core.py`
+  - owner-local checks:
+    - `note\\tests\\test_natural_blog_core.py -k "company_intro_discourse_plan"`
+    - `note\\tests\\test_newalgorithm_phase03_pipeline.py -k "st08h_branding_source_grounded_company_intro_prefers_local_section_focus or st07g6ad1"`
+  - shared checks:
+    - `note\\tests\\test_natural_blog_core.py`
+    - `note\\tests\\test_newalgorithm_phase03_pipeline.py`
+    - `note\\tests\\test_current_mainline_runner.py`
+    - `note\\tests\\test_current_mainline_regressions.py`
+    - `note\\tests\\test_current_mainline_ui_matrix.py`
+    - all passed
+  - live rerun result on `ui-short-branding-company-grounded`:
+    - discourse plan headings は `会社の輪郭 -> 事業内容 -> 強み -> 結び` の 4 節
+    - `reader_question` から `歩み / 提供価値` が消えた
+    - unsupported slot を本文に reopen せず、visible artifact は company intro / trust として自然
+    - section grounding は `2 / 4` 節で source-backed になり、unsupported heading は残らない
+  - closeout decision:
+    - company introduction defaults prune は `natural_blog_core.py` で close
+    - 次は Phase 05 で prompt surface の保持へ進む
+
+- 2026-04-12 fixed3 route bypass compare:
+  - artifact:
+    - `C:\tetie\notecode\logs\codex_minimum_hybrid_compare_matrix\20260412-011207-fixed3-codex-route-bypass-20260412\combined_summary.json`
+  - winner:
+    - `ui-short-branding-trust -> prompt_only`
+    - `ui-short-case-study-explain -> generic`
+    - `ui-short-branding-company-grounded -> generic`
+  - interpretation:
+    - `algorithm` は local 3 cases で future default を説明できず、generic を本線から降ろす理由にならなかった
+
+- 2026-04-12 article-type observation:
+  - artifact:
+    - `C:\tetie\notecode\logs\codex_article_type_route_observation\20260412-094857-fourtype-fivebatch\combined_report.md`
+  - summary:
+    - `company / announcement` は provisional に generic 寄り
+    - `daily / technical explain` は `none_safe_majority`
+    - direction は `article-type fixed rule` より `feature-based rule first`
+
+- 2026-04-12 daily compare sequence:
+  - artifacts:
+    - `C:\tetie\notecode\logs\codex_daily_compare_gate\20260412-110830-daily-input-contract-fivebatch\combined_report.md`
+    - `C:\tetie\notecode\logs\codex_daily_compare_gate\20260412-183815-daily-prompt-builder-simplify-fivebatch\combined_report.md`
+  - summary:
+    - initial retention diff でも `final_winner = none_safe_majority`
+    - simplify rerun でも `algorithm` は `safe_runs = 2/10` に留まり、safe majority 未達
+    - daily の local loops は historical evidence として keep するが、future default の根拠にはしない
+
+- latest visible metrics:
+  - `primary_generation_owner = simple_note_pipeline`
+  - `primary_generation_mode = single_pass`
+  - `linebreak_profile = note_standard_spacing`
+  - `ending_bucket_max_run = 29`
+  - `ending_bucket_monotony_score = 1.0`
+  - `repair_trigger_score = 0.6`
+  - `repair_applied = false`
+  - `patch_path_used = false`
+  - `fingerprint_correction_applied = false`
+  - `source_fit.status = warn`
+  - `missing_buckets = ["strength_or_history"]`
+- telemetry freeze evidence from refreshed `latest_generation_output.json`:
+  - `writer_of_record = simple_note_pipeline`
+  - `route_branch = single_pass_default`
+  - `section_path_used = false`
+  - `style_profile_source = newalgorithm_pipeline.default_style_profile`
+  - `patch_path_refusal_reason = compact_plan_scope_ineligible`
+  - `planned_vs_actual_heading_overlap.overlap_ratio = 0.0`
+- 2026-04-10 root cause note:
+  - latest live-like log `gen-4c5f66fb` では algorithm 自体は success だが、natural style owner は section path ではなく `simple_note_pipeline` single-pass に残っていた
+  - current mainline では `newalgorithm_pipeline/section_generator.py` が持つ `note4000` style profile は `announcement_dense_hierarchical_v1` 相当を除き visible body owner ではなく、single-pass writer prompt 側で naturalness 条件が薄くなる
+  - `newalgorithm_pipeline/input_contract.py` の `register_policy` は `industry_analysis` を含め generic polite endings に狭く、`simple_note_pipeline/prompt_builder.py` では `base_register` は見ていても `allowed_endings / max_consecutive_same_ending / paragraph break / linebreak rhythm` を本文生成 prompt に十分戻していなかった
+  - owner-local root fix として `simple_note_pipeline/prompt_builder.py` に `build_note4000_style_profile()` を再構成し、STYLE block へ `改行リズム / 段落切替 / 文末運用 / 同一文末連続制約` を戻した
+  - formatter 側の title / cadence 応急修正は keep しているが、今回の判断では visible AI feel の本丸は formatter ではなく single-pass writer prompt である
+  - verification:
+    - `note\\tests\\test_simple_note_pipeline.py -q`
+    - `76 passed`
+  - pending:
+    - live generation rerun は未実施
+    - current package docs 上の Phase 05 owner は `input_contract.py` のままだが、実装上の root handoff は `simple_note_pipeline/prompt_builder.py` まで含めて確認が必要
+- verification:
+  - `note\\tests\\test_newalgorithm_phase03_pipeline.py` に route/style/repair telemetry freeze を追加
+  - shared checks:
+    - `note\\tests\\test_newalgorithm_phase03_pipeline.py`
+    - `note\\tests\\test_current_mainline_runner.py`
+    - `note\\tests\\test_current_mainline_regressions.py`
+    - all passed
+- current interpretation:
+  - current default route は `grounded generic`
+  - planning / skeleton route は `default` ではなく `feature gate を通った場合だけ opt-in`
+  - structural baseline は `single-pass + optional single repair 1回`
+  - latest `prompt_builder.py` simplification-first retry は failed / rolled back であり、current winner に昇格しない
+  - latest `pipeline.py` current-first triage も failed / rolled back であり、current winner に昇格しない
+  - same hypothesis を unchanged で reopen しない
+  - next owner は未確定
+  - next hypothesis も management re-evaluate 完了まで未確定
+  - prompt-only は floor として keep するが、temporary winner / best practice として扱わない
+  - skeleton / planning は conditional signal only であり、default route / reopen candidate に戻さない
+  - `natural_blog_core.py` / `output_formatter.py` / `input_contract.py` の今回 narrow hypothesis は do-not-retry に送る
+  - public web article compare は current-business-first pattern を支持するが、WEB 勝利までは言わない
+  - direct GPT web compare remains unavailable
+  - `company / announcement` は generic prior を強く持つ
+  - `daily` は naturalness 改善余地があるが grounding safe majority がないため、planning opt-in をまだ許可しない
+  - `technical explain` は naturalness の前に coverage-first stop-loss を優先する
+  - historical loops で得た `prompt surface retention` や `source-aware prune` の diff は keep してよいが、それらを planning default の証拠として扱わない
+  - `planning_opt_in_v1` は `dense_grounding_composite` を含む composite gate として keep し、再び単一 hard gate へ戻さない
+  - technical explain の refusal は current package の next step にせず、split out of package 済みとして separate line 側へ残す
+  - UI input surface でも role clarity を keep する必要があり、`運営側` のような曖昧な立場語は current UI に戻さない。現行 keep state は `C:\tetie\notecode\docs\ui_role_clarity_record_2026-04-08.md`
+  - historical execution order は evidence として読むが、future default はこの `PROGRESS.md` の route reframe を正本にする
+
+## 2026-04-08 Stepwise Gate Note
+
+- adopted gate:
+  - `C:\tetie\notecode\docs\stepwise_three_article_gate_2026-04-08.md`
+- attempted owner-local step:
+  - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
+  - branding / company introduction を promoted section route に含める route ownership change
+- live compare artifact:
+  - `C:\tetie\notecode\logs\stepwise_three_article_gate\20260408-205226-phase03_branding_route_promotion\`
+- route evidence after step:
+  - `ui-short-branding-company-grounded`
+    - `writer_of_record = section_generator`
+    - `route_branch = promoted_route_section_path`
+  - `ui-short-branding-trust`
+    - `writer_of_record = section_generator`
+    - `route_branch = promoted_route_section_path`
+- gate outcome:
+  - target 2 cases とも `generic` / `step-optimized` が `rubric = 8`、`human_visible_ai_feel = flat_or_repetitive` で並び
+  - visible AI feel の優位差が出なかったため `do not advance`
+  - guard case `ui-short-case-study-explain` は regression なし
+- current interpretation update:
+  - old route ownership は narrow に前進した
+  - ただし current step 単独では `generic prompt baseline` を明確に上回れない
+  - したがって route ownership は keep しつつ reopen を deferred にし、次 owner-local step は Phase 02 -> Phase 04 -> Phase 05 の順で進める
+
+## Complexity Assessment
+
+- primary concern:
+  - route ownership と repair containment を同時に触ると原因の切り分けが崩れる
+  - telemetry 不足のまま route experiment を入れると rollback しにくい
+  - output normalize を先に緩めると root cause を見失う
+- keep untouched first:
+  - `C:\tetie\notecode\note\current_mainline_runner.py`
+  - `C:\tetie\notecode\note\note_writer_app.py`
+- UI keep note:
+  - `note_writer_app.py` は quality owner の初手では触らないが、current keep state として `company_introduction -> 自動（おすすめ） / 企業広報として語る`、`structure -> auto` を維持する
+
+## Blocked Hypotheses
+
+- prompt-only strengthening を comparative gate なしで初手に置くこと
+- persona / editor persona を comparative gate なしで先に増やして解決しようとすること
+- formatter regex の追加で branding を救うこと
+- current success path を崩す全面 rewrite から入ること
+
+## Phase Ledger
+
+| Phase | Status | Hypothesis | Owner scope | Attempts | Evidence | Next phase |
+|------|--------|------------|-------------|----------|----------|------------|
+| 00 Route / Style / Repair Telemetry Freeze | completed | owner 誤認が主な implementation miss を生むので telemetry freeze を先にやる | `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py` | 0/3 | `writer_of_record / route_branch / style_profile_source / patch_path_refusal_reason / planned_vs_actual_heading_overlap` を current snapshot と tests で追える | 02 |
+| 01 Repair Trigger For Ending Monotony | deferred | ending monotony boost を入れれば detect-only から repair-triggered に寄る | `C:\tetie\notecode\note\simple_note_pipeline\quality_guard.py` | 0/3 | current baseline は `repair_call` までは到達しているため current critical path ではない | 02 |
+| 02 Repair Patch Path And Acceptance For Branding | closed_without_advance | branding を patch path に含め ending 改善を acceptance に入れる案は baseline blockage として keep するが、`ui-short-branding-trust` は upstream discourse bridge で先に accept できたため reopen しない | `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py` | 0/3 | target case は `newalgorithm_pipeline/pipeline.py` の discourse bridge で `overlap = 1.0` / `must_cover_reflection_rate = 0.6667` / `controlled_realization.active = true` を確認 | 04 |
+| 03 Planning Opt-In Feature Gate | completed | planning を default にせず、feature gate を通った case だけに opt-in すれば generic default と local ordering benefit を両立できる | `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py` | 1/3 | `company / announcement / daily` は refusal のまま generic default を維持し、`ui-short-case-study-explain` は `dense_grounding_composite` で opt-in。`technical explain` refusal は hard gate strictness ではなく coverage-first source readiness の別問題と判断 | docs-first split closeout |
+| 04 Company Intro Source-Aware Plan Prune | completed | unsupported slots を prune すれば generic filler が減る | `C:\tetie\notecode\note\natural_blog_core.py` | 1/3 | `ui-short-branding-company-grounded` で headings / reader questions から unsupported `歩み / 提供価値` が消え、shared checks と live rerun を通過 | 05 |
+| 05 Prompt Surface Constraint Preservation | historical_keep_diff | retention / handoff / simplify の local diff は evidence として keep するが、daily safe majority を作れず future default の根拠にはしない | `C:\tetie\notecode\note\newalgorithm_pipeline\input_contract.py` | 1/3 | daily compare で `none_safe_majority`、simplify rerun でも `algorithm safe_runs = 2/10` に留まった | 03 |
+| 06 Branding Normalize Relaxation | conditional | normalize を弱めれば paragraph breath が戻る | `C:\tetie\notecode\note\newalgorithm_pipeline\output_formatter.py` | 0/3 | upstream / repair fix 後も breathing 問題が残る場合だけ着手 | complete |
+
+## Package Outcome
+
+- verdict:
+  - keep
+- next action:
+  - current source-of-truth に failed hypotheses と post-stop boundary を固定した
+  - 次の separate execution は implementation ではなく management re-evaluate prompt を使う
+- entry note:
+  - visible output integrity package は active reference として読む
+  - completed / frozen reference package は reopen しない

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.bloggen/schemas/source_card.schema.json",
+  "title": "Source Card",
+  "type": "object",
+  "required": [
+    "source_id",
+    "source_type",
+    "title",
+    "published_or_updated_at",
+    "reliability",
+    "main_topics",
+    "facts",
+    "quotes_or_phrases",
+    "warnings",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9_\\-]+$"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["url", "pdf", "word", "manual"]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "published_or_updated_at": {
+      "type": ["string", "null"],
+      "format": "date"
+    },
+    "reliability": {
+      "type": "string",
+      "enum": ["official", "external", "user_uploaded", "unknown"]
+    },
+    "main_topics": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/fact"}
+    },
+    "quotes_or_phrases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/quote_or_phrase"}
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/warning"}
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["source_label"],
+      "additionalProperties": false,
+      "properties": {
+        "source_label": {"type": "string", "minLength": 1},
+        "url": {"type": ["string", "null"], "format": "uri"},
+        "canonical_url": {"type": ["string", "null"], "format": "uri"},
+        "author": {"type": ["string", "null"]},
+        "retrieved_at": {"type": ["string", "null"], "format": "date-time"},
+        "source_priority": {"type": "integer", "minimum": 1, "maximum": 5},
+        "extraction_method": {"type": ["string", "null"]},
+        "extraction_confidence": {
+          "type": ["string", "null"],
+          "enum": ["high", "medium", "low", null]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "required": [
+        "fact_id",
+        "claim",
+        "category",
+        "importance",
+        "source_span",
+        "usable_in_article",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "fact_id": {
+          "type": "string",
+          "pattern": "^F[0-9]{3,}$"
+        },
+        "claim": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "importance": {"type": "integer", "minimum": 1, "maximum": 5},
+        "source_span": {"type": "string", "minLength": 1},
+        "usable_in_article": {"type": "boolean"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "risk_flags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "quote_or_phrase": {
+      "type": "object",
+      "required": ["text", "usage", "source_span"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "usage": {"type": "string", "enum": ["tone_reference", "direct_quote", "term_reference"]},
+        "source_span": {"type": "string", "minLength": 1}
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["type", "message", "source_span"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["old_information", "ambiguous", "unsupported", "conflict_risk", "extraction_low_confidence"]
+        },
+        "message": {"type": "string", "minLength": 1},
+        "source_span": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

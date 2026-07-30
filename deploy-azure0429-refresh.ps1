@@ -25,6 +25,12 @@ param(
 
   [string]$HubBaseUrl = 'https://app.techie.jp',
 
+  [string]$ExternalTenantId = '198ccc88-e870-405e-bb50-5aac609976db',
+
+  [string]$ExternalClientId = 'bbef0e62-048c-49b7-850b-e49c229482d1',
+
+  [string]$ExternalAuthority = 'https://kyotokogyotechie.ciamlogin.com/198ccc88-e870-405e-bb50-5aac609976db',
+
   [string]$PlatformAdminEmails = '',
 
   [switch]$SkipBuild,
@@ -137,6 +143,51 @@ function Build-AcrImage {
         $ContextPath `
         --no-logs
     }
+}
+
+function Escape-JsString([string]$Value) {
+  return ($Value -replace '\\', '\\' -replace "'", "\'")
+}
+
+function Render-HubConfig {
+  param(
+    [string]$HubDirectory,
+    [string]$HubUrl,
+    [string]$ApiUrl,
+    [string]$EntraAuthority,
+    [string]$EntraClientId,
+    [string]$EntryPriceId,
+    [string]$StandardPriceId,
+    [string]$ProPriceId,
+    [string]$Addon10CreditPriceId,
+    [string]$Addon1CreditPriceId
+  )
+
+  $templatePath = Join-Path $HubDirectory 'config.template.js'
+  $targetPath = Join-Path $HubDirectory 'config.js'
+  if (-not (Test-Path $templatePath)) {
+    throw "Hub config template not found: $templatePath"
+  }
+
+  $content = Get-Content $templatePath -Raw -Encoding UTF8
+  $replacements = @{
+    'https://app.techie.jp' = $HubUrl.TrimEnd('/')
+    'https://api.techie.jp' = $ApiUrl.TrimEnd('/')
+    '%%ENTRA_AUTHORITY%%' = $EntraAuthority
+    '%%ENTRA_CLIENT_ID%%' = $EntraClientId
+    '%%STRIPE_ENTRY_PRICE_ID%%' = $EntryPriceId
+    '%%STRIPE_STANDARD_PRICE_ID%%' = $StandardPriceId
+    '%%STRIPE_PRO_PRICE_ID%%' = $ProPriceId
+    '%%STRIPE_ADDON_10_CREDIT_PRICE_ID%%' = $Addon10CreditPriceId
+    '%%STRIPE_ADDON_1_CREDIT_PRICE_ID%%' = $Addon1CreditPriceId
+  }
+
+  foreach ($key in $replacements.Keys) {
+    $value = Escape-JsString ([string]$replacements[$key])
+    $content = $content.Replace($key, $value)
+  }
+
+  Set-Content -Path $targetPath -Value $content -Encoding UTF8
 }
 
 function Refresh-RegistryForApp {
@@ -294,6 +345,38 @@ $postgresAdminPassword = Read-Secret 'PostgreSQL admin password' 'POSTGRES_ADMIN
 $encodedPgPassword = UrlEncode $postgresAdminPassword
 $postgresHost = "$PostgresServerName.postgres.database.azure.com"
 $databaseUrl = "postgresql://${PostgresAdminUser}:${encodedPgPassword}@${postgresHost}:5432/${PostgresDatabaseName}?sslmode=require"
+$resolvedHubBaseUrl = $HubBaseUrl.TrimEnd('/')
+$resolvedServiceBaseUrl = $ServiceBaseUrl.TrimEnd('/')
+
+$envExternalAuthority = [Environment]::GetEnvironmentVariable('ENTRA_AUTHORITY')
+$envExternalClientId = [Environment]::GetEnvironmentVariable('ENTRA_EXTERNAL_ID_CLIENT_ID')
+if (-not [string]::IsNullOrWhiteSpace($envExternalAuthority)) {
+  $ExternalAuthority = $envExternalAuthority
+}
+if (-not [string]::IsNullOrWhiteSpace($envExternalClientId)) {
+  $ExternalClientId = $envExternalClientId
+}
+
+$stripeEntryPriceId = [Environment]::GetEnvironmentVariable('STRIPE_ENTRY_PRICE_ID')
+$stripeStandardPriceId = [Environment]::GetEnvironmentVariable('STRIPE_STANDARD_PRICE_ID')
+$stripeProPriceId = [Environment]::GetEnvironmentVariable('STRIPE_PRO_PRICE_ID')
+$stripeAddon10CreditPriceId = [Environment]::GetEnvironmentVariable('STRIPE_ADDON_10_CREDIT_PRICE_ID')
+$stripeAddon1CreditPriceId = [Environment]::GetEnvironmentVariable('STRIPE_ADDON_1_CREDIT_PRICE_ID')
+if ([string]::IsNullOrWhiteSpace($stripeEntryPriceId)) {
+  $stripeEntryPriceId = 'price_1TUeFVCW1iD1TojNuRHRB86E'
+}
+if ([string]::IsNullOrWhiteSpace($stripeStandardPriceId)) {
+  $stripeStandardPriceId = 'price_1TUeJ7CW1iD1TojNteVdjHLm'
+}
+if ([string]::IsNullOrWhiteSpace($stripeProPriceId)) {
+  $stripeProPriceId = 'price_1TUeKwCW1iD1TojNmAdBVyXr'
+}
+if ([string]::IsNullOrWhiteSpace($stripeAddon10CreditPriceId)) {
+  $stripeAddon10CreditPriceId = 'price_1TUeNLCW1iD1TojNYNuY8XUG'
+}
+if ([string]::IsNullOrWhiteSpace($stripeAddon1CreditPriceId)) {
+  $stripeAddon1CreditPriceId = 'price_1TqO5OCW1iD1TojNQotHGizo'
+}
 
 $optionalRuntimeSettings = @()
 $requiredRuntimeSecrets = @(
@@ -311,21 +394,63 @@ foreach ($envName in @(
   'CLAUDE_API_KEY',
   'GEMINI_API_KEY',
   'GOOGLE_API_KEY',
+  'STRIPE_ENTRY_PRICE_ID',
+  'STRIPE_STANDARD_PRICE_ID',
+  'STRIPE_PRO_PRICE_ID',
+  'STRIPE_ADDON_10_CREDIT_PRICE_ID',
+  'STRIPE_ADDON_1_CREDIT_PRICE_ID',
+  'TECHIE_ENTRY_INCLUDED_CREDITS',
+  'TECHIE_STANDARD_INCLUDED_CREDITS',
+  'TECHIE_PRO_INCLUDED_CREDITS',
   'ENTRA_EXTERNAL_ID_TENANT_NAME',
   'ENTRA_EXTERNAL_ID_TENANT_DOMAIN',
-  'ENTRA_EXTERNAL_ID_TENANT_ID',
-  'ENTRA_EXTERNAL_ID_CLIENT_ID',
   'ENTRA_EXTERNAL_ID_POLICY',
   'ENTRA_EXTERNAL_ID_DISCOVERY_URL',
-  'ENTRA_EXTERNAL_ID_ISSUER',
-  'AUTH_IDENTITY_MODE',
-  'AUTH_DEV_MODE'
+  'ENTRA_EXTERNAL_ID_ISSUER'
 )) {
   $envValue = [Environment]::GetEnvironmentVariable($envName)
   if (-not [string]::IsNullOrWhiteSpace($envValue)) {
     $optionalRuntimeSettings += "$envName=$envValue"
   }
 }
+
+$forcedRuntimeSettings = @(
+  "ENVIRONMENT=$Environment",
+  "CONTAINER_ENV=$Environment",
+  'AUTH_DEV_MODE=0',
+  'AUTH_IDENTITY_MODE=entra_external_id',
+  'AUTH_ENFORCE_SERVICES=1',
+  "HUB_LOGIN_URL=$resolvedHubBaseUrl/login",
+  "HUB_BASE_URL=$resolvedHubBaseUrl",
+  "HUB_URL=$resolvedHubBaseUrl",
+  "KOTOMAKE_URL=$($resolvedHubBaseUrl.TrimEnd('/'))/service/kotomake",
+  "KOTOMIGAKI_URL=$($resolvedHubBaseUrl.TrimEnd('/'))/service/kotomigaki",
+  "KOTOMEGANE_URL=$($resolvedHubBaseUrl.TrimEnd('/'))/service/kotomegane",
+  "SERVICE_BASE_URL=$resolvedServiceBaseUrl",
+  "API_BASE_URL=$resolvedServiceBaseUrl",
+  "ENTRA_EXTERNAL_ID_CLIENT_ID=$ExternalClientId",
+  "ENTRA_EXTERNAL_ID_TENANT_ID=$ExternalTenantId",
+  "ENTRA_EXTERNAL_ID_REDIRECT_URI=$resolvedHubBaseUrl/auth/callback",
+  "ENTRA_EXTERNAL_ID_POST_LOGOUT_REDIRECT_URI=$resolvedHubBaseUrl/signed-out",
+  'NICEGUI_STORAGE_SECRET=techie-prod-nicegui-storage-v1',
+  'BLOGGEN_LLM_MODE=openai',
+  'NOTECODE_ROUTE_0506_CLIENT_MODE=openai',
+  'NOTECODE_UI_BODY_ROUTE=route_0506_structured_blog_ui_v1'
+)
+
+$optionalRuntimeSettings = @($optionalRuntimeSettings + $forcedRuntimeSettings | Select-Object -Unique)
+
+Render-HubConfig `
+  -HubDirectory (Join-Path $repoRoot 'techie-hub') `
+  -HubUrl $resolvedHubBaseUrl `
+  -ApiUrl $resolvedServiceBaseUrl `
+  -EntraAuthority $ExternalAuthority `
+  -EntraClientId $ExternalClientId `
+  -EntryPriceId $stripeEntryPriceId `
+  -StandardPriceId $stripeStandardPriceId `
+  -ProPriceId $stripeProPriceId `
+  -Addon10CreditPriceId $stripeAddon10CreditPriceId `
+  -Addon1CreditPriceId $stripeAddon1CreditPriceId
 
 $appBuildMatrix = @(
   @{
@@ -381,13 +506,13 @@ foreach ($item in $appBuildMatrix) {
   $imageRef = "$acrServer/$($item.Repository):$tag"
   $envVars = @()
   if ($item.AppName -eq 'kotomake') {
-    $envVars = @('HOST=0.0.0.0', 'NICEGUI_HOST=0.0.0.0', "DATABASE_URL=$databaseUrl")
+    $envVars = @('HOST=0.0.0.0', 'NICEGUI_HOST=0.0.0.0', "DATABASE_URL=$databaseUrl", 'REQUIRE_ACTIVE_ENTITLEMENT=1', 'AUTH_REDIRECT_TO_PLANS_ON_NO_ENTITLEMENT=0', 'AUTH_ALLOW_UNSAFE_PAGE_ENTITLEMENT_REDIRECT=0', 'TECHIE_SERVICE_KEY=kotomake') + $optionalRuntimeSettings
   }
   elseif ($item.AppName -eq 'kotomigaki') {
-    $envVars = @('HOST=0.0.0.0', "DATABASE_URL=$databaseUrl")
+    $envVars = @('HOST=0.0.0.0', "DATABASE_URL=$databaseUrl", 'REQUIRE_ACTIVE_ENTITLEMENT=1', 'AUTH_REDIRECT_TO_PLANS_ON_NO_ENTITLEMENT=0', 'AUTH_ALLOW_UNSAFE_PAGE_ENTITLEMENT_REDIRECT=0', 'TECHIE_SERVICE_KEY=kotomigaki') + $optionalRuntimeSettings
   }
   elseif ($item.AppName -eq 'techie-hub') {
-    $envVars = @("DATABASE_URL=$databaseUrl")
+    $envVars = @("DATABASE_URL=$databaseUrl", "HUB_BASE_URL=$resolvedHubBaseUrl", "API_BASE_URL=$resolvedServiceBaseUrl")
   }
   Refresh-RegistryForApp `
     -AppName $item.AppName `

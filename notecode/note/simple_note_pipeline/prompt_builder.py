@@ -943,8 +943,45 @@ def _build_local_monotony_patch_scope_lines(
     return [
         "monotony_patch=見出し列をこの順番で固定する: " + " / ".join(headings[:6]),
         "monotony_patch=見出し名は一字一句変えない。見出しの改名・追加・削除・並べ替えをしない。",
+        "monotony_patch=title/lead/hashtags は一字一句変えない。",
+        "monotony_patch=本文前半と対象外見出しの本文は原文をそのまま保持する。同義言い換えもしない。",
+        "monotony_patch=本文全体を短縮・要約・再構成しない。BODY 文字量を削って warning を消そうとしない。",
         "monotony_patch=最後の見出しを別のまとめ見出しへ差し替えず、結びの節を新しい closing 概念で置き換えない。",
-        "monotony_patch=書き換えは flag span とその前後本文だけにとどめ、別節へ論点を逃がさない。",
+        "monotony_patch=section が空でも全節を target にしない。文末が連続した最小の sentence cluster と直前直後だけを触る。",
+        "monotony_patch=対象は ending_bucket_monotony の flagged run 近傍だけにとどめ、別節へ論点を逃がさない。",
+    ]
+
+
+def _build_materialized_late_half_patch_scope_lines(
+    body: str,
+    flagged_spans: Iterable[Mapping[str, Any]] | None,
+) -> list[str]:
+    issue_types = {
+        str(item.get("issue_type") or "").strip()
+        for item in flagged_spans or []
+        if str(item.get("issue_type") or "").strip()
+    }
+    if not issue_types.intersection(
+        {
+            "late_half_source_return",
+            "late_half_closing_specificity",
+            "late_half_surface_rhythm",
+        }
+    ):
+        return []
+    headings = _extract_body_headings(body, limit=8)
+    if not headings:
+        return [
+            "late_half_patch=後半本文だけを局所補修し、title/lead/hashtags と前半本文は変えない。",
+            "late_half_patch=新しい見出しや新しい結論を追加しない。source fact と本文の役割を保つ。",
+        ]
+    split_at = max(0, len(headings) // 2)
+    target_headings = headings[split_at:] or headings[-1:]
+    return [
+        "late_half_patch=見出し列をこの順番で固定する: " + " / ".join(headings[:8]),
+        "late_half_patch=見出し名は一字一句変えない。見出しの追加・削除・並べ替えをしない。",
+        "late_half_patch=補修対象は後半見出しだけ: " + " / ".join(target_headings[:4]),
+        "late_half_patch=title/lead/hashtags と前半見出しの本文は変えない。source fact と見出し役割を保つ。",
     ]
 
 
@@ -2358,6 +2395,7 @@ def build_repair_prompt(
     semantic_ledger: Iterable[str] | None = None,
     section_shadow: Iterable[str] | None = None,
     flagged_spans: Iterable[Mapping[str, Any]] | None = None,
+    anchor_patch_lines: Iterable[str] | None = None,
     article_guard_lines: Iterable[str] | None = None,
 ) -> str:
     issue_lines = _clean_items(issues, limit=6, char_limit=96) or ["重複・主語反復・文末単調を局所補修する。"]
@@ -2411,6 +2449,7 @@ def build_repair_prompt(
             shadow_block,
         )
     flagged_span_lines = _summarize_flagged_spans(flagged_spans)
+    anchor_patch_scope_lines = _clean_items(anchor_patch_lines or [], limit=6, char_limit=240)
     if flagged_span_lines:
         _append_block(
             prompt_lines,
@@ -2418,7 +2457,9 @@ def build_repair_prompt(
             [
                 *_build_repair_patch_scope_base_lines(),
                 *flagged_span_lines,
+                *anchor_patch_scope_lines,
                 *_build_local_monotony_patch_scope_lines(body, flagged_spans),
+                *_build_materialized_late_half_patch_scope_lines(body, flagged_spans),
                 *_build_company_intro_surface_patch_scope_lines(article_type, semantic_key, lead, body, flagged_spans),
                 *_build_compare_patch_scope_lines(article_type, flagged_spans),
                 *_build_shadow_patch_scope_lines(flagged_spans),
@@ -2554,6 +2595,7 @@ def build_repair_prompt_from_diagnostics(
     effective_flagged_spans = flagged_spans
     if effective_flagged_spans is None and isinstance(diagnostics.get("flagged_spans"), list):
         effective_flagged_spans = list(diagnostics.get("flagged_spans") or [])
+    anchor_patch_lines: list[str] = []
     return build_repair_prompt(
         article_type=article_type,
         issues=issues,
@@ -2565,6 +2607,7 @@ def build_repair_prompt_from_diagnostics(
         semantic_ledger=_summarize_semantic_ledger(effective_plan),
         section_shadow=_summarize_section_shadow(effective_plan, shadow_spec_inputs),
         flagged_spans=effective_flagged_spans,
+        anchor_patch_lines=anchor_patch_lines,
         article_guard_lines=[
             *_build_experimental_comparative_repair_guard_lines(contract),
             *_build_company_intro_repair_guard_lines(contract, diagnostics),

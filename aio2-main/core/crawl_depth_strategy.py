@@ -9,6 +9,7 @@ AIO最適化（構造化文書・リライト提案・エンティティ分析�
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
+from core.site_health.url_instruction_guard import inspect_url_for_untrusted_instruction
 
 # クロール深度の閾値設定（AIO目的: 構造化・リライト・エンティティ分析のため最低1階層は取得）
 CRAWL_DEPTH_THRESHOLDS = {
@@ -108,6 +109,7 @@ def get_crawl_strategy(soup: BeautifulSoup, base_url: str) -> Dict:
     # 優先度の高いキーワード一致ページ（法務→事業→FAQ）を抽出
     import re
     priority_pages = []
+    excluded_untrusted_instruction_urls = []
     base_parsed = urlparse(base_url)
 
     def _classify_priority(search_text: str) -> Tuple[int, str]:
@@ -138,6 +140,11 @@ def get_crawl_strategy(soup: BeautifulSoup, base_url: str) -> Dict:
 
         # 外部リンクはスキップ
         if parsed.netloc and parsed.netloc != base_parsed.netloc:
+            continue
+
+        instruction_screen = inspect_url_for_untrusted_instruction(full_url, link_text=text)
+        if instruction_screen.get("status") == "suspicious_untrusted_instruction":
+            excluded_untrusted_instruction_urls.append(instruction_screen)
             continue
 
         # 優先度とカテゴリを計算
@@ -190,5 +197,7 @@ def get_crawl_strategy(soup: BeautifulSoup, base_url: str) -> Dict:
     strategy["priority_pages"] = selected
     # 候補は上位を多めに返す（取得側で文字数ベースで打ち切る）
     strategy["priority_candidates"] = [p.get("url") for p in priority_pages[:20] if p.get("url")]
+    if excluded_untrusted_instruction_urls:
+        strategy["excluded_untrusted_instruction_urls"] = excluded_untrusted_instruction_urls[:8]
 
     return strategy

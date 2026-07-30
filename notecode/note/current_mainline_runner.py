@@ -35,10 +35,6 @@ from note.omakase_seed_builder import (
     build_omakase_preflight as build_omakase_preflight_core,
     merge_omakase_seed_into_kwargs as merge_omakase_seed_into_kwargs_core,
 )
-from note.vnext.pipeline import VNextPipeline
-from note.vnext_adapters.current_ui_contract_adapter import adapt_current_contract_to_vnext
-from note.vnext_adapters.runtime_projection_adapter import build_vnext_shadow_projection
-from note.vnext_current_boundary import build_vnext_current_boundary_summary
 
 
 class CurrentMainlinePipeline(Protocol):
@@ -720,17 +716,7 @@ def validate_current_mainline_generation_gate(
                 source_context_required = bool(normalized_input_contract.get("source_grounding_required")) or (
                     str(source_fit.get("status") or "").strip().lower() == "block"
                 )
-                has_user_source = bool(
-                    list(normalized_input_contract.get("source_inputs") or [])
-                    or list(normalized_input_contract.get("source_documents") or [])
-                    or list(normalized_input_contract.get("source_document_markers") or [])
-                )
-                # Production UX: a readable user-provided source should not trap the
-                # user in the confirmation screen. Keep the guard for no-source cases,
-                # but allow generation to continue with downstream quality checks.
-                if has_user_source and bool(normalized_input_contract.get("_explicit_topic_present")):
-                    input_action = "accept"
-                elif bool(normalized_input_contract.get("_explicit_topic_present")) and not source_context_required:
+                if bool(normalized_input_contract.get("_explicit_topic_present")) and not source_context_required:
                     input_action = "accept"
                 elif (
                     semantic_article_key == "company_introduction"
@@ -1214,7 +1200,6 @@ def resolve_current_mainline_ui_selection(
     ui_journey: Mapping[str, Any] | None = None,
     comparison_axes: Iterable[Any] | None = None,
 ) -> Dict[str, Any]:
-    build_vnext_current_boundary_summary()
     normalized_journey = _normalize_ui_journey(ui_journey)
     normalized_axes = _normalize_unique_string_list(
         comparison_axes if comparison_axes is not None else normalized_journey.get("comparison_axes")
@@ -1677,51 +1662,10 @@ def _normalize_pipeline_error_result(
     return normalized
 
 
-def _attach_vnext_shadow_projection(result: Mapping[str, Any] | None) -> Dict[str, Any]:
-    normalized_result = dict(result or {})
-    pipeline_check = dict(normalized_result.get("pipeline_check") or {})
-    current_contract = pipeline_check.get("input_contract")
-    if not isinstance(current_contract, Mapping):
-        return normalized_result
-    try:
-        thin_contract = adapt_current_contract_to_vnext(current_contract)
-        vnext_result = VNextPipeline().generate(thin_contract)
-        shadow_projection = build_vnext_shadow_projection(
-            vnext_result=vnext_result,
-            current_result=normalized_result,
-        )
-    except Exception as exc:
-        shadow_projection = {
-            "enabled": True,
-            "mode": "shadow",
-            "success": False,
-            "owner": "note.vnext.pipeline.VNextPipeline",
-            "error": str(exc),
-        }
-    pipeline_check["vnext_shadow"] = shadow_projection
-    normalized_result["pipeline_check"] = pipeline_check
-    normalized_result["vnext_shadow"] = shadow_projection
-    return normalized_result
-
-
 def _build_phase04_cutover_rehearsal_summary(
     input_contract: Mapping[str, Any] | None,
 ) -> Dict[str, Any]:
-    if not isinstance(input_contract, Mapping):
-        return {}
-    article_type = str(input_contract.get("article_type") or "").strip()
-    semantic_article_key = str(input_contract.get("semantic_article_key") or "").strip()
-    if article_type != "branding" or semantic_article_key != "company_introduction":
-        return {}
-    return {
-        "route_key": "branding/company_introduction",
-        "approval_state": "approved",
-        "selected_engine": "current_mainline",
-        "candidate_engine": "vnext_shadow",
-        "selection_reason": "phase04_rehearsal_keeps_current_control_plane_until_phase05_promotion",
-        "fallback_engine": "current_mainline",
-        "fallback_reason": "phase04_rehearsal_is_not_route_promotion",
-    }
+    return {}
 
 
 def _attach_phase04_cutover_rehearsal_summary(
@@ -2164,7 +2108,6 @@ def _finalize_current_mainline_result(
             input_contract=input_contract,
         )
         normalized_result = apply_generation_output_guard(normalized_result)
-        normalized_result = _attach_vnext_shadow_projection(normalized_result)
     if not bool(normalized_result.get("success", False)):
         normalized_result = _normalize_pipeline_error_result(
             normalized_result,
@@ -2297,7 +2240,7 @@ def execute_current_mainline_generation(
     input_contract: Mapping[str, Any] | None,
     user_prompt_text: str,
 ) -> Dict[str, Any]:
-    boundary_summary = build_vnext_current_boundary_summary()
+    boundary_summary: Dict[str, Any] = {}
     normalized_input_contract = _normalize_execution_input_contract(
         input_contract,
         user_prompt_text=user_prompt_text,

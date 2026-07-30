@@ -1,7 +1,7 @@
 """診断スクリプト: パイプライン動作状況・設定・アウトライン解析を一括チェック。
 
 使い方:
-  cd C:\tetie\notecode
+  cd notecode (このファイルがあるディレクトリ)
   .venv\Scripts\python.exe diagnose_pipeline.py
   .venv\Scripts\python.exe diagnose_pipeline.py --outline "LLMの生応答テキスト"
   .venv\Scripts\python.exe diagnose_pipeline.py --log          # 直近ログからフォールバック検出

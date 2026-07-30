@@ -6,12 +6,37 @@ from typing import Any, Dict
 from nicegui import ui
 
 
+def _format_industry_value(value: Any) -> str:
+    text = str(value or "").strip()
+    replacements = {
+        "自動判定": "",
+        "未検出": "判定なし",
+        "指定なし": "判定なし",
+        "カスタム/その他": "その他 / 独自設定",
+    }
+    return replacements.get(text, text) or "判定なし"
+
+
+def _format_industry_source(value: Any) -> str:
+    text = str(value or "").strip()
+    if text == "ユーザー入力（自動判定で確認済み）":
+        return "入力内容を優先（自動推定でも一致）"
+    if text.startswith("ユーザー入力（自動判定:"):
+        return text.replace("ユーザー入力（自動判定:", "入力内容を優先（自動推定:", 1)
+    if text.startswith("自動判定（信頼度:"):
+        return text.replace("自動判定", "自動推定", 1).replace("信頼度", "確からしさ", 1)
+    return text or "補足なし"
+
+
 def render_industry_tab(industry: Dict[str, Any], results: Dict[str, Any]) -> None:
     """Render the industry tab."""
+    industry_label = _format_industry_value(industry.get("primary")) 
+    if industry_label == "判定なし":
+        industry_label = _format_industry_value(industry.get("auto_primary"))
     ui.label("業界判定").classes("card-title")
-    ui.label(f"主要業界: {industry.get('primary', 'N/A')}").classes("card-sub")
+    ui.label(f"業界の見立て: {industry_label}").classes("card-sub")
     ui.label(f"信頼度: {industry.get('confidence', 0):.1f}%").classes("card-sub")
-    ui.label(f"判定根拠: {industry.get('source', 'N/A')}").classes("card-sub")
+    ui.label(f"判断のもと: {_format_industry_source(industry.get('source'))}").classes("card-sub")
 
     regulatory_check = results.get("regulatory_check")
     if not regulatory_check:

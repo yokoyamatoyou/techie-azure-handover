@@ -1,0 +1,14 @@
+{
+  "name": "kotomigaki-accessibility-scanner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scan:url": "node scripts/run-safe-url-scan.mjs",
+    "smoke:scan": "node scripts/run-safe-url-scan.mjs https://example.com/"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "4.11.3",
+    "@playwright/test": "1.60.0"
+  }
+}

@@ -1,28 +1,58 @@
 # コトメイク ALGORITHM
 
-最終更新: 2026-04-29（GPT Image 2 image prompt の editorial / 編集調 style cue removal を正式化）
+最終更新: 2026-07-03（Route V 起動保証 / Route B 名称廃止）
 対象: `C:\tetie\notecode`
 
 このドキュメントは、コトメイクの記事生成アルゴリズムの正本です。  
-現行の本文 mainline は `single-pass + optional single repair 1回` に固定し、実装正本は `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py` とします。
+
+2026-06-28 時点の Route V current owner state は `notecode\AGENTS.md` / `notecode\0506\AGENTS.md` / `notecode\0506\TASK.md` / `notecode\0506\PROGRESS.md` / `notecode\0506\docs\CURRENT_ALGORITHM.md` を優先します。最新 validation artifact は `notecode\logs\0628\rv_ui_img_20260628_180205\validation_summary.json` で、decision は `needs_review`、current next owner は `route_v_first_gap_review` です。
+
+通常UIの本文生成主経路は Route V です。Route V は `route_v_0506_structured_blog_v1` として、通常UIの `記事を生成` から workspace 内 `notecode\0506` の structured blog pipeline を呼びます。Route B は廃止済み名称です。実在する `route_b_*` artifact / package 名は legacy-named migration reference としてのみ扱います。
+
+現行 Route V 経路:
+
+```text
+UI `記事を生成`
+-> note\route_v_generation_service.py
+-> strict source intake / saved source documents
+-> note\route_v_0506_adapter.py
+-> notecode\0506\app\services\pipeline_runner.py
+-> Markdown preview / logs\route_v_generation\<run_id>\draft.md
+-> fail-open post-success image generation path for the existing 2 image variants
+```
+
+Route A current_mainline / newalgorithm_pipeline / simple_note_pipeline は legacy opt-out 専用です。Route V 失敗時の自動 fallback には使わず、repair loop / quality pipeline / broad prompt tuning を Route V 本線へ混ぜません。
+writer-only は旧通常UI本文生成経路として退避し、Route V の fallback には使いません。
+旧 rejected route（旧 Route B / Route D / Route E / deepresearch など）は復活させません。
+runtime の既定参照先に Desktop 絶対パスを置きません。
+
+以下の writer-only / Route 0506 / Route A 記述は履歴仕様として残します。現行 Route V 主経路の実装指示として使わないでください。
 
 ## 0. Source Of Truth
 
-- current planning package
-  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\README.md`
-  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\TASK.md`
-  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\PROGRESS.md`
-  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\ROLLBACK.md`
-  - `C:\tetie\notecode\plan\naturalness_recovery_2026-04-07\EXECUTION_PROMPT.md`
+- legacy-named migration reference package
+  - `C:\tetie\notecode\plan\route_b_context_snapshot_2026-06-23\README.md`
+  - `C:\tetie\notecode\plan\route_b_context_snapshot_2026-06-23\TASK.md`
+  - `C:\tetie\notecode\plan\route_b_context_snapshot_2026-06-23\PROGRESS.md`
+  - `C:\tetie\notecode\plan\route_b_context_snapshot_2026-06-23\GOAL_PROMPT.md`
 - current image planning package
   - `C:\tetie\notecode\plan\gpt_image2_blog_image_auto_2026-04-22\README.md`
   - `C:\tetie\notecode\plan\gpt_image2_blog_image_auto_2026-04-22\TASK.md`
   - `C:\tetie\notecode\plan\gpt_image2_blog_image_auto_2026-04-22\PROGRESS.md`
   - `C:\tetie\notecode\plan\gpt_image2_blog_image_auto_2026-04-22\DECISIONS.md`
-- runtime mainline
-  - `C:\tetie\notecode\note\current_mainline_runner.py`
-  - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
-  - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
+- UI body default main route
+  - `C:\tetie\notecode\note\route_v_generation_service.py`
+  - `C:\tetie\notecode\note\route_v_0506_adapter.py`
+  - `C:\tetie\notecode\0506\app\services\pipeline_runner.py`
+- legacy writer-only route
+  - `C:\tetie\notecode\note\writer_only_service.py`
+  - `C:\tetie\notecode\note\writer_only_source_bundle.py`
+  - `C:\tetie\notecode\note\writer_only_brief.py`
+  - `C:\tetie\notecode\note\writer_only_openai_adapter.py`
+  - `C:\tetie\notecode\note\writer_only_evaluator.py`
+  - `C:\tetie\notecode\note\writer_only_config.py`
+- archived legacy body-generation runtime
+  - `C:\tetie\notecode\archive\writer_only_deadcode_archive_20260602\`
 - image generation runtime
   - `C:\tetie\notecode\note\blog_image_auto.py`
   - `C:\tetie\notecode\note\llm_client.py`
@@ -46,15 +76,18 @@
 
 ## 2. Non-Negotiable
 
-1. mainline は `single-pass + optional single repair 1回`
-2. mainline success path は `current_mainline_runner -> newalgorithm_pipeline -> simple_note_pipeline`
-3. repair は prompt-based の局所修復であり、full rewrite loop を増やさない
-4. repair 出力は差分ではなく、`[TITLE] / [LEAD] / [BODY] / [HASHTAGS]` をすべて含む記事全文でなければならない
-5. partial patch-style output は fail-closed で reject し、元の draft を維持する
-6. route experiment は phase-local に閉じ、current success path を壊さない
-7. pre-2026-04-02 records は archive-only とし、current read order に戻さない
+1. UI 本文生成 default は Route V
+2. Route V は workspace 内 `notecode\0506` を使う。Desktop 絶対パスを runtime 既定参照にしない
+3. formal UI の Route V は 0506 の configured LLM client boundary を使い、`LocalPipelineClient` を通常UI本文生成の実行 client にしない
+4. Route A は明示 opt-out 専用。Route V 失敗時に Route A / writer-only / rejected routes へ fallback しない
+5. Route V に Route A の repair loop / quality pipeline / broad prompt tuning を混ぜない。画像生成は Route V 成功後の fail-open 後続処理に限定する
+6. Route V の route flags は `route_v_used=true`, `route_a_used=false`, `fallback_used=false` を判別可能にする
+7. URL policy / robots / redirect / allowlist 判定で禁止または不明なら本文取得へ進まない
+8. 生成本文は自己視点を基本とし、第三者紹介文・まとめサイト風を標準出力にしない
+9. 高リスク領域はfail-closedにする
+10. archived legacy body-generation records は archive-only とし、current read order に戻さない
 
-## 3. 現行 mainline 全体像
+## 3. Legacy Route A Opt-out 全体像
 
 1. Input contract resolve
 2. Source grounding / source digest
@@ -67,6 +100,7 @@
 9. Final render / telemetry / latest snapshot projection
 
 補足:
+- この節は Route A を明示 opt-out で検査する場合の履歴仕様です。Route V の通常UI実行、失敗時 fallback、品質補修には使いません。
 - 本文生成の責務は single-pass 側に置く
 - repair は「記事全体を書き直す工程」ではなく、「診断で見つかった局所破綻を bounded に修復する工程」
 - repair を使っても mainline の構造は 1 回の生成 + 1 回の補修から増やさない
@@ -199,7 +233,15 @@ partial patch-style repair を通すと、deterministic postprocess 側が全文
 
 ## 9. Telemetry と監査
 
-repair 実行時は少なくとも次を記録する。
+Route V 実行時は少なくとも次を記録する。
+
+- `route_v_used`
+- `route_a_used`
+- `fallback_used`
+- `route_id`
+- `route_source_workspace`
+
+legacy repair 実行時は少なくとも次を記録する。
 
 - `output_contract_parse_mode`
 - `output_contract_complete_article`
@@ -211,12 +253,18 @@ repair 実行時は少なくとも次を記録する。
 
 ## 10. 実装責務境界
 
+- `C:\tetie\notecode\note\route_v_generation_service.py`
+  - Route V mainline の通常UI入口
+- `C:\tetie\notecode\note\route_v_0506_adapter.py`
+  - Route V から local 0506 pipeline への adapter
+- `C:\tetie\notecode\0506\app\services\pipeline_runner.py`
+  - Route V structured blog engine
 - `C:\tetie\notecode\note\current_mainline_runner.py`
-  - current mainline の入口
+  - legacy Route A opt-out の履歴入口
 - `C:\tetie\notecode\note\newalgorithm_pipeline\pipeline.py`
-  - compatibility import path
+  - legacy compatibility import path
 - `C:\tetie\notecode\note\simple_note_pipeline\pipeline.py`
-  - mainline 本体
+  - legacy mainline 本体
 - `C:\tetie\notecode\note\simple_note_pipeline\prompt_builder.py`
   - generation / repair prompt contract
 - `C:\tetie\notecode\note\simple_note_pipeline\postprocess.py`
@@ -392,7 +440,7 @@ meta / telemetry には検査項目として記録してよい。本文へは出
 ### 13.1 位置づけ
 
 画像生成は本文 mainline の一部ではなく、記事生成成功後の post-success work である。  
-本文生成の success path は `current_mainline_runner -> newalgorithm_pipeline -> simple_note_pipeline` のまま固定し、画像生成の失敗を記事生成の失敗へ昇格しない。
+本文生成 route selection は本文生成側の契約に従う。画像生成の失敗を記事生成の失敗へ昇格しない。
 
 画像生成の runtime owner は `C:\tetie\notecode\note\blog_image_auto.py` とし、OpenAI Images API 呼び出しは `C:\tetie\notecode\note\llm_client.py` に閉じる。
 
@@ -438,7 +486,15 @@ prompt 側は「記事内容に合うこと」「主題が見えること」「�
 active image prompt は、共有 style cue として `editorial` / `編集調` を使わない。  
 記事別の主題・文脈、exact quoted text 1 回、余計な文字・ロゴ・透かし禁止、最低 15% 以上の clean breathing room は維持する。
 
-`simple` / `balanced` / `rich` は固定の要素数ではなく、カバーの方向性を示す弱いガイドである。  
+画像の `pattern_key` は互換名として残し、UI では「タッチ / 画像の方向性」として扱う。  
+選択肢は `simple` / `blog_cover` / `flat_illustration` / `warm_handdrawn` の 4 件に限定する。
+
+- `simple`: シンプル
+- `blog_cover`: ブログ見出し画像風
+- `flat_illustration`: フラットイラスト
+- `warm_handdrawn`: 温かい手描き風
+
+タッチは表現方向だけを示す弱いガイドであり、記事内容や source claims を上書きしない。  
 要素数や背景情報量は GPT Image 2 が記事内容に合わせて決める。
 
 ### 13.5 API contract

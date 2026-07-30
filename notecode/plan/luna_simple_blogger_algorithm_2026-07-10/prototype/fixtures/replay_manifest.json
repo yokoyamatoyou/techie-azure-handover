@@ -1,0 +1,68 @@
+{
+  "workspace_root_from_package": "../../..",
+  "cases": [
+    {
+      "id": "accepted_comparison_guide",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/01_comparison_guide.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/comparison_guide/r/a1/source_packets.json",
+      "floor": 1200
+    },
+    {
+      "id": "sanrei_route_v_input",
+      "group": "historical_control",
+      "article": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/latest_generation_output.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "floor": 1400
+    },
+    {
+      "id": "sanrei_editor_two_pass_proxy",
+      "group": "historical_editor_proxy_not_candidate",
+      "article": "notecode/logs/0624/route_v_company_intro_front_back_editor_persona_two_api_trial_after_encoding_guard_20260624_213222/call_2_final_article.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "floor": 1400
+    },
+    {
+      "id": "sanrei_editor_three_call_proxy",
+      "group": "historical_editor_proxy_not_candidate",
+      "article": "notecode/logs/0624/route_v_company_intro_front_back_editor_persona_one_api_refinement_trial_after_two_pass_20260624_214820/final_article.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "floor": 1400
+    },
+    {
+      "id": "accepted_company_service_intro",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/02_company_service_intro.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/company_service_intro/r3/c1/source_packets.json",
+      "floor": 1400
+    },
+    {
+      "id": "accepted_market_explanation",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/03_market_explanation.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/market_explanation/r3/c2/source_packets.json",
+      "floor": 1200
+    },
+    {
+      "id": "accepted_announcement",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/04_announcement.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/announcement/r2/b1/source_packets.json",
+      "floor": 900
+    },
+    {
+      "id": "accepted_daily_activity",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/05_daily_activity.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/daily_activity/r2/b1/source_packets.json",
+      "floor": 1200
+    },
+    {
+      "id": "accepted_case_study",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/06_case_study.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/case_study/r/a1/source_packets.json",
+      "floor": 1200
+    }
+  ]
+}

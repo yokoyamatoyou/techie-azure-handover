@@ -471,14 +471,28 @@ def format_stealth_marketing_result(result: Dict, mode: str = "simple") -> Dict:
     if affiliate["is_affiliate"]:
         items.append({
             "icon": "ℹ",
-            "text": f"アフィリエイトコンテンツの可能性: 高（信頼度 {int(affiliate['confidence']*100)}%）",
-            "subtext": "、".join(affiliate["indicators"]) if affiliate["indicators"] else ""
+            "text": f"PR表記確認が必要なアフィリエイト要素: 検出（信頼度 {int(affiliate['confidence']*100)}%）",
+            "subtext": (
+                "アフィリエイトがあるだけではなく、PR/広告表記の有無と見やすさを確認します。"
+                + (f" 検出元: {'、'.join(affiliate['indicators'])}" if affiliate["indicators"] else "")
+            )
         })
     else:
+        content_pattern_count = int(affiliate.get("content_pattern_count") or 0)
+        if content_pattern_count > 0:
+            affiliate_note = (
+                f"記事型の表現は{content_pattern_count}件ありますが、既知のASPリンクやアフィリエイトURLは未検出です。"
+                "スコア低下/要対応になるのは、広告・PR要素があるのに表記が不足する場合です。"
+            )
+        else:
+            affiliate_note = (
+                "既知のASPリンクやアフィリエイトURLは未検出です。"
+                "スコア低下/要対応になるのは、広告・PR要素があるのに表記が不足する場合です。"
+            )
         items.append({
             "icon": "✓",
-            "text": "アフィリエイトコンテンツ: 検出されず",
-            "subtext": ""
+            "text": "PR表記が必要なアフィリエイト要素: 未検出",
+            "subtext": affiliate_note
         })
 
     # PR表記結果
@@ -494,7 +508,7 @@ def format_stealth_marketing_result(result: Dict, mode: str = "simple") -> Dict:
         items.append({
             "icon": "✕",
             "text": "PR表記: 未検出",
-            "subtext": "アフィリエイトコンテンツにはPR表記が必要です"
+            "subtext": "アフィリエイト要素があるため、広告であることが分かるPR/広告表記を記事冒頭などに追加してください"
         })
 
     # 問題点
@@ -526,6 +540,7 @@ def format_stealth_marketing_result(result: Dict, mode: str = "simple") -> Dict:
         "subtitle": "広告表記の確認（2023年10月施行）",
         "status": status,
         "status_color": status_color,
+        "summary": "アフィリエイトの有無だけではなく、広告・PR要素に表記不足がないかを確認します。",
         "items": items,
         "recommendations": result["recommendations"],
         "template_suggestion": template_suggestion,

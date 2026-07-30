@@ -1,0 +1,38 @@
+{
+  "editor_profile_id": "note_hatena_structural_editor",
+  "focus": "late_half_structure_and_whole_article_consistency",
+  "changed": true,
+  "checks": {
+    "late_half_paragraph_split": true,
+    "first_person_aligned": true,
+    "source_grounding_policy_changed": false,
+    "qa_threshold_changed": false
+  },
+  "before": {
+    "paragraph_shape": [
+      3
+    ],
+    "ending_distribution": {
+      "ます": 1,
+      "other": 1,
+      "ください": 1
+    },
+    "first_person_variants": [
+      "私たち"
+    ],
+    "third_party_terms": []
+  },
+  "after": {
+    "paragraph_shape": [
+      2,
+      1
+    ],
+    "ending_distribution": {
+      "ます": 1,
+      "other": 1,
+      "ください": 1
+    },
+    "first_person_variants": [],
+    "third_party_terms": []
+  }
+}

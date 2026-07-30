@@ -12,7 +12,7 @@
   "query_planner_model": "gpt-5.4-nano",
   "query_planner_reasoning_effort": "medium",
   "query_planner_max_output_tokens": 1200,
-  "query_expansion_max_total_queries": 5,
+  "query_expansion_max_total_queries": 4,
   "query_expansion_shorten_threshold_chars": 50,
   "query_expansion_template_set": "business_ja",
   "query_execution_order": "query_then_repeat",
@@ -20,16 +20,105 @@
   "prompt_cache_key": "llmo-poc-v1",
   "prompt_cache_retention": "24h",
   "max_output_tokens": 1200,
-  "repeat_count": 20,
-  "keywords": [
-    "京都か大阪でデータ入力を行ってくれる会社"
-  ],
-  "target_domain": "https://www.kyotokogyo.co.jp/",
+  "repeat_count": 10,
+  "keywords": [],
+  "target_domain": "",
   "brand_terms": [],
   "market_context_terms": [],
   "competitor_terms": [],
   "allowed_domains": [],
-  "search_context_size": "low",
+  "competitor_presets": [
+    {
+      "key": "yamashita",
+      "display_name": "ヤマシタコーポレーション",
+      "aliases": [
+        "ヤマシタ",
+        "ヤマシタコーポレーション"
+      ],
+      "official_url_scopes": [
+        "https://www.yco.co.jp/homecare/",
+        "https://www.ycota.jp/"
+      ],
+      "domain_scope_type": "care_business_scope",
+      "category": "major_welfare_equipment_rental",
+      "evaluation_axes": [
+        "福祉用具レンタル",
+        "介護保険説明",
+        "ケアマネ向け",
+        "全国対応"
+      ],
+      "notes": ""
+    },
+    {
+      "key": "panasonic_agefree",
+      "display_name": "パナソニック エイジフリー",
+      "aliases": [
+        "パナソニックエイジフリー",
+        "パナソニック エイジフリー"
+      ],
+      "official_url_scopes": [
+        "https://panasonic.co.jp/paf/",
+        "https://sumai.panasonic.jp/agefree/"
+      ],
+      "domain_scope_type": "mixed_corporate_domain_path_scope",
+      "category": "major_welfare_equipment_rental",
+      "evaluation_axes": [
+        "介護用品レンタル",
+        "住宅改修",
+        "介護サービス",
+        "混在ドメインの福祉用具関連度"
+      ],
+      "notes": "Panasonic全体ではなく、Age-Free系のpath/scopeだけを競合評価対象にする。"
+    },
+    {
+      "key": "francebed",
+      "display_name": "フランスベッド",
+      "aliases": [
+        "フランスベッド",
+        "介護レンタル.com"
+      ],
+      "official_url_scopes": [
+        "https://www.kaigo-rental.com/",
+        "https://medical.francebed.co.jp/"
+      ],
+      "domain_scope_type": "mixed_medical_corporate_domain_path_scope",
+      "category": "major_welfare_equipment_rental",
+      "evaluation_axes": [
+        "介護ベッド",
+        "福祉用具レンタル",
+        "商品ページの直接引用",
+        "医療・睡眠事業との分離"
+      ],
+      "notes": "kaigo-rental.comを主、medical.francebed.co.jpを介護・医療関連scopeとして扱う。"
+    },
+    {
+      "key": "frontier",
+      "display_name": "フロンティア",
+      "aliases": [
+        "フロンティア",
+        "フロンティア 福祉用具"
+      ],
+      "official_url_scopes": [
+        "https://www.frontier-ph.com/welfare_home/"
+      ],
+      "domain_scope_type": "mixed_corporate_domain_path_scope",
+      "category": "major_welfare_equipment_rental",
+      "evaluation_axes": [
+        "福祉用具レンタル",
+        "住宅改修",
+        "薬局・医療周辺事業との分離"
+      ],
+      "notes": "frontier-ph.com全体ではなく、welfare_home配下を主な競合評価対象にする。"
+    }
+  ],
+  "domain_scope_evaluation_axes": [
+    "dedicated care domain or path scope",
+    "welfare-equipment relevance",
+    "care-insurance explanation quality",
+    "non-welfare business noise risk",
+    "official source confidence"
+  ],
+  "search_context_size": "medium",
   "user_location_country": "JP",
   "user_location_city": "Tokyo",
   "user_location_region": "Tokyo",

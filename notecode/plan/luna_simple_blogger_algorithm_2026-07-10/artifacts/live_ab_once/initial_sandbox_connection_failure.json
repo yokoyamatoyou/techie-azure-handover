@@ -1,0 +1,8 @@
+{
+  "status": "superseded_by_successful_informed_approval_run",
+  "original_error_type": "APIConnectionError",
+  "original_error": "Connection error.",
+  "original_sends_completed": [],
+  "successful_run_send_count": 3,
+  "retry_within_successful_run": false
+}

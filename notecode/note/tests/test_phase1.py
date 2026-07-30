@@ -110,6 +110,7 @@ class _FakeResponse:
             "content-type": content_type,
             "content-length": str(len(body)),
         }
+        self.encoding = "utf-8"
 
     def __enter__(self):
         return self
@@ -124,6 +125,10 @@ class _FakeResponse:
     def iter_content(self, chunk_size: int = 65536):
         for i in range(0, len(self._body), chunk_size):
             yield self._body[i : i + chunk_size]
+
+    @property
+    def content(self) -> bytes:
+        return self._body
 
 
 def test_validate_url_and_fetch_url_use_equivalent_html_extraction(monkeypatch):
@@ -140,7 +145,7 @@ def test_validate_url_and_fetch_url_use_equivalent_html_extraction(monkeypatch):
 
     monkeypatch.setattr(fetcher, "_is_safe_url", lambda _: True)
     monkeypatch.setattr(fetcher, "_robots_allows", lambda _: (True, ""))
-    monkeypatch.setattr("note.article_fetcher.requests.get", lambda *args, **kwargs: _FakeResponse(html))
+    monkeypatch.setattr("note.article_fetcher.safe_fetch_url", lambda *args, **kwargs: _FakeResponse(html))
 
     captured_contents = []
     original_parse = fetcher._parse_html

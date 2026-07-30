@@ -1,0 +1,79 @@
+{
+  "decision": "conditionally_possible",
+  "api_send_count": 0,
+  "source_refetch": false,
+  "raw_full_source_handoff": false,
+  "generated_article_patch": false,
+  "route_v_product_code_changed": false,
+  "route_v_ui_connected": false,
+  "same_role_all_types": true,
+  "fixed_calls_all_types": true,
+  "profile_rows": [
+    {
+      "type": "company_service_intro",
+      "profile_chars": 246,
+      "stage_1_chars": 735,
+      "stage_2_chars": 767,
+      "fixed_calls": 2,
+      "major_risk": "外部紹介または理念要約だけになること",
+      "body_floor": 1400,
+      "cta_mode": "source_optional"
+    },
+    {
+      "type": "announcement",
+      "profile_chars": 235,
+      "stage_1_chars": 716,
+      "stage_2_chars": 748,
+      "fixed_calls": 2,
+      "major_risk": "必要情報よりブログ風の長文化が前に出ること",
+      "body_floor": 900,
+      "cta_mode": "source_optional"
+    },
+    {
+      "type": "case_study",
+      "profile_chars": 238,
+      "stage_1_chars": 716,
+      "stage_2_chars": 748,
+      "fixed_calls": 2,
+      "major_risk": "根拠のない成果や顧客感情を補うこと",
+      "body_floor": 1200,
+      "cta_mode": "none"
+    },
+    {
+      "type": "comparison_guide",
+      "profile_chars": 258,
+      "stage_1_chars": 756,
+      "stage_2_chars": 788,
+      "fixed_calls": 2,
+      "major_risk": "ランキング、おすすめ、一般化した判断軸になること",
+      "body_floor": 1200,
+      "cta_mode": "none"
+    },
+    {
+      "type": "market_explanation",
+      "profile_chars": 250,
+      "stage_1_chars": 748,
+      "stage_2_chars": 780,
+      "fixed_calls": 2,
+      "major_risk": "第三者による資料要約の口調になること",
+      "body_floor": 1200,
+      "cta_mode": "none"
+    },
+    {
+      "type": "daily_activity",
+      "profile_chars": 237,
+      "stage_1_chars": 719,
+      "stage_2_chars": 751,
+      "fixed_calls": 2,
+      "major_risk": "sourceにない感情や手応えを付け足すこと",
+      "body_floor": 1200,
+      "cta_mode": "none"
+    }
+  ],
+  "limits": [
+    "No generated Luna B article exists for five types; company_service_intro has one saved source only.",
+    "Static replay cannot prove semantic grounding or unsupported-claim absence.",
+    "Route V connection, UI adoption, default selection, and live validation remain unapproved."
+  ],
+  "next_owner": "luna_simple_blogger_genre_profiles_human_contract_review_wait"
+}

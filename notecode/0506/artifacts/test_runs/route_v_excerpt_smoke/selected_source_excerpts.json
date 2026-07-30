@@ -1,0 +1,23 @@
+[
+  {
+    "excerpt_id": "E001",
+    "source_id": "manual_17c129b87b1f",
+    "source_type": "manual",
+    "title": "manual source",
+    "chunk_id": "manual_17c129b87b1f_chunk_001",
+    "source_span_ids": [
+      "manual_001"
+    ],
+    "source_locations": [
+      "manual:1"
+    ],
+    "claim_ids": [
+      "C001"
+    ],
+    "section_ids": [
+      "s1"
+    ],
+    "usage": "route_v_writer_context",
+    "text": "Alpha plan includes source-backed setup support. The source explains this near a short service overview. Beta plan is not selected for this smoke test."
+  }
+]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from nicegui import ui
@@ -17,10 +18,10 @@ from analysis_lib import (
 def localize_run_mode(run_mode: Any) -> str:
     mode = str(run_mode or "").lower()
     if mode == "scheduled":
-        return "自動定期分析"
+        return "自動チェック"
     if mode == "batch":
-        return "定期分析"
-    return "手動スポット確認"
+        return "まとめて分析"
+    return "1回だけ確認"
 
 
 def localize_batch_status(status: Any) -> str:
@@ -37,6 +38,19 @@ def localize_batch_status(status: Any) -> str:
     return mapping.get(str(status or "").lower(), str(status or "-") or "-")
 
 
+def count_config_keywords(config_json: Any) -> int:
+    try:
+        payload = json.loads(str(config_json or "{}"))
+    except (TypeError, ValueError):
+        return 0
+    keywords = payload.get("keywords") if isinstance(payload, dict) else []
+    if isinstance(keywords, list):
+        return len([keyword for keyword in keywords if str(keyword or "").strip()])
+    if isinstance(keywords, str):
+        return len([line for line in keywords.splitlines() if line.strip()])
+    return 0
+
+
 def sanitize_saved_scope_label(value: Any, *, fallback: str) -> str:
     text = str(value or "").strip()
     if not text:
@@ -47,30 +61,73 @@ def sanitize_saved_scope_label(value: Any, *, fallback: str) -> str:
     return text
 
 
+def _truncate_preview(text: str, *, max_len: int = 36) -> str:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return "-"
+    if len(normalized) <= max_len:
+        return normalized
+    return normalized[: max_len - 1] + "…"
+
+
+def extract_question_set_display_meta(row: dict[str, Any]) -> dict[str, Any]:
+    from config import AppConfig, get_provider_option
+    from ui.runtime_copy_builders import provider_display_label
+
+    try:
+        cfg = AppConfig.model_validate_json(row.get("config_json") or "{}")
+        keywords = [str(keyword).strip() for keyword in (cfg.keywords or []) if str(keyword).strip()]
+        return {
+            "question_count": len(keywords),
+            "provider_label": provider_display_label(get_provider_option(cfg.provider)),
+            "first_question_preview": _truncate_preview(keywords[0] if keywords else ""),
+        }
+    except Exception:
+        return {
+            "question_count": 0,
+            "provider_label": "-",
+            "first_question_preview": "-",
+        }
+
+
+def build_schedule_weekday_summary(selected_weekday_values: list[Any], *, time_of_day: str = "09:00") -> tuple[str, str]:
+    weekday_keys = sorted({str(day) for day in selected_weekday_values if str(day).strip() != ""})
+    weekday_labels = format_weekdays_label([int(day) for day in weekday_keys if str(day).isdigit()])
+    weekly_count = len(weekday_keys)
+    selection_text = f"曜日: {weekday_labels or '-'} / 週{weekly_count or 0}回"
+    save_text = f"保存後の予定: {str(time_of_day or '09:00').strip() or '09:00'} に自動チェック"
+    return selection_text, save_text
+
+
+def build_schedule_setting_status_text(enabled: bool) -> str:
+    return f"この予定: {'有効' if enabled else '停止'}"
+
+
 def build_batch_job_option_label(row: dict[str, Any]) -> str:
     imported = int(row.get("imported_result_count") or 0) + int(row.get("imported_error_count") or 0)
-    question_set_label = sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み質問セット")
+    question_set_label = sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み条件")
     return (
         f"{localize_run_mode(row.get('run_mode'))} | {question_set_label} | "
-        f"{localize_batch_status(row.get('status'))} | {imported}/{int(row.get('request_count') or 0)}件取込"
+        f"{localize_batch_status(row.get('status'))} | 結果反映 {imported}/{int(row.get('request_count') or 0)}件"
     )
 
 
 def build_batch_table_columns() -> list[dict[str, str]]:
     return [
-        {"name": "submitted_at", "label": "投入", "field": "submitted_at"},
+        {"name": "submitted_at", "label": "開始", "field": "submitted_at"},
         {"name": "run_mode", "label": "方式", "field": "run_mode"},
-        {"name": "question_set_name", "label": "確認内容", "field": "question_set_name"},
+        {"name": "question_set_name", "label": "保存済み条件", "field": "question_set_name"},
         {"name": "status_label", "label": "状態", "field": "status_label"},
         {"name": "request_count", "label": "件数", "field": "request_count"},
         {"name": "progress_label", "label": "進み具合", "field": "progress_label"},
-        {"name": "import_label", "label": "取込", "field": "import_label"},
+        {"name": "import_label", "label": "結果反映", "field": "import_label"},
     ]
 
 
 def build_result_table_columns(show_costs: bool) -> list[dict[str, str]]:
     return [
         {"name": "analyzed_at", "label": "確認時刻", "field": "analyzed_at"},
+        {"name": "provider_label", "label": "対象AI", "field": "provider_label"},
         {"name": "keyword_raw", "label": "質問", "field": "keyword_raw"},
         {"name": "visibility_label", "label": "結論", "field": "visibility_label"},
         {"name": "result_digest", "label": "市場での位置", "field": "result_digest"},
@@ -101,33 +158,47 @@ def build_run_table_columns(show_costs: bool) -> list[dict[str, str]]:
         {"name": "started_at", "label": "開始", "field": "started_at"},
         {"name": "finished_at", "label": "終了", "field": "finished_at"},
         {"name": "run_mode", "label": "実行方式", "field": "run_mode"},
-        {"name": "question_set_name", "label": "確認内容", "field": "question_set_name"},
+        {"name": "question_set_name", "label": "保存済み条件", "field": "question_set_name"},
         {"name": "result_count", "label": "結果件数", "field": "result_count"},
     ]
 
 
 def build_question_set_option_label(row: dict[str, Any]) -> str:
-    last_run = format_timestamp(row.get("last_run_at"))
+    state_label = "アーカイブ済み" if bool(row.get("is_archived")) else "有効"
+    question_set_label = sanitize_saved_scope_label(row.get("name"), fallback="保存済み条件")
+    meta = extract_question_set_display_meta(row)
+    return f"{question_set_label} / 質問{meta['question_count']}件 / {meta['provider_label']} / {state_label}"
+
+
+def build_question_set_detail_text(row: dict[str, Any] | None) -> str:
+    if not row:
+        return "保存済み条件を選ぶと、質問数・対象AI・先頭質問・最後の結果保存時刻をここに表示します。"
+    last_run = format_timestamp(row.get("last_run_at")) if row.get("last_run_at") else "未実行"
     last_mode = localize_run_mode(row.get("last_run_mode")) if row.get("last_run_mode") else "未実行"
     state_label = "アーカイブ済み" if bool(row.get("is_archived")) else "有効"
-    question_set_label = sanitize_saved_scope_label(row.get("name"), fallback="保存済み質問セット")
-    return f"{question_set_label} | {state_label} | 最終 {last_run} | {last_mode}"
+    meta = extract_question_set_display_meta(row)
+    return (
+        f"質問{meta['question_count']}件 / {meta['provider_label']} / {state_label} / "
+        f"最後に結果を保存: {last_run}（{last_mode}） / 先頭質問: {meta['first_question_preview']}"
+    )
 
 
 def build_question_set_table_columns() -> list[dict[str, str]]:
     return [
-        {"name": "name", "label": "確認内容", "field": "name"},
+        {"name": "name", "label": "保存名", "field": "name"},
+        {"name": "question_count", "label": "質問数", "field": "question_count"},
+        {"name": "provider_label", "label": "対象AI", "field": "provider_label"},
+        {"name": "first_question_preview", "label": "先頭質問", "field": "first_question_preview"},
         {"name": "status_label", "label": "状態", "field": "status_label"},
-        {"name": "updated_at", "label": "更新", "field": "updated_at"},
-        {"name": "last_run_at", "label": "最終実行", "field": "last_run_at"},
+        {"name": "last_run_at", "label": "最後に結果を保存", "field": "last_run_at"},
         {"name": "last_run_mode", "label": "方式", "field": "last_run_mode"},
     ]
 
 
 def build_schedule_table_columns() -> list[dict[str, str]]:
     return [
-        {"name": "name", "label": "定期分析", "field": "name"},
-        {"name": "question_set_name", "label": "確認内容", "field": "question_set_name"},
+        {"name": "name", "label": "自動チェック", "field": "name"},
+        {"name": "question_set_name", "label": "対象の保存済み条件", "field": "question_set_name"},
         {"name": "schedule_label", "label": "曜日 / 時刻", "field": "schedule_label"},
         {"name": "weekly_run_count", "label": "週回数", "field": "weekly_run_count"},
         {"name": "next_run_label", "label": "次回", "field": "next_run_label"},
@@ -146,7 +217,7 @@ def localize_schedule_status(status: Any) -> str:
         "poll_error": "更新失敗",
         "provider_unavailable": "未対応",
         "missing_api_key": "APIキー未設定",
-        "missing_question_set": "確認内容欠落",
+        "missing_question_set": "保存済み条件欠落",
         "invalid_scope": "監査条件不足",
         "empty_keywords": "質問なし",
     }
@@ -155,11 +226,10 @@ def localize_schedule_status(status: Any) -> str:
 
 def build_schedule_option_label(row: dict[str, Any]) -> str:
     status_label = localize_schedule_status(row.get("last_status") or ("enabled" if row.get("enabled") else "disabled"))
-    schedule_label = sanitize_saved_scope_label(row.get("name"), fallback="定期分析")
-    question_set_label = sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み質問セット")
+    schedule_label = sanitize_saved_scope_label(row.get("name"), fallback="自動チェック")
     return (
-        f"{schedule_label} | {question_set_label} | "
-        f"{format_weekdays_label(parse_weekdays_csv(row.get('weekdays_csv')))} {row.get('time_of_day')} | {status_label}"
+        f"{schedule_label} / "
+        f"{format_weekdays_label(parse_weekdays_csv(row.get('weekdays_csv')))} {row.get('time_of_day')} / {status_label}"
     )
 
 
@@ -171,7 +241,7 @@ def build_question_set_snapshot(question_set: dict[str, Any]) -> dict[str, Any]:
     queries = list(dict.fromkeys(cfg.keywords))
     return {
         "kind": "question_set",
-        "label": sanitize_saved_scope_label(question_set.get("name"), fallback="保存済み質問セット"),
+        "label": sanitize_saved_scope_label(question_set.get("name"), fallback="保存済み条件"),
         "queries": queries,
         "query_count": len(queries),
         "analysis_mode": localize_analysis_mode(cfg.analysis_mode),
@@ -196,7 +266,7 @@ def build_schedule_snapshot(db: Any, schedule: dict[str, Any]) -> dict[str, Any]
     else:
         snapshot = {
             "kind": "schedule",
-            "label": sanitize_saved_scope_label(schedule.get("name"), fallback="定期分析"),
+            "label": sanitize_saved_scope_label(schedule.get("name"), fallback="自動チェック"),
             "queries": [],
             "query_count": 0,
             "analysis_mode": "-",
@@ -212,7 +282,7 @@ def build_schedule_snapshot(db: Any, schedule: dict[str, Any]) -> dict[str, Any]
     snapshot.update(
         {
             "kind": "schedule",
-            "label": sanitize_saved_scope_label(schedule.get("name"), fallback="定期分析"),
+            "label": sanitize_saved_scope_label(schedule.get("name"), fallback="自動チェック"),
             "weekdays_label": format_weekdays_label(parse_weekdays_csv(schedule.get("weekdays_csv"))),
             "time_of_day": str(schedule.get("time_of_day") or "-"),
             "timezone": str(schedule.get("timezone") or snapshot.get("timezone") or "-"),
@@ -262,7 +332,7 @@ def localize_cluster_kind(cluster_kind: str) -> str:
     return {
         "intent": "意図クラスタ",
         "page_gap": "不足ページクラスタ",
-        "question_set": "確認内容単位",
+        "question_set": "保存済み条件単位",
     }.get(cluster_kind, cluster_kind)
 
 
@@ -312,8 +382,8 @@ def build_export_table_columns() -> list[dict[str, str]]:
 def build_scheduler_status_text(scheduler_service: Any) -> str:
     snapshot = scheduler_service.status_snapshot()
     if not snapshot["active"]:
-        return "定期分析は停止中です"
-    return f"定期分析 稼働中 | 最終確認 {format_timestamp(snapshot['last_tick_at'])} | {snapshot['last_message']}"
+        return "アプリ側の監視: 停止中"
+    return f"アプリ側の監視: 稼働中 | 最終確認 {format_timestamp(snapshot['last_tick_at'])} | {snapshot['last_message']}"
 
 
 def refresh_batch_job_views(
@@ -334,11 +404,12 @@ def refresh_batch_job_views(
 
     batch_job_table.rows = [
         {
-            **row,
+            "batch_job_id": row.get("batch_job_id"),
             "submitted_at": format_timestamp(row.get("submitted_at") or row.get("created_at")),
             "run_mode": localize_run_mode(row.get("run_mode")),
-            "question_set_name": sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み質問セット"),
+            "question_set_name": sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み条件"),
             "status_label": localize_batch_status(row.get("status")),
+            "request_count": int(row.get("request_count") or 0),
             "progress_label": (
                 f"{int(row.get('request_counts_completed') or 0)}/{int(row.get('request_counts_total') or 0)} 成功"
                 f" / {int(row.get('request_counts_failed') or 0)} 失敗"
@@ -354,23 +425,32 @@ def refresh_batch_job_views(
 
     selected = next((row for row in batch_jobs if row["batch_job_id"] == current_value), None)
     if not selected:
-        batch_status_label.text = "まだ定期分析はありません"
-        batch_summary_label.text = "保存した質問セットを継続的に観測するときだけ使います。1件だけなら「分析を実行」で十分です。"
+        batch_status_label.text = "まだまとめて分析の履歴はありません"
+        batch_summary_label.text = "保存済み条件を入力へ読み込み、複数質問を今回だけまとめて確認するときに使います。"
         batch_status_label.update()
         batch_summary_label.update()
         return
 
     imported_total = int(selected.get("imported_result_count") or 0) + int(selected.get("imported_error_count") or 0)
+    request_total = int(selected.get("request_count") or 0)
+    target_question_count = count_config_keywords(selected.get("config_json"))
+    target_question_label = f"{target_question_count}件" if target_question_count > 0 else "-"
+    from config import get_provider_option
+    from ui.runtime_copy_builders import provider_display_label
+
+    provider_label = provider_display_label(get_provider_option(str(selected.get("provider_key") or "openai")))
     batch_status_label.text = (
-        f"選択中: {localize_batch_status(selected.get('status'))} | "
-        f"ChatGPT {int(selected.get('request_counts_completed') or 0)}/{int(selected.get('request_counts_total') or 0)} 成功"
+        f"履歴の選択中: {localize_batch_status(selected.get('status'))} | "
+            f"{sanitize_saved_scope_label(selected.get('question_set_name'), fallback='保存済み条件')} | "
+        f"開始 {format_timestamp(selected.get('submitted_at') or selected.get('created_at'))} | "
+        f"{provider_label} | 対象質問 {target_question_label}"
     )
     if selected.get("last_error"):
         batch_summary_label.text = str(selected.get("last_error"))
     else:
         batch_summary_label.text = (
-            f"確認内容: {sanitize_saved_scope_label(selected.get('question_set_name'), fallback='保存済み質問セット')} | "
-            f"取込 {imported_total}/{int(selected.get('request_count') or 0)} 件"
+            f"実送信 {int(selected.get('request_counts_total') or request_total)}件 / "
+            f"結果反映 {imported_total}/{request_total} 件"
         )
     batch_status_label.update()
     batch_summary_label.update()
@@ -400,8 +480,9 @@ def refresh_question_set_views(
 
     question_set_table.rows = [
         {
-            **row,
-            "name": sanitize_saved_scope_label(row.get("name"), fallback="保存済み質問セット"),
+            "question_set_id": row.get("question_set_id"),
+            "name": sanitize_saved_scope_label(row.get("name"), fallback="保存済み条件"),
+            **extract_question_set_display_meta(row),
             "status_label": "アーカイブ済み" if bool(row.get("is_archived")) else "有効",
             "updated_at": format_timestamp(row.get("updated_at")),
             "last_run_at": format_timestamp(row.get("last_run_at")),
@@ -424,10 +505,11 @@ def refresh_schedule_views(
     schedules = db.list_schedules(limit=50)
     schedule_table.rows = [
         {
-            **row,
-            "name": sanitize_saved_scope_label(row.get("name"), fallback="定期分析"),
-            "question_set_name": sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み質問セット"),
+            "schedule_id": row.get("schedule_id"),
+            "name": sanitize_saved_scope_label(row.get("name"), fallback="自動チェック"),
+            "question_set_name": sanitize_saved_scope_label(row.get("question_set_name"), fallback="保存済み条件"),
             "schedule_label": f"{format_weekdays_label(parse_weekdays_csv(row.get('weekdays_csv')))} / {row.get('time_of_day')}",
+            "weekly_run_count": int(row.get("weekly_run_count") or 0),
             "next_run_label": format_schedule_slot(row.get("next_run_at"), str(row.get("timezone") or "Asia/Tokyo")),
             "status_label": localize_schedule_status(row.get("last_status") or ("enabled" if row.get("enabled") else "disabled")),
         }
@@ -469,33 +551,33 @@ def render_schedule_diff(
     diff_container.clear()
     with diff_container:
         if not schedule_id:
-            ui.label("比較元の定期分析を選ぶと差分を表示します。").classes("text-[14px] soft-label")
+            ui.label("比較元の自動チェックを選ぶと差分を表示します。").classes("text-[14px] soft-label")
             return
         left_schedule = db.get_schedule(schedule_id)
         if not left_schedule:
-            ui.label("比較元の定期分析が見つかりません。").classes("text-[14px] soft-label")
+            ui.label("比較元の自動チェックが見つかりません。").classes("text-[14px] soft-label")
             return
         left_snapshot = build_schedule_snapshot(db, left_schedule)
 
         if compare_mode == "schedule":
             if not compare_target_id:
-                ui.label("比較対象の定期分析を選択してください。").classes("text-[14px] soft-label")
+                ui.label("比較対象の自動チェックを選択してください。").classes("text-[14px] soft-label")
                 return
             if compare_target_id == schedule_id:
-                ui.label("同じ定期分析同士は比較できません。別の定期分析を選択してください。").classes("text-[14px] soft-label")
+                ui.label("同じ自動チェック同士は比較できません。別の自動チェックを選択してください。").classes("text-[14px] soft-label")
                 return
             right_schedule = db.get_schedule(compare_target_id)
             if not right_schedule:
-                ui.label("比較対象の定期分析が見つかりません。").classes("text-[14px] soft-label")
+                ui.label("比較対象の自動チェックが見つかりません。").classes("text-[14px] soft-label")
                 return
             right_snapshot = build_schedule_snapshot(db, right_schedule)
         else:
             if not compare_target_id:
-                ui.label("比較対象の確認内容を選択してください。").classes("text-[14px] soft-label")
+                ui.label("比較対象の保存済み条件を選択してください。").classes("text-[14px] soft-label")
                 return
             question_set = db.get_question_set(compare_target_id)
             if not question_set:
-                ui.label("比較対象の確認内容が見つかりません。").classes("text-[14px] soft-label")
+                ui.label("比較対象の保存済み条件が見つかりません。").classes("text-[14px] soft-label")
                 return
             right_snapshot = build_question_set_snapshot(question_set)
 
@@ -565,9 +647,12 @@ def refresh_cluster_brief_views(
     saved_brief_select.update()
     cluster_brief_table.rows = [
         {
-            **row,
+            "brief_id": row.get("brief_id"),
             "updated_at": format_timestamp(row.get("updated_at")),
             "cluster_kind": localize_cluster_kind(str(row.get("cluster_kind") or "")),
+            "cluster_label": row.get("cluster_label"),
+            "query_count": int(row.get("query_count") or 0),
+            "generated_title": row.get("generated_title") or "-",
         }
         for row in saved_briefs
     ]

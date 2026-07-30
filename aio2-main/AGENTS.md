@@ -17,7 +17,11 @@ aio2-main/
     - core/
         - application/          # [NEW] NiceGUI向け分析実行・履歴保存のアプリケーション層
             - analysis_run_service.py  # 分析実行/履歴保存/result_path/snapshot JSON
+            - intent_role_map.py       # 検索意図・ページ役割マップ生成
+            - faq_suggestion_builder.py # FAQ候補/persona/debug payload生成
+            - technical_summary_builder.py # legacy/link/schema/llms/site health summary生成
             - csv_export_service.py    # 履歴一覧CSV/優先アクションCSV
+            - docx_report_service.py   # 保存済み詳細レポートのWord出力
         - engine/               # [NEW] 分析エンジンのコア
             - base_analyzer.py  # 共通初期化・ユーティリティ
             - orchestrator.py   # SEOAIOAnalyzer（current engine owner）
@@ -34,6 +38,7 @@ aio2-main/
             - accessibility_checker.py   # アクセシビリティ
             - ogp_checker.py             # SNS最適化
             - security_checker.py        # セキュリティ
+            - vulnerability_intelligence.py # 固定既知脆弱性DB照合（更新機能なし）
             - advice_generator.py        # パーソナライズ助言
         - storage/
             - database.py       # 履歴DB保存
@@ -66,8 +71,11 @@ aio2-main/
                 - comparison_tab.py
             - reports/
                 - executive_summary.py
+            - panel_components.py # saved/live共通の小さな描画helper
+            - saved_workspace.py  # 保存済み詳細workspace描画
+            - styles.py           # NiceGUI head CSS/script
             - detail_panels.py  # 法務チェック深掘り表示
-            - panels.py         # UIパネル描画（分割）
+            - panels.py         # live result入口と既存互換import
         - evidence_pipeline.py # [NEW] 証拠収集・正規化・重複統合パイプライン
     - outputs/
         - monitoring/
@@ -116,9 +124,15 @@ aio2-main/
 ## スコア/アルゴリズム関連
 - SEO/AIOのコア計算: `core/engine/orchestrator.py`（`seo_aio_engine.py` は後方互換プロキシ）
 - NiceGUIの分析実行・履歴保存・saved detail rehydrate: `core/application/analysis_run_service.py`
+  - 検索意図・ページ役割マップ: `core/application/intent_role_map.py`
+  - FAQ候補/persona/debug payload: `core/application/faq_suggestion_builder.py`
+  - legacy page / link health / schema / llms / site health summary: `core/application/technical_summary_builder.py`
 - CSV出力の責務境界: `core/application/csv_export_service.py`
 - monitoring JSON保存: `core/monitoring/history_store.py`
 - UI依存注入の境界: `core/ui/panel_context.py` / `core/ui/panels.py`
+- 保存済み詳細workspace描画: `core/ui/saved_workspace.py`
+- saved/live共通描画helper: `core/ui/panel_components.py`
+- NiceGUI head CSS/script: `core/ui/styles.py`
 - AIO定量スコア: `core/aio_analyzer.py` (※NLPコア: SudachiPy Mode A/B/C)
 - **Entity Linking**: `core/aio_analyzer.py` の `calculate_entity_linking()`
   - Sudachi品詞判定（pos[1]=='固有名詞'）ベースで100万語+対応
@@ -157,7 +171,10 @@ aio2-main/
 ## エクスポート
 - 履歴一覧CSV: `core/application/csv_export_service.py::export_history_csv`
 - 優先アクションCSV: `core/application/csv_export_service.py::export_priority_actions_csv`
+- 詳細Markdown: `core/application/markdown_report_service.py::export_detailed_markdown_report`
+- 詳細Word: `core/application/docx_report_service.py::export_detailed_docx_report`
 - spreadsheet formula injection 対策: `sanitize_csv_cell`
+- 既存Azure環境への改良版差し替え時は、追加機能範囲をコトミガキのレポート保存/ダウンロードに限定する。`data/poc_outputs/exports` へのローカル永続保存を前提にせず、生成済みMarkdown/DOCX/CSVは既存のテナントID分離に沿って Azure Storage などの永続ストレージへ保存し、認証付きdownload endpointまたは短期限SAS URLで配信する。
 - PDF / print route と export service は current flow から削除済み
 
 ## 変更ルール（推奨）

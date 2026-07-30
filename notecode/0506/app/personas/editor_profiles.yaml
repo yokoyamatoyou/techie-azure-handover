@@ -1,0 +1,16 @@
+editor_profiles:
+  note_hatena_structural_editor:
+    description: "Final structural editor for note and Hatena-style owned media articles."
+    focus:
+      - "late-half paragraph structure"
+      - "whole-article first-person consistency"
+      - "heading-to-body continuity"
+      - "CTA strength consistency"
+    policy:
+      focus_late_half: true
+      split_late_paragraph_over_sentences: 2
+      preserve_facts: true
+      preserve_numbers_dates_names: true
+      align_first_person_to_narrator: true
+      do_not_add_claims: true
+    codex_visibility: "後半中心に改行、一人称、見出しから本文への流れ、CTAの急な強まりを確認する。"

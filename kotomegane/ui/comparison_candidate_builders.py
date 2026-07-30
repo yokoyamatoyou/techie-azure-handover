@@ -97,7 +97,14 @@ def build_comparison_candidate_summary(
     manual_targets = _dedupe_candidates(
         [
             {"name": _normalize_token(term), "kind": "比較対象", "source": "手入力"}
-            for term in config.competitor_terms or []
+            for term in [
+                *(config.competitor_terms or []),
+                *[
+                    preset.display_name
+                    for preset in config.competitor_presets or []
+                    if getattr(preset, "display_name", "")
+                ],
+            ]
             if _normalize_token(term)
         ]
     )

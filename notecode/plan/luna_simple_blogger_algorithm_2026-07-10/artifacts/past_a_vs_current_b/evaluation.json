@@ -1,0 +1,176 @@
+{
+  "comparison": "past Route V A vs current Luna same-blogger two-stage B",
+  "api_send_count": 0,
+  "user_preference": "B",
+  "decision": "B preferred for this one-source human comparison",
+  "articles": {
+    "A_past_route_v": {
+      "path": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/latest_generation_output.md",
+      "sha256": "50ce9906dfd8dd2588403fde722edc60a806a4f6c2631d48f3cd3715a5ea18cd"
+    },
+    "B_current_luna_two_stage": {
+      "path": "notecode/plan/luna_simple_blogger_algorithm_2026-07-10/artifacts/live_ab_once/arm_b_article.md",
+      "sha256": "9c0c9b2d0ed9f3d2d665f1e2fc898ca265713e6ba7ec1749767691f78f2406f8",
+      "matches_saved_api_response_output_text": true
+    }
+  },
+  "source_lineage": {
+    "same_saved_source_file": true,
+    "same_excerpt_count": true,
+    "same_claim_id_sequence": true,
+    "same_normalized_excerpt_texts": true,
+    "claim_ids": [
+      "C002",
+      "C008",
+      "C014",
+      "C012"
+    ],
+    "saved_source_sha256": "86257864af83502f5cbefa8c09d36e338d4aaa2d471d1f4b99a9468755b09d25",
+    "important_input_caveat": "同じ4 excerptのsource lineageだが、過去Route Vはarticle brief/knowledge packも入力し、今回Bはcompact ledgerを入力したためprompt payloadは同一ではない"
+  },
+  "common_analyzer": {
+    "name": "simple_blogger_no_api.py analyze",
+    "display_floor": 1200,
+    "metrics": {
+      "A_past_route_v": {
+        "body_chars": 1153,
+        "body_floor": 1200,
+        "body_floor_reached": false,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 12,
+        "sentence_count": 27,
+        "sentence_chars": {
+          "mean": 42.7,
+          "median": 39,
+          "maximum": 91,
+          "population_stdev": 18.51
+        },
+        "paragraph_chars": {
+          "mean": 96.08,
+          "median": 87.0,
+          "maximum": 185,
+          "population_stdev": 36.92
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 1,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 1,
+        "meta_sentence_ratio": 0.037,
+        "narrator_counts": {
+          "私たち": 8,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 8,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.5125,
+          "opening_ratio": 0.4894,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      },
+      "B_current_luna_two_stage": {
+        "body_chars": 1228,
+        "body_floor": 1200,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 3,
+        "paragraph_count": 11,
+        "sentence_count": 36,
+        "sentence_chars": {
+          "mean": 34.11,
+          "median": 31.0,
+          "maximum": 67,
+          "population_stdev": 12.85
+        },
+        "paragraph_chars": {
+          "mean": 111.64,
+          "median": 117,
+          "maximum": 137,
+          "population_stdev": 19.53
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 0,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 0,
+        "meta_sentence_ratio": 0.0,
+        "narrator_counts": {
+          "私たち": 4,
+          "当社": 1,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 5,
+        "zero_anaphora_candidates": [
+          {
+            "sentence_index": 8,
+            "text": "展示会では、食材やメニューを紹介し、自社開発製品やサポートについてもご案内します。",
+            "competing_entity_in_previous_sentence": true,
+            "status": "manual_review_candidate"
+          }
+        ],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.5976,
+          "opening_ratio": 0.7059,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    "limits": [
+      "character trigram overlap is not semantic grounding proof",
+      "zero-anaphora detection is a manual-review candidate heuristic",
+      "the two historical generation contracts and prompt payloads differ"
+    ]
+  },
+  "historical_official_record": {
+    "body_chars": 1219,
+    "floor": 1400,
+    "floor_reached": false,
+    "h1_count": 1,
+    "quality_score": 76,
+    "quality_issue_types": [
+      "sentence_too_long",
+      "model_frequent_word",
+      "body_length_below_floor"
+    ],
+    "reader_inference_disallowed_count": 1
+  },
+  "contract_floor_views": {
+    "past_A_official_1400": false,
+    "past_A_common_analyzer_1200": false,
+    "current_B_common_analyzer_1200": true,
+    "current_B_common_analyzer_1400": false
+  },
+  "manual_review": {
+    "past_A_known_reader_inference": "会社の約束とグループの方向性を、同じ場所で確認できます。",
+    "current_B_known_zero_anaphora_candidate": [
+      {
+        "sentence_index": 8,
+        "text": "展示会では、食材やメニューを紹介し、自社開発製品やサポートについてもご案内します。",
+        "competing_entity_in_previous_sentence": true,
+        "status": "manual_review_candidate"
+      }
+    ],
+    "adoption_status": "not authorized; Route V accepted state unchanged"
+  }
+}

@@ -16,40 +16,61 @@ DEFAULT_IMAGE_PATTERN_KEY = "simple"
 IMAGE_PATTERN_OPTIONS: Dict[str, Dict[str, str]] = {
     "simple": {
         "label": "シンプル",
-        "helper": "主題を見やすく保ちながら、情報量はGPT Image 2が記事内容に合わせて調整します。",
-        "ja_style": "シンプル、落ち着いた色、視認性と文脈の両立",
+        "helper": "主題を見やすく保つ、既定の方向性です。",
+        "prompt_direction": "Clear cover with one recognizable subject, restrained color, and article-specific context only when useful.",
+        "ja_style": "シンプル、落ち着いた色、主題が見える表現",
         "ja_composition": "横長、最低15%以上の余白を確保",
-        "ja_detail": "記事内容に応じて必要な補助要素を入れるが、主題を見失わせない",
-        "ja_density": "情報量はGPT Image 2が記事内容に合わせて控えめ〜中くらいに調整",
+        "ja_detail": "記事内容に合う補助要素だけを加え、主題を上書きしない",
+        "ja_density": "情報量は控えめ",
         "en_hint": (
-            "Pattern: clear subject with model-adaptive context. Let GPT Image 2 choose the amount "
-            "of supporting detail needed for the article; avoid clutter and keep at least 15% clean breathing room."
+            "Touch direction: simple, clear cover with one recognizable subject, restrained color, "
+            "article-specific context only when useful, and at least 15% clean breathing room."
         ),
     },
-    "balanced": {
-        "label": "バランス",
-        "helper": "主題に補助要素を足して、何の記事か伝わりやすくします。",
-        "ja_style": "整ったビジュアル、色数は控えめ、主題と補助要素を両立",
-        "ja_composition": "横長、主題の周辺に記事内容へ合う補助要素を加える",
-        "ja_detail": "GPT Image 2が記事内容に応じて補助要素の量を調整する",
-        "ja_density": "情報量はGPT Image 2が記事内容に合わせて調整",
+    "blog_cover": {
+        "label": "ブログ見出し画像風",
+        "helper": "記事カバーらしい完成感に寄せます。",
+        "prompt_direction": "Japanese blog eyecatch cover with a clean focal subject, negative space, and a finished article-cover feel.",
+        "ja_style": "ブログ見出し画像風、整った見せ方、完成感のある表現",
+        "ja_composition": "横長、主題と余白のバランスを保つ",
+        "ja_detail": "記事内容に合う文脈を添えるが、広告やポスター風にしない",
+        "ja_density": "情報量は中くらい",
         "en_hint": (
-            "Pattern: balanced model-adaptive detail. Let GPT Image 2 choose enough coherent context "
-            "to explain the article; keep at least 15% clean breathing room."
+            "Touch direction: Japanese blog eyecatch cover with a clean focal subject, readable negative space, "
+            "and a finished article-cover feel, not an ad or poster."
         ),
     },
-    "rich": {
-        "label": "世界観重視",
-        "helper": "背景や空気感まで含めて、印象に残るカバーに寄せます。",
-        "ja_style": "文脈が伝わるリッチ構図、要素は増やすが雑然とさせない",
-        "ja_composition": "横長、前景と背景にレイヤー感を持たせる",
-        "ja_detail": "世界観や背景は増やしてよいが、主題の読み取りを最優先する",
-        "ja_density": "情報量はGPT Image 2が記事内容に合わせて多めまで調整",
+    "flat_illustration": {
+        "label": "フラットイラスト",
+        "helper": "シンプルな図形と色面で、概念を分かりやすく見せます。",
+        "prompt_direction": "Modern flat illustration with simple shapes, clean contrast, limited accents, and one clear article subject.",
+        "ja_style": "フラットイラスト、簡潔な形、明快なコントラスト",
+        "ja_composition": "横長、主題を中心に小さな文脈要素を配置",
+        "ja_detail": "記事にない図表、数値、ラベルを作らない",
+        "ja_density": "情報量は控えめから中くらい",
         "en_hint": (
-            "Pattern: rich model-adaptive context. Let GPT Image 2 add layered article-specific detail "
-            "as useful, while keeping the layout readable, uncluttered, and with at least 15% clean breathing room."
+            "Touch direction: modern flat illustration with simple shapes, clean contrast, limited accents, "
+            "one clear article subject, and no invented charts or labels."
         ),
     },
+    "warm_handdrawn": {
+        "label": "温かい手描き風",
+        "helper": "やわらかい線で、親しみやすさを出します。",
+        "prompt_direction": "Warm hand-drawn illustration with soft lines, calm color, and a friendly professional mood grounded in the article topic.",
+        "ja_style": "温かい手描き風、やわらかい線、落ち着いた色",
+        "ja_composition": "横長、人の気配や身近な物を必要な範囲で使う",
+        "ja_detail": "かわいすぎる漫画調や吹き出し、手書き文字を入れない",
+        "ja_density": "情報量は控えめ",
+        "en_hint": (
+            "Touch direction: warm hand-drawn illustration with soft lines, calm color, "
+            "and a friendly professional mood grounded in the article topic."
+        ),
+    },
+}
+
+_IMAGE_PATTERN_KEY_ALIASES: Dict[str, str] = {
+    "balanced": "blog_cover",
+    "rich": "blog_cover",
 }
 
 IMAGE_PATTERN_LABEL_TO_KEY = {
@@ -61,13 +82,18 @@ def _normalize_image_pattern_key(pattern_key: str) -> str:
     normalized = str(pattern_key or "").strip().lower()
     if normalized in IMAGE_PATTERN_OPTIONS:
         return normalized
+    if normalized in _IMAGE_PATTERN_KEY_ALIASES:
+        return _IMAGE_PATTERN_KEY_ALIASES[normalized]
     return DEFAULT_IMAGE_PATTERN_KEY
 
 
 def _build_image_pattern_suffix(pattern_key: str, *, language: str) -> str:
     option = IMAGE_PATTERN_OPTIONS[_normalize_image_pattern_key(pattern_key)]
     if str(language or "").strip().lower() == "en":
-        return option["en_hint"]
+        return (
+            f"{option['en_hint']} Touch is an expression direction only; "
+            "do not override the article content or source claims."
+        )
     return "\n".join(
         [
             f"スタイル補足: {option['ja_style']}",

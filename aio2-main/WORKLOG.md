@@ -4,6 +4,1877 @@
 
 ---
 
+## 2026-07-11 (Sol PM / Terra orchestration) 横断UX監査P1/P2修正
+
+- owner: `cross_suite_ux_audit_findings_ui_fix_2026_07_11` のコトミガキ表示層。分析アルゴリズム、スコア、crawler、API/provider/LLM、DB/schema、外部取得は非owner境界として変更していない。
+- change:
+  - 新規分析の対象URL/比較URLを輪郭付き入力欄にし、placeholderの可読性を上げた。
+  - 入力エラーは欄直下の `role=alert` 1か所だけに表示し、送信時は最初の不正欄へfocusして画面中央へscrollする。離れたstatus欄への同文重複を廃止した。
+  - 390px幅でも横断ナビ4項目が収まるよう、区切り・間隔・文字サイズをモバイル用に圧縮した。
+  - 保存履歴はクリック可能な行だけに依存せず、PC表とモバイルカードの双方に「結果を開く」buttonを明示した。
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py core\ui\dashboard.py` -> PASS。
+  - `.venv\Scripts\python.exe -m pytest tests\test_dashboard_ui.py tests\test_characterization_ui.py -q` -> `37 passed`。
+  - `.venv\Scripts\python.exe -m pytest tests -q` -> `208 passed`。
+  - `pytest -q` のroot無指定はarchive済み旧PDFテストが退役module `PDFreport` を要求して収集停止するため、現行正本 `tests/` を使用。API送信回数: 0。
+
+## 2026-07-10 (Codex) 入力エラーの読み上げ到達性
+
+- scope: 新規分析フォームのURL/比較URL入力エラー表示だけを変更。分析、保存、スコア、外部取得/APIは対象外。
+- change: 既存の具体的なインラインエラーを `role=alert` / `aria-live=polite` にして、視覚以外の利用者にも状態変化が届くようにした。
+- validation: `py_compile nicegui_app.py`、`pytest tests\test_dashboard_ui.py -q` -> 13 passed。API送信回数: 0。
+
+## 2026-07-10 (Codex) provider-readiness evidence owner
+
+- scope: `core/aio_analyzer.py` の provider readiness evidence と、取得済み response header を渡す `core/engine/orchestrator.py` の境界に限定。saved-workspace、scoring engine、Schema validator、LLM、認証/tenant、URL redaction、accessibility scanner、live URL/API は対象外。
+- change:
+  - provider status を `pass / fail / unverified / not_applicable` の evidence contract とし、robots.txt の取得例外・timeout・non-200 は provider ごとの `unverified` にした。
+  - robots.txt を root 固定ではなく対象 URL path ごとに評価し、最長 User-agent group、最長 Allow/Disallow rule、同長 Allow 優先を実装した。
+  - generic/provider meta robots と対象ページ `X-Robots-Tag` を同じ provider evidence に統合し、`noindex` / `nosnippet` / `max-snippet:0` / `data-nosnippet` を fail evidence にした。
+  - `tests/fixtures/provider_readiness_cases.json` を追加し、fetch failure、path-specific rule / UA precedence、provider-scoped X-Robots-Tag の回帰を固定した。
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\aio_analyzer.py core\engine\orchestrator.py tests\test_aio_analyzer.py` -> PASS。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_aio_analyzer.py -p no:cacheprovider` -> `4 passed`。
+  - API送信回数: 0。live URL/API、browser、既存runの更新は未実施。
+- remaining:
+  - provider evidence を表示・exportする saved-workspace / UI adapter は別owner。スコアへの反映は scoring-contract owner。live provider robots 挙動の確認は live validation owner。
+
+## 2026-07-10 (Codex) fixed vulnerability intelligence and URL instruction guard
+
+- scope: `aio2-main`だけを変更。URLチェックはread-only正本として参照し、外部サイト/API/LLM、ログイン、POST、攻撃的な実証は未実施。
+- change: `core/site_health/vulnerability_intelligence.py` をread-only SQLite・DB状態分離・fingerprint cache・range/version/OSV/CPE別評価・OR分岐・canonical advisory集約へ更新。評価全件から重要度/KEV/件数を算出し、表示のみ5件/部品に制限。
+- change: `core/site_health/url_instruction_guard.py` を追加し、`safe_fetch.py`とpriority link抽出へ接続。疑わしいURLはpayloadを保存せず構造化結果のみを残し、AI入力/追加取得から除外。
+- output: 一般向けissueとMarkdown/DOCX SSOTは非断定の概要に限定。CVE/CVSS/KEV/参照は保存済み画面の保守担当者向け折りたたみ表示のみ。固定DB照合不能はスコア減点せず、明示メッセージを表示。
+- validation: `py_compile`、focused pytest 17 passed（固定DB、OR/OSV/unknown、DB異常、URL instruction guard、safe fetch）。
+
+### UI wording follow-up
+
+- `core/ui/tabs/health_tab.py` にURL文字列の安全確認カードを追加。未検知は観測範囲を限定した表現、検知時は断定せず、payloadを出さない構造化信号と除外動作だけを表示する。
+- `core/engine/orchestrator.py` は主URLのscreening結果をresult JSONへ保存し、URL screenをfetch/API前に実行する。
+- validation: `py_compile`、`test_url_instruction_guard.py` / `test_safe_fetch_security.py` / `test_orchestrator_security.py` -> 17 passed。
+
+## 2026-07-10 (Codex) saved-workspace truth and action parity owner
+
+- scope: 保存済み結果の read-only rehydrate、legacy competitor 保持、状態値の意味保持、canonical priority action の UI/CSV/Markdown/DOCX 接続に限定。SEO/AIO scoring、crawler/provider、Schema、LLM、認証/tenant、accessibility scanner、法務判定は対象外。
+- change:
+  - `core/application/analysis_run_service.py` の既存 canonical action list (`action_id` / `priority_rank` / `priority`, 最大20件)を `exports.priority_actions`、`task_workspace.actions`、`summary_workspace.top_actions` の共通正本としてcharacterizationで固定。
+  - canonical actionへ `audience` / `evidence` / `status` / `status_label` を追加し、CSV・Markdown・DOCXへ同じ保存済みsnapshotから出力する契約を固定。欠落statusは `unverified` として保持する。
+  - `core/site_health/__init__.py` の互換exportを遅延化し、`safe_fetch`からURL instruction guardを読む際のsecurity_checker循環importを解消。
+  - `load_saved_run_bundle()` の旧snapshot再構築が DB/artifact を書き換えず、保存済み `comparison_workspace.competitor_summary` を保持することを回帰固定。
+  - `core/application/technical_summary_builder.py` で状態欠落・未検出を `reference` ではなく `unverified` とし、`unverified / not_applicable / error` の表示ラベルを追加。
+  - `ALGORITHM.md` に saved-workspace truth contract を追記。
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile`（R-01変更＋site_health互換export） -> PASS。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_analysis_run_service.py tests\test_csv_export_service.py tests\test_markdown_report_service.py tests\test_docx_report_service.py` -> `42 passed`。
+  - `.venv\Scripts\python.exe -m pytest tests/ -q` -> `204 passed`。
+  - characterization / executive summary を加えた対象集合 -> 73 passed（既存記録）。
+  - 保存GETの書込禁止、competitor保持、action id/order parity、旧状態の `未確認` を確認。API/live run/browser操作は未実施。
+- remaining:
+  - 次ownerは `provider-readiness evidence owner`。browser current-run visual/keyboard/axe検証、外部公開のauth/tenant隔離、URL query secret redaction、provider/score/Schema/LLMの監査 findings は別owner。
+
+## 2026-07-10 (Codex) 法務表現の3状態文脈判定と出力境界
+
+- scope: `aio2-main` の景品表示法候補に限定。コトメイク、コトメガネ、コトムスビ、SEO/AIOスコア式、crawl構成、サイトヘルス検出意味、固定脆弱性DBは対象外。
+- issue:
+  - `完全|100%|絶対` の候補語を単語だけで評価し、「完全予約制」「正解や絶対がない」も主結果へ残っていた。
+  - run 28では既存GPT文脈判定が「商品名/固有名詞か」だけで、二重否定・運用条件・保証表現の区別を持っていなかった。
+- change:
+  - `core/engine/orchestrator.py` に `action_required / safe_context / review_needed` の文脈判定契約を追加。`review_needed` は実装担当向け低重要度詳細に残し、`safe_context` は情報扱いで主導線から除外。
+  - 明確な予約・設備・否定文脈と明確な保証表現はローカル規則で判定。
+  - 残る曖昧候補は最大5件を1回のstructured Responses API呼び出しへまとめ、欠落・API失敗・不完全JSONは `review_needed` にするfail-closedを追加。
+  - `core/legal_checks/premiums_labeling.py` は `action_required` のみを非エンジニア向け項目・推奨・減点へ反映。
+  - safe/reviewをraw保存し、実装担当向け詳細パネルと詳細Markdownへ証拠・理由・判定メタデータを残す境界を追加。DOCXはMarkdown SSOT経由で同内容を引き継ぐ。
+  - `ALGORITHM.md` に判定意味、失敗時、出力境界を追記。
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile`（変更8ファイル＋追加テスト） -> OK。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_legal_context_decisions.py tests\test_schema_validator.py tests\test_analysis_run_service.py tests\test_executive_summary.py tests\test_markdown_report_service.py tests\test_docx_report_service.py` -> 58 passed。
+  - 回帰: SEO/AIO/サイトヘルス/固定脆弱性DB/アクセシビリティ/公開技術リスク/LLM境界を含む13 test modules -> 124 passed。
+  - fixtureで `完全予約制` / `完全個室` / `正解や絶対がない` / `絶対ではない` / `効果を保証しない` / `完全に治る` / `絶対に安全` / `100%成功` / 二重否定 / structured一括呼び出し / API失敗fail-closedを確認。
+  - API送信回数: 0。live run・ブラウザ操作: 未実施。
+- remaining:
+  - run 28のCitation content plan `response_incomplete:max_output_tokens` は再発記録があり、今回の法務ownerとは別の次ownerとして残す。
+  - 8081は本確認時にlistenしておらず、ブラウザ操作・保存済みrun 28の再生成は未実施。APIなしfixtureのMarkdown/DOCX経路はテスト済み。
+
+## 2026-07-10 (Codex) Markdown/DOCXレポート反映確認
+
+- scope: 今回の法務3状態判定が保存レポートへ反映されるかのfixture確認。分析API・保存済みrunの変更はなし。
+- checked:
+  - Markdownは保存snapshotの `priority_actions` を正本として `action_required` のみを最優先アクションへ出力する。
+  - `review_needed` は `法務文脈判定（実装担当向け）` に証拠文・理由・model/reasoningとともに出力する。
+  - DOCXはMarkdownと同じbundleを受け、同内容の見出し・証拠文・モデル情報を `document.xml` に保持することを確認。
+  - fixture出力: `outputs/qa_reports/run28-context.md`、`outputs/qa_reports/detailed-report-run-28-20260710-104320.docx`。
+- validation:
+  - Markdown: review見出し・証拠文あり。
+  - DOCX: 38,276 bytes、必要OOXML部品あり、review見出し・証拠文・`gpt-5.4-nano`あり。
+  - PNGレンダーは `pdf2image` が実行環境に未導入で完了できず、目視レイアウトQAは未実施。既存の構造テストは通過。
+
+## 2026-07-09 (Codex) site health独立チェックの並列化
+
+- scope: コトミガキ(aio2-main)の `run_full_site_health_check()` 内に限定。OGP、公開技術リスク/固定既知脆弱性DB照合を含むセキュリティ、アクセシビリティの独立チェックを並列実行する。判定ロジック、スコア式、脆弱性DB、UI表示、API送信、外部同期、取得対象URLの拡張は対象外。
+- change:
+  - `core/engine/site_health_engine.py` で OGP / security / accessibility を `_run_ogp_check()` / `_run_security_check()` / `_run_accessibility_check()` へ分離。
+  - 3チェックを `ThreadPoolExecutor(max_workers=3)` で並列実行し、既存と同じ `site_health.ogp/security/accessibility` 形状へ戻すようにした。
+  - `tests/test_schema_validator.py` に、3チェックが同時開始しないと通らない並列実行回帰テストを追加。
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\engine\site_health_engine.py tests\test_schema_validator.py` -> OK。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_schema_validator.py tests\test_fixed_vulnerability_intelligence.py tests\test_public_technology_risks.py tests\test_endpoint_health_checker.py` -> 26 passed。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_characterization_engine.py tests\test_analysis_run_service.py` -> 38 passed。
+
+## 2026-07-09 (Codex) 固定既知脆弱性DBのURLチェック最新版取り込み
+
+- scope: コトミガキ(aio2-main)の固定既知脆弱性DBスナップショット置換に限定。照合ロジック、UI、通常分析中の外部取得、差分同期、定期更新、API送信は対象外。
+- source:
+  - `C:\Users\横山裕明\OneDrive - 京都工業株式会社\デスクトップ\URLチェック\config\intelligence.sqlite3`
+- changed:
+  - `config/vulnerability_intelligence.sqlite3` をURLチェック側の2026-07-09スナップショットへ置換。
+  - 旧DBは `config/vulnerability_intelligence.sqlite3.backup_20260709_2359` として保持。
+- validation:
+  - SQLite `PRAGMA quick_check` -> `ok`。
+  - 置換後DB: `schema_version=3`, `record_count=259398`, `reference_date=2026-07-09`, `advisories=259398`, `components=236139`, `component_aliases=705245`, `known_exploited_signal_matches=201`, `epss_signal_matches=6421`。
+  - SHA256: 置換後 `vulnerability_intelligence.sqlite3` は取り込み元 `intelligence.sqlite3` と同一。
+  - fixed DB smoke: `jquery 3.4.1` -> `status=matched`, `match_count=3`, `first_cves=('CVE-2020-11022',)`。
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_fixed_vulnerability_intelligence.py tests\test_public_technology_risks.py` -> 15 passed。
+
+## 2026-07-09 (Codex) 表示重複・内部文言の追加確認
+
+- scope: コトミガキ(aio2-main)のUI表示文言に限定。判定ロジック、スコアリング、保存データ構造、API呼び出しは対象外。
+- checked:
+  - 保存済み分析ワークスペースの `site_health_checks` について、`highlights` / `issues` / `recommendations` をまたぐ重複表示候補を確認。追加の重複データは検出なし。
+  - UI表示文字列として `source_hits` / `intent_signals` / `page_signals` / `N/A` / `固定の` / `テンプレート` が直接出る箇所を検索。
+- fix:
+  - `core/ui/saved_workspace.py` の検索意図詳細で、内部キー名を `判断に使った語句` / `検索意図の検出語句` / `ページ内の手がかり` へ変更。`title` / `url_path` / `schema_types` などのキーも日本語表示へ変換。
+  - `core/ui/tabs/health_tab.py` の `固定の補足情報` / `固定のセキュリティFAQ` / `固定のリスクメモ` を一般補足として自然な表現へ変更し、構造化データの `テンプレート` 表示を `実装例` に変更。
+  - `core/ui/tabs/seo_tab.py`, `core/ui/tabs/aio_tab.py`, `core/ui/tabs/comparison_tab.py` の `N/A` fallback を `未取得` / `未設定` / `確認項目がありません` に変更。
+  - `core/ui/tabs/aio_tab.py` の `生スコア` / `式` を `調整前スコア` / `計算内容` に変更。
+  - `core/ui/panels.py` の `非エンジニア向け` / `エンジニア向け` ラベルを `読み手向けの説明` / `実装担当向けメモ` に変更。
+- validation:
+  - `py_compile`: `core/ui/saved_workspace.py`, `core/ui/tabs/health_tab.py`, `core/ui/tabs/seo_tab.py`, `core/ui/tabs/aio_tab.py`, `core/ui/tabs/comparison_tab.py`, `core/ui/panels.py`, `tests/test_executive_summary.py` OK。
+  - `pytest`: `tests/test_executive_summary.py tests/test_characterization_ui.py tests/test_endpoint_health_checker.py -q` -> 35 passed。
+  - API送信回数: 0。
+
+## 2026-07-09 (Codex) セキュリティ詳細の重複表示修正
+
+- scope: コトミガキ(aio2-main)の保存済み分析ワークスペース内「エンジニア向け」タブに限定。セキュリティ判定ロジック、スコアリング、脆弱性DB照合、API呼び出しは対象外。
+- issue:
+  - 「セキュリティの詳細」で `highlights` と `issues` に同じ公開技術リスク文言が入る場合、同じ内容が大きい本文と小さい補足行で二重表示されていた。
+- fix:
+  - `core/ui/saved_workspace.py` の描画直前で `highlights` / `issues` / `recommendations` を同一キーで重複除外し、既存の保存済み結果でも同じ文面を一度だけ表示するようにした。
+  - `tests/test_executive_summary.py` に、先頭の中黒や空白差を吸収して詳細行を重複除外するテストを追加。
+- validation:
+  - `py_compile`: `core/ui/saved_workspace.py`, `tests/test_executive_summary.py` OK。
+  - `pytest`: `tests/test_executive_summary.py tests/test_endpoint_health_checker.py -q` -> 14 passed。
+  - API送信回数: 0。
+
+## 2026-07-09 (Codex child window) Responses API移行後確認 + モデル差し替え前互換fix
+
+- scope: Claudeの `claude_responses_api_migration_phase0_first_site` / `claude_responses_api_migration_phase0_pdfreport_and_orchestrator_remainder` 後確認。コトミガキ(aio2-main)専用。判定ロジック、スコアリング、DBスキーマ、notecode/kotomeganeは対象外。
+- findings:
+  - `core/config.py` の `OPENAI_REASONING_MODEL` / `OPENAI_REASONING_EFFORT` と用途別 `OPENAI_AIO_SUGGESTIONS_MODEL` / `OPENAI_LEGAL_MODEL` / `OPENAI_AIO_CONTENT_MODEL` / `OPENAI_GAP_ANALYZER_MODEL` で、主要Responses API呼び出しはenv差し替え可能なことを確認。
+  - `core/llm_responses_client.py` のprefix gateで、gpt-5/o1/o3系は `temperature` / `top_p` を送らず、gpt-4.1系には `reasoning` / `verbosity` を送らないことを確認。
+  - 未使用寄りだが現役コードの任意LLM整形経路 `core/application/accessibility_improvement_builder.py` が raw `responses.create(..., temperature=0.0, reasoning=...)` を直接呼んでいたため、共有 `call_structured()` 経由へ変更。これにより `OPENAI_ACCESSIBILITY_ACTION_MODEL` に `gpt-5...` 系の予定名を設定しても sampling parameter を送らない。
+  - `core/model_selector.py` の古い `o1/o3` 判定も共有 `supports_temperature()` に寄せ、将来の `gpt-5...` 系文字列で `temperature=0.0` を組み立てないようにした。
+- changed files:
+  - `core/application/accessibility_improvement_builder.py`
+  - `core/llm_responses_client.py`
+  - `core/model_selector.py`
+  - `tests/test_accessibility_checker.py`
+  - `tests/test_llm_prompt_boundary.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: `core/llm_responses_client.py`, `core/application/accessibility_improvement_builder.py`, `core/model_selector.py`, `core/config.py`, `core/aio_suggestions.py`, `core/aio/gap_analyzer.py`, `core/engine/orchestrator.py`, `tests/test_accessibility_checker.py`, `tests/test_llm_prompt_boundary.py` OK。
+  - `pytest`: `tests/test_accessibility_checker.py tests/test_llm_prompt_boundary.py tests/test_orchestrator_security.py -q` -> 28 passed。
+  - API送信回数: 0。テストはfake client / monkeypatchのみ。
+  - UIブラウザ確認: 未完了。単体前面起動では `NiceGUI ready to go on http://127.0.0.1:8081` まで到達したが、バックグラウンド持続化では同URLが `Invoke-WebRequest` 接続不可、LISTENなし。追加指示に従い起動ループせず停止。
+
+## 2026-07-09 (Claude) Phase0: Responses API共有レイヤー新設 + FAQ/リライト生成をgpt-5.4-nanoへ移行(実証第1弾)
+
+- 実施者: Claude（Sonnet 5, CLI agent）。ユーザーとの相談の結果、GPT-4.1-mini→GPT-5.4-nano移行はOpenAI推奨のResponses APIに合わせる方針で合意し着手。スコープは「モデル間パラメータ差異を吸収する層の新設」と「それに伴い必要なプロンプト/出力契約(JSON Schema化)の調整」に限定。スコアリング、法務チェックの判定ロジック、FAQ/リライトの生成方針・パーソナライズ分岐といった既存のアルゴリズム的判断は一切変更していない。
+- decision:
+  - `claude_responses_api_migration_phase0_first_site`
+- scope:
+  - **既存資産の発見**: `core/application/accessibility_improvement_builder.py`に、今回と同じ`gpt-5.4-nano` + `reasoning_effort=low`の組み合わせがResponses API経由で実装済みだったことを確認。ただし呼び出し元3箇所(`analysis_run_service.py`×2、`ui/tabs/seo_tab.py`)は全て`use_llm`を指定しておらずデフォルト`False`のまま=**未使用の休眠状態**と判明。
+  - **新設: `core/llm_responses_client.py`** → `accessibility_improvement_builder.py`の`client.responses.create(...)` + `_parse_llm_json_response`パターンを汎用化した共有ヘルパー(`call_structured()`)。strict `json_schema`によるJSON強制、`reasoning={"effort": ...}`(Responses API固有のネスト形式)、失敗時は例外を送出し呼び出し元がfail-closedで扱う設計を踏襲。
+  - **重要な発見(潜在バグ)**: 実API疎通確認で、`gpt-5.4-nano`はResponses API経由でも`temperature`パラメータを**明確に拒否する**(HTTP 400 `Unsupported parameter: 'temperature' is not supported with this model`)ことを確認。これはnotecode側`core/app_config.py`の`disable_temperature_model_prefixes: ["gpt-5","o3","o1"]`という既存の想定と一致する一方、`accessibility_improvement_builder.py`は`temperature=0.0`を同モデルへ送るコードのまま(未使用のため表面化していない潜在バグ)。今回は対象範囲外のため当該ファイルは変更していないが、次に`use_llm=True`で有効化する際は同じ修正が必要。
+  - **修正**: `core/llm_responses_client.py`に`supports_temperature(model)`(prefixベースの判定、`gpt-5`/`o1`/`o3`で`temperature`を自動除外)を実装し、呼び出し側は温度値を無条件に渡せる設計にした(モデルに応じて共有レイヤー側が黙って除外する)。
+  - **config**: `core/config.py`に`REASONING_MODEL_DEFAULT`(env: `OPENAI_REASONING_MODEL`, 既定`gpt-5.4-nano`)、`REASONING_EFFORT_DEFAULT`(env: `OPENAI_REASONING_EFFORT`, 既定`low`)を追加。既存の`MODEL_DEFAULT`/`MODEL_HIGH_REASONING`(gpt-4.1-mini系)はそのまま残置。
+  - **実証第1弾: `core/aio_suggestions.py`** の`AIOSuggestionEngine.generate_improvements()`(FAQ/リライト提案・定性スコアの生成本体)を、`chat.completions.create` + `response_format={"type":"json_object"}` + `temperature=0.3`固定から、`core.llm_responses_client.call_structured()`経由へ移行。JSON Schema(`IMPROVEMENTS_JSON_SCHEMA`、定性スコア12項目+suggestions配列)を新設して出力契約を明文化。モデル/reasoning_effortは`OPENAI_AIO_SUGGESTIONS_MODEL`/`OPENAI_AIO_SUGGESTIONS_REASONING_EFFORT`で個別上書き可能(未設定時は`config.REASONING_MODEL_DEFAULT`/`REASONING_EFFORT_DEFAULT`)。プロンプト文面・生成方針(結論ファースト等の指示)・失敗時フォールバック(`{"suggestions": [], "qualitative_scores": {}}`)は変更していない。
+  - **未着手(次フェーズ)**: `core/engine/orchestrator.py`の法務チェック4種(STRICT/CONSUMER/GATE/CONTEXT)、`core/aio/gap_analyzer.py`、`PDFreport/`配下7箇所は今回未着手。ユーザーへ結果報告後、続行可否を確認してから着手する。
+- changed files:
+  - `core/config.py`
+  - `core/llm_responses_client.py`(新規)
+  - `core/aio_suggestions.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: `core/config.py` / `core/llm_responses_client.py` / `core/aio_suggestions.py` すべてOK。
+  - 実API疎通確認(`.venv`経由、実費発生): 修正前は`temperature`パラメータでHTTP 400を確認(潜在バグの実証)。`supports_temperature()`導入後に再実行し、`suggestions_count: 3`、`qualitative_scores`の12キー全て充足、フォールバック不使用(`failed_fallback: False`)を確認。
+  - 生成内容の質を目視確認: リライト提案が「結論→数字→前提条件」のAnswer First構造への書き換えとして機能し、定性スコアのadviceも具体的な改善指摘(導入事例の追記提案等)になっていることを確認。検証用の一時ファイルは削除済み。
+  - サンプルデータではなく実運用に近い最小テキストでの単発検証のため、実際のサイト分析データでの品質は未検証(要フォローアップ)。
+
+### 追補: top_p拒否の確認 + verbosityの正しい配置発見 + プロンプトでの多様性補償
+
+- ユーザー指摘を受けて追加検証。`gpt-5.4-nano`は`temperature`だけでなく**`top_p`も同一のHTTP 400で拒否**することを実機確認(`core/llm_responses_client.py`の`supports_top_p()`として`supports_temperature()`と同じprefix判定を追加)。
+- `verbosity`パラメータは実在し機能するが、`responses.create()`の**トップレベル引数ではなく`text`オブジェクト内(`text={"format": {...}, "verbosity": ...}`)に置く必要がある**ことを実機確認(トップレベルに渡すと`TypeError: unexpected keyword argument`)。`call_structured()`に`verbosity`引数を追加し正しい位置に配置。
+- gpt-5系はtemperature/top_pという「ランダム性」の制御軸を持たず、`reasoning.effort`(推論の深さ)と`text.verbosity`(出力の長さ)のみが制御可能パラメータであると判明。旧temperatureが担っていた「トーン・バリエーション」の制御は、この2パラメータでは代替できないため、**プロンプト側での明示的な指示が必要**という指摘を受けた。
+- `core/aio_suggestions.py`の改善案生成プロンプトに「3つは対象箇所または改善アプローチが互いに異なるようにし、似た内容の言い換えを繰り返さないでください」という多様性指示を追加(旧`temperature=0.3`が担っていたばらつきの代替)。`verbosity="medium"`(env override可: `OPENAI_AIO_SUGGESTIONS_VERBOSITY`)も追加。
+- changed files: `core/llm_responses_client.py`, `core/aio_suggestions.py`, `WORKLOG.md`
+- validation: `py_compile` OK。実API再検証で3件の改善案がそれぞれ異なるアプローチ(構造順序の最適化／数値・料金の明確化／固有名詞のプロパティ化)になっていることを確認。検証用一時ファイルは削除済み。
+
+### 追補2: 再現性の調査(Web検索+実測) + 法務チェック4種・gap_analyzer.pyの移行
+
+- ユーザー指摘「temperatureからプロンプトへの変更で再現性への影響」を受け、着手前にWeb検索で調査。
+  - `seed`パラメータはResponses APIの`responses.create()`にSDKレベルで存在しない(`TypeError: unexpected keyword argument 'seed'`)。Chat Completions側の`seed`もOpenAI公式ドキュメント上「best effort」止まりで決定性は保証されておらず、コミュニティ情報では非推奨化が進行中と判明。
+  - OpenAI公式のreasoning modelガイドに、再現性・決定論的出力に関する明示的な記述は無し。
+  - 実測: `LEGAL_CONTEXT`と同種の二値判定プロンプト(「表現が商品名かどうか」)を`reasoning_effort=low`で3回実行し、判定結果(true/false)は3回とも完全一致。confidenceの数値のみ0.90〜0.93の範囲でわずかに変動。
+  - 方針: 判定系(pass/warn/block, true/false)は明確な基準・タイブレークルールを持つプロンプトのまま`reasoning_effort=low`を維持すれば実用上十分安定。数値・スコア系は完全一致を前提にしない。API側の決定性保証機構は失われるため、`model_selector.py`のコメント「temperature=0.0でランダム性を排除」は本移行が完了した時点で事実と合わなくなる(今回は当該ファイル自体は未変更のため保留)。
+- **法務チェック4種(STRICT/CONSUMER/GATE/CONTEXT)を`core/llm_responses_client.py`経由へ移行** (`core/engine/orchestrator.py`)。
+  - `PERSONA_CHECK_SCHEMA`/`GATE_DECISION_SCHEMA`/`CONTEXT_JUDGMENT_SCHEMA`を新設し、strict json_schemaで出力契約を明文化。
+  - `LEGAL_LLM_MODEL`(env: `OPENAI_LEGAL_MODEL`)/`LEGAL_LLM_REASONING_EFFORT`(env: `OPENAI_LEGAL_REASONING_EFFORT`)を新設。既存の`LEGAL_STRICT_TEMPERATURE`/`LEGAL_CONSUMER_TEMPERATURE`/`LEGAL_GATE_TEMPERATURE`/`LEGAL_CONTEXT_TEMPERATURE`定数はそのまま残し、`call_structured()`側でモデルがサポートする場合のみ適用される(gpt-5系では自動無視)。
+  - 結果payloadに書き込まれていた`data["temperature"]`/`gate_result["temperatures"]`(下流消費者なしと確認済み、影響確認タスク参照)は、実態を反映するよう`model`/`reasoning_effort`に置き換え。
+  - 未使用になった`LEGAL_GATE_MODEL`/`LEGAL_CONTEXT_MODEL`定数を削除。
+  - `core/llm_responses_client.py`の`call_structured()`の戻り値を`(data, raw_response)`のタプルに拡張し、`response.usage.input_tokens`/`.output_tokens`(Responses API命名、Chat Completionsの`prompt_tokens`/`completion_tokens`とは異なることを実機確認)を`token_tracker`へ連携できるようにした。
+- **`core/aio/gap_analyzer.py`を移行**。`GAP_ANALYZER_MODEL`/`GAP_ANALYZER_REASONING_EFFORT`(env override可)、`GAP_ANALYSIS_SCHEMA`を新設。
+- changed files: `core/llm_responses_client.py`, `core/engine/orchestrator.py`, `core/aio/gap_analyzer.py`, `core/aio_suggestions.py`(戻り値タプル化に伴う呼び出し側更新), `WORKLOG.md`
+- validation:
+  - `py_compile`: 全ファイルOK。
+  - 実API疎通確認(実費発生): STRICT/CONSUMER/GATE/CONTEXTを合成データで実行し、期待通りのJSON構造と、実際に「業界No.1」「導入実績1万社」等の根拠不明な優良表示を検出する妥当な法務判定(優良誤認のおそれ)を確認。GATE判定は境界事例で2回の実行間に多少の変動(medium/high, block/warn)が見られたが、これは段階的なリスク判定の性質上想定内の変動であり、厳格化・緩和はアルゴリズム的判断のため今回は変更していない(記録のみ)。
+  - `gap_analyzer.py`も実API実行で、スキーマギャップ(創業年、認証情報、所在地)を正しく検出し、schema.orgの具体的プロパティ名まで提案できることを確認。
+  - 検証用一時ファイルは全て削除済み。
+- **未着手・スコープ拡大の発見**: 当初「15箇所」と見積もっていたが、実際にはorchestrator.py内に法務チェック以外の呼び出しが5箇所(`_generate_deep_recommendations`, `_generate_citation_priority_insights`, `_extract_citation_phrases`, `_generate_citation_content_plan`, `generate_competitor_action_advice`)、PDFreportに`OpenAIAdapter`クラスの複数メソッド(`generate_commentary`, `analyze_survey`, `analyze_emotions`, `moderate`, 3段階fallback付きの`_chat_json_call`系)が残っている。
+  - **バグ発見**: `PDFreport/llm_client.py`の`generate_commentary()`(`score_reasoning.py`/`improved_commentary_generator.py`共通の呼び出し先)は、モデル名を`model_name in ["gpt-5", "gpt-5-mini", "gpt-5-nano"]`という**完全一致リスト**で判定しており、`"gpt-5.4-nano"`のような新しいモデル名にはマッチしない。マッチしない場合は`temperature=0.1`を送ってしまうため、`PDF_LLM_MODEL`を`gpt-5.4-nano`に変更すると本セッションで実証済みのHTTP 400エラーになる潜在バグ。次フェーズで完全一致リストをprefix判定(`core/llm_responses_client.py`の`supports_temperature()`と同様)に修正する必要がある。
+
+### 追補3: PDFreport(generate_commentaryバグ修正含む)・orchestrator.py残り5箇所の移行完了
+
+- 実施者: Claude（Sonnet 5, CLI agent）。ユーザー承認により追補2で発見したスコープ拡大分を継続実施。範囲は引き続き「パラメータ差異吸収+それに伴うプロンプト/出力契約調整」のみで、判定ロジック・スコアリング・法務チェックの検査範囲は無変更。
+- decision:
+  - `claude_responses_api_migration_phase0_pdfreport_and_orchestrator_remainder`
+- scope:
+  - **`core/llm_responses_client.py`の拡張**:
+    - `call_structured_async()`を新設(PDFreportは`AsyncOpenAI`を使うため非同期版が必要)。sync/async共通の`_build_kwargs()`に処理を集約。
+    - **重大バグを実機で発見・修正**: `reasoning={"effort": ...}`を常に送っていたが、PDFreportの実際のデフォルトモデルである`gpt-4.1-mini`はこのパラメータ自体を拒否する(HTTP 400 `Unsupported parameter: 'reasoning.effort'`)。`temperature`/`top_p`とは逆方向(gpt-5系だけが対応、それ以外は非対応)の`supports_reasoning()`を新設し、`_build_kwargs()`で同様にgate。修正前は「共有レイヤーを経由するだけで、現行本番のデフォルトモデルが壊れる」状態だったため、他の全箇所へ展開する前に発見できたことは重要。
+    - `LLMResponseError`に`status_code`を追加(元のOpenAI SDK例外の`status_code`を保持)。呼び出し側の既存リトライ判定(`hasattr(e, 'status_code')`等)がラップ後も機能するようにするため。
+    - `pydantic_model_to_strict_schema()`を新設。PydanticモデルからOpenAI strict json_schema(全フィールドrequired化、additionalProperties:false化、$ref解決)を生成する汎用コンバータ。`ScoreReason`で実API実機検証済み。
+  - **`PDFreport/llm_client.py`の`generate_commentary()`を修正+移行**:
+    - モデル名完全一致リストによる分岐(gpt-5系/gpt-4.1系/その他)を削除し、`core.llm_responses_client`経由のResponses API呼び出しに一本化。Instructorの`response_model=`は`pydantic_model_to_strict_schema()` + 手動`model_validate()`に置き換え。
+    - `score_reasoning.py`・`improved_commentary_generator.py`(3呼び出し)はこの共通関数を呼ぶだけなので自動的にカバーされる。
+    - `IncompleteOutputException`の個別catchは汎用`except Exception`に統合(Instructorを経由しなくなったため)。
+  - **`PDFreport/utils/text_professionalizer.py`の`professionalize_text_with_llm()`を移行**:
+    - 独自の3回リトライ+指数バックオフループ(429/500/503/timeout検知)はそのまま維持し、内部のAPI呼び出し部分だけを`call_structured_async()`に置き換え。
+  - **`PDFreport/llm_client.py`の`analyze_survey`/`analyze_emotions`/`moderate`は意図的に対象外とした**:
+    - `moderate()`はOpenAIのModeration API専用で対象outside(json_schema/reasoningと無関係)。
+    - `analyze_survey`/`analyze_emotions`は現状`settings.OPENAI_MODEL`/`PDF_LLM_MODEL`(非推論モデル)がデフォルトのため実害は無く、フォールバック経路(`_chat_json_call_with_caching`)がプロンプトキャッシュ機構と密結合しているため、今回の意図的なスコープ境界として次回以降に持ち越す。
+  - **orchestrator.py残り5箇所を移行**: `_generate_deep_recommendations`(business/technical recommendations, title/description rewrites)、`_generate_citation_priority_insights`(評価軸3種を1回ずつ呼ぶループ)、`_extract_citation_phrases`、`_generate_citation_content_plan`、`generate_competitor_action_advice`。共通定数`AIO_CONTENT_MODEL`/`AIO_CONTENT_REASONING_EFFORT`(env: `OPENAI_AIO_CONTENT_MODEL`/`OPENAI_AIO_CONTENT_REASONING_EFFORT`)を新設し、旧`DEFAULT_LLM_MODEL`共有の粒度をそのまま踏襲。5種類のJSON Schemaを新設。
+  - **`max_output_tokens`不足によるJSON途中切れを実機で複数回発見・修正**: reasoning modelは推論トークンが`max_output_tokens`の予算を消費するため、旧来の非推論モデル向け値(600〜2000)のままだと出力途中でJSONが切れることを実機で確認(`_generate_deep_recommendations`は2000→4000、`_generate_citation_content_plan`は1200→2500、`_extract_citation_phrases`/`_generate_citation_priority_insights`/`generate_competitor_action_advice`は600〜800→1200)。同じ入力でも発生したりしなかったりする**確率的な現象**だったため、複数回の再実行で安定を確認してから確定させた。法務チェック4種・gap_analyzer・aio_suggestionsの既存予算は複数回再検証し、問題ないことを確認済み。
+  - `_openai_chat_json_with_retry`関数と`DEFAULT_LLM_MODEL`定数は、`tests/test_orchestrator_security.py`が直接依存しているため削除せず保持(orchestrator.py内の呼び出し元は0になったが、外部テストの対象として現存)。
+- changed files:
+  - `core/llm_responses_client.py`
+  - `PDFreport/llm_client.py`
+  - `PDFreport/utils/text_professionalizer.py`
+  - `core/engine/orchestrator.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: 変更した全ファイルOK。
+  - 実API疎通確認(実費発生、複数回実施):
+    - `generate_commentary()`をPDFreportの現行デフォルトモデル(gpt-4.1-mini)経由と、明示的にgpt-5.4-nanoを指定した場合の両方で実行し、どちらも正しくスコア理由(summary/bullets)を生成することを確認。現行デフォルトモデルでの動作確認は、本番の主経路を壊していないことの直接的な証拠として重要。
+    - `professionalize_text_with_llm()`を実行し、ペルソナ(consultant)に応じた文体変換が機能することを確認。
+    - orchestrator.py残り5箇所を2回連続で実行し、5箇所とも安定して成功することを確認(1回目は2箇所でJSON途中切れが発生し、上記のトークン予算修正後に再検証して解消を確認)。
+    - 法務チェック4種・gap_analyzer.pyも3回ずつ再実行し、既存のmax_output_tokensで安定していることを再確認。
+  - 検証用一時ファイルは全て削除済み。
+
+### 追補4: max_output_tokens超過の検出方法をAPI状態ベースに改善
+
+- ユーザー指摘を受け、`max_output_tokens`超過時の挙動を実機で確認。
+  - Responses APIはHTTPエラーではなく、`response.status == "incomplete"` / `response.incomplete_details.reason == "max_output_tokens"`という**正常応答(HTTP 200)の中のフラグ**で打ち切りを通知することを実機確認。
+  - 従来の`parse_json_response()`はこのフラグを見ておらず、途中で切れたJSONの`json.loads()`失敗という**間接的な兆候**でしか検出していなかった。打ち切り位置によっては構文的に妙に成立してしまい検出漏れが起きる可能性があったため、`response.status`を明示的に先頭でチェックするよう修正。
+  - `LLMResponseError`のメッセージも`invalid_json_response: Unterminated string...`から`response_incomplete: reason=max_output_tokens`という原因が明確な文言に変更。
+- UI/呼び出し元への影響: 各呼び出し元は元々(移行前から)fail-closedで空リスト/フォールバック値を返す設計のため、ユーザー向けUIの見え方は変化しない。サーバーログの原因特定精度のみ向上。
+- changed files: `core/llm_responses_client.py`, `WORKLOG.md`
+- validation: `py_compile` OK。意図的に`max_output_tokens=50`で長文生成を要求し、`response_incomplete: reason=max_output_tokens`が正しく送出されることを実機確認。検証用一時ファイルは削除済み。
+
+### 追補5: verbosityの互換性ギャップ修正 + トークン消費要因の訂正 + コスト表の未対応発見
+
+- ユーザー質問「max_output_tokensは大きく増やすべきか、gpt-4.1系とgpt-5.4系の挙動差が心配」を受けて追加調査。
+- **新たな互換性バグを発見・修正**: `verbosity`は`temperature`/`top_p`/`reasoning`のような単純な対応可否の二値ではなく、**モデルごとに許容値が異なる**ことを実機確認。`gpt-4.1-mini-2025-04-14`へ`verbosity="low"`を送るとHTTP 400（`Unsupported value: 'low' is not supported with the 'gpt-4.1-mini-2025-04-14' model. Supported values are: 'medium'.`）。個別モデルの許容値を追跡する代わりに、`verbosity`は`reasoning`と同じ条件（gpt-5/o1/o3系のみ）でしか送らないよう`core/llm_responses_client.py`の`_build_kwargs()`を修正。現状this の値を明示的に上書きしている呼び出し元は`aio_suggestions.py`のみで、デフォルト値が`"medium"`だったため実害は出ていなかったが、将来別の値を指定した場合に備えた予防修正。
+- **追補3の説明を訂正**: 「reasoning modelでは推論トークンがmax_output_tokensの予算を消費するため」という説明は、実際のdeep_recommendations相当の複雑なプロンプトで実測したところ`reasoning_tokens: 0`（gpt-5.4-nano、gpt-4.1-miniどちらも）であり、**不正確だった**。実際の要因は、同一プロンプト・同一スキーマに対してgpt-5.4-nanoの**可視出力(output_tokens)自体がgpt-4.1-miniより長くなる**こと（実測: gpt-4.1-mini 918トークン vs gpt-5.4-nano 1588トークン、同一入力・同一スキーマ）。reasoning_effort=lowでは不可視の推論トークン消費はほぼ発生せず、可視JSON自体の記述が詳細・冗長になる傾向が主因と判明。max_output_tokensの引き上げ自体は正しい対処だったが、理由の説明を訂正する。
+- **レイテンシの実測（1サンプルのみ、参考値）**: 同一の複雑なプロンプトで gpt-4.1-mini 21.44秒、gpt-5.4-nano 18.45秒。今回の実測ではgpt-5.4-nanoの方がやや高速だった（出力トークン数はgpt-5.4-nanoの方が多いにもかかわらず）。サンプル数が少なく統計的結論ではないが、「reasoning modelは常に遅い」という前提を裏付ける結果は出ていない。
+- **未対応を発見（今回は修正せず記録のみ）**: `core/token_tracker.py`の`add_usage()`内`model_costs`辞書に`gpt-5.4-nano`のエントリが無い。`gpt-4.1-mini`（末尾の日付なし）のエントリはあるが、実際に使われているモデル名文字列は`gpt-4.1-mini-2025-04-14`（日付付き）であり、これも一致しないため、既存のgpt-4.1-mini呼び出しも含めて**汎用フォールバック単価（$0.001/$0.002 per 1K tokens）で概算されている**。gpt-5.4-nanoのコスト計上精度は現状不明。コスト管理に関わる変更のため、今回のスコープ（パラメータ吸収）には含めず、別途対応要否を判断すべき事項として記録する。
+- changed files: `core/llm_responses_client.py`, `WORKLOG.md`
+- validation: `py_compile` OK。`verbosity="low"`を両モデルへ明示指定し、修正後はgpt-4.1-mini/gpt-5.4-nano両方でエラーなく完了することを実機確認。検証用一時ファイルは削除済み。
+
+### 追補6: gpt-5.4-nano vs gpt-5.4-mini の適性検証(コード変更なし、調査のみ)
+
+- ユーザー質問を受け、現在gpt-5.4-nanoがデフォルトの9箇所について、gpt-5.4-miniとの適性比較を実施。**コード変更は無し、調査のみ**。
+- 用語確認: `PDFreport/`はコトムスビ(`doorknock/`)ではなく、コトミガキ(aio2-main)自身のPDF機能。`doorknock/`にOpenAI関連コードが存在しないことを確認済み(grep 0件)。
+- 料金(Web検索): gpt-5.4-nano = $0.20/$1.25 per M tokens(入力/出力)、gpt-5.4-mini = $0.750/$4.50 per M tokens。miniは入力約3.75倍、出力約3.6倍。
+- 実機比較(3ケース、法務チェック相当のプロンプトを実際のスキーマで実行):
+  1. 明確な違反事例(健康食品の誇大広告): nano/mini とも decision=block, risk_level=high で一致。flagged_phrasesも同一3件。
+  2. 境界線上の微妙な事例(自社アンケート+適切な開示文言付き): nano/mini とも decision=warn, risk_level=medium で一致。理由付けの論点も同等。
+  3. FAQ/リライト生成(aio_suggestions実プロンプト): 両モデルとも同水準の具体性・Answer First構造の提案。品質面で明確な優劣は見られず。
+  - 副次的な観察: miniは推論トークンを一定量消費し可視出力が短め、nanoは推論トークンをほぼ使わず可視出力が長めという傾向（結果の質には影響なし）。
+- 結論: 実機検証した2種(法務判定・FAQ生成)で品質差が確認できなかったため、9箇所全てで**nano維持を推奨**。全箇所をminiにした場合の追加コスト(3.6〜3.75倍)に見合う品質根拠は見出せなかった。
+- 未検証: `PDFreport`の`generate_commentary`/`text_professionalizer`(現状gpt-4.1-mini)、`analyze_survey`/`analyze_emotions`(未着手)はどちらのモデルも稼働していないため対象外。
+- changed files: `WORKLOG.md`のみ(コード変更なし)。
+
+### 追補7: 既存テストスイート全体の実行確認(pytest未導入の発覚+3件の回帰修正)
+
+- ユーザーから「残作業はテストか」と問われたのを機に、これまで実施していなかった`tests/`配下の既存pytestスイート全体を実行して確認。
+- **発見1**: プロジェクトvenv(`.venv/`)に`pytest`が未インストールだった(`requirements-dev.txt`には記載があるが未同期)。`.venv/Scripts/python.exe -m pip install pytest==9.0.3`で導入して初めて実行可能に。
+- **発見2(本題・回帰)**: `tests/test_orchestrator_security.py`のうち2件が今回の移行で**壊れていた**:
+  - `test_generate_deep_recommendations_wraps_untrusted_content`
+  - `test_citation_generation_paths_wrap_untrusted_content`
+  - 原因: これらのテストは`orchestrator_mod._openai_chat_json_with_retry`をmonkeypatchして「未信頼コンテンツが `[ROLE REDACTED]:` 等でサニタイズされた状態でLLMに渡っているか」を検証するものだったが、`_generate_deep_recommendations`/`_extract_citation_phrases`/`_generate_citation_content_plan`は本移行で`call_structured()`(Responses API経由)に切り替わっており、旧関数はもう呼ばれていない。そのためmonkeypatchが効かず、実際に`self.client.responses.create(...)`を叩こうとして`'object' object has no attribute 'responses'`で失敗、フォールバック(空リスト/空辞書)が返っていた。**プロダクションコード自体は正しく動作している**(すでにライブAPIで個別検証済み)。壊れていたのはテストのモック対象のみ。
+  - 修正: monkeypatch対象を`orchestrator_mod.call_structured`に変更し、捕捉するキーワード引数を`kwargs["messages"]`→`kwargs["input_messages"]`に変更。検証内容(未信頼データのラベル付け・ロール偽装トークンの除去)は変更していない。
+- **発見3(同種の回帰)**: `tests/test_llm_prompt_boundary.py`の2件も同様の理由で失敗:
+  - `test_aio_suggestions_wraps_external_text_as_untrusted_prompt_data`(`aio_suggestions.py`)
+  - `test_schema_gap_prompt_treats_page_and_schema_as_untrusted`(`gap_analyzer.py`)
+  - こちらは`_FakeClient`が`client.chat.completions.create(...)`(Chat Completions形状)しか模していなかったため、移行後の`client.responses.create(...)`呼び出しで同じ`AttributeError`が発生していた。`_FakeClient`/`_FakeCompletions`を`_FakeResponses`(`.responses.create`が`output_text`を返す)に置き換え、検証キーも実際のAPI呼び出しキー`kwargs["input"]`(`call_structured`内部で`input_messages`→`input`にリネームされるため、生クライアントの直接モックでは`"input"`が正しいキー)に修正。
+- **発見4(移行と無関係の既存バグ)**: `tests/test_schema_validator.py::test_run_full_site_health_check_adds_schema_validation`も失敗していたが、原因はGPT移行と無関係。本セッション早期のPhase2作業(既知脆弱性CVE/CVSS詳細表示、タスク#3)で`SecurityChecker`/`run_full_site_health_check`に`sitemap_info`引数が追加された際、このテストのモックlambda(`lambda url, headers, html: ...`)が更新されていなかったための引数不一致。`sitemap_info=None`を追加して解消。ついでに直したが、GPT移行の作業範囲外。
+- 検証: `.venv/Scripts/python.exe -m pytest tests/ -q` → 修正前は3失敗/181成功、修正後は**184件全件成功**。
+- changed files:
+  - `tests/test_orchestrator_security.py`(monkeypatch対象修正、アルゴリズム/検証意図は不変)
+  - `tests/test_llm_prompt_boundary.py`(fakeクライアントをResponses API形状へ更新、検証意図は不変)
+  - `tests/test_schema_validator.py`(移行と無関係な既存モック不一致を修正)
+  - `WORKLOG.md`
+- 追加修正: `orchestrator.py`内の`max_output_tokens`引き上げ理由コメント4箇所(`_generate_deep_recommendations`/`_generate_citation_priority_insights`/`_extract_citation_phrases`/`_generate_citation_content_plan`)が「reasoning tokenがmax_output_tokens予算を消費するため」という**追補5で訂正済みの誤った説明のまま**だったのを発見し、「gpt-5.4-nanoの可視出力がgpt-4.1-mini比で長くなる傾向」という正しい理由に修正(コメントのみ、ロジック不変)。`py_compile`+`pytest tests/`(184件)で再確認済み。
+
+---
+
+## 2026-07-09 (Claude) テンプレート出力の誤解防止監査(コトミガキ) — LCP/CLSの英語enum漏れ + 「実データ」誤表示の修正
+
+- 実施者: Claude（Sonnet 5, CLI agent）。ユーザーから「UIで、テンプレート出力でユーザーを誤解させる部分がないかコトミガキとコトメガネをチェックしてください」との依頼を受け、両サービスを静的コード調査+実機確認。GPT移行とは無関係の別件。分析アルゴリズム・スコア計算は無変更、表示文言のみ変更。
+- decision:
+  - `claude_misleading_template_output_audit_20260709`
+- 発見1(修正済み・確度高): `core/seo/page_experience_audit.py`のCore Web Vitals(LCP/CLS)簡易推定機能で、`good`/`needs_improvement`/`poor`という**英語の内部enum値がそのまま日本語文に埋め込まれて**非エンジニア向け「評価」カードの「理由」欄に表示されていた(例: 「CLS 推定が needs_improvement です。」)。notecodeで見つけた「unresolved slot」漏れと同種の内部語彙リーク。`_grade_label_ja()`ヘルパーを追加し「良好」「改善が必要な水準」「不良」に翻訳、メッセージも「CLS の簡易推定が◯◯です」という表現に統一。
+- 発見2(修正済み・確度高、より重大): `core/ui/tabs/seo_tab.py`と`core/application/analysis_run_service.py`(同じ「モバイル / ページ体験」行を作る**並行実装が2箇所存在**)で、LCP/CLSの値が`source_label: "実データ"`(実データ)チップ付きで表示されていた。しかし`page_experience_audit.py`自身がこれらの値を`"measurement": "heuristic"`と明記している通り、実際は**ページサイズ・画像数・スクリプト数からの粗い推測式**(基準値1800ms/0.03から加減算するだけ)であり、Lighthouse等の実測ではない。この「heuristic」フラグは`web_vitals["lcp_note"]`/`["cls_note"]`としてデータには保持されるが、**UIのどこにも表示されず** discardされていた。ユーザーが実際のCore Web Vitalsだと誤認しうる表示だった。
+  - `seo_tab.py::_build_additional_audit_rows`: `source_label`を「実データ＋簡易推定」に変更、detail文言を「LCP簡易推定 ◯◯ms」「CLS簡易推定 ◯.◯◯◯」に変更。
+  - `analysis_run_service.py::_build_seo_audit_notes`の「モバイル / ページ体験」`append_note`呼び出しに`source="heuristic", source_label="実データ＋簡易推定"`を明示指定。同ファイル`_build_marketer_audit_summary`が生成する自然文の metric 部分も「LCP簡易推定 ◯.◯◯秒」「CLS簡易推定 ◯.◯◯◯」に変更(正規表現によるLCP/CLS値抽出パターンは変更していないため既存の値抽出ロジックへの影響なし)。
+- 発見3(デッドコード・実害なし、参考記録): `core/ui/reports/executive_summary.py::render_executive_summary`と、そこから呼ばれる`core/ui/panels.py::_build_decision_actions`の「担当」「工数」表示(常に固定文字列「運用/マーケ」「30〜90分」等、個別アクションごとの実算出ではない)を発見したが、呼び出し元の`core/ui/panels.py::results_panel()`自体がコードベースのどこからも呼ばれていない**到達不能なデッドコード**と判明したため、実害なしと判断し未修正。念のため記録のみ残す。
+- 発見4(コトメガネ、対象問題なし): `report_summary_builders.py`/`analysis_core/source_evidence.py`等を確認。「今の入力ではまだ分析していません。これはエラーではありません。」等、誤解防止に配慮した文言が既に徹底されており、「引用された」/「検索ソースに出たが未引用」/「判定保留」の3状態を安易に「未引用」へ丸めない設計になっている(`build_prompt_family_source_rollups`等)。明確な誤解を招く箇所は見つからなかった。
+- changed files:
+  - `core/seo/page_experience_audit.py`
+  - `core/ui/tabs/seo_tab.py`
+  - `core/application/analysis_run_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: 変更3ファイルともOK。
+  - `pytest tests/test_page_experience_audit.py tests/test_analysis_run_service.py tests/test_characterization_ui.py`: 全件成功、既存のグレード判定ロジック(`good`/`needs_improvement`/`poor`の戻り値自体)は変更していないため影響なし。
+  - `pytest tests/`(全体): 184 passed。
+  - 実機確認: 既存の保存済みrun(`/runs/26`, www.kyotokogyo.co.jp)はDB保存済みスナップショットのため、サーバー再起動後もページ再読み込みだけでは新しい文言に更新されない(過去分析結果を後から書き換えない設計として妥当)。ソースコード読み返し・py_compile・単体テストで正しさを確認。**次回以降の新規分析から反映される**。
+  - API実行回数: `0`(既存の保存済みrunの再表示確認のみ、新規分析は未実行)。
+
+### 追補: 「パーソナライズされた結果が出るべき部分でテンプレ出力はないか」の再調査(PDFreport)
+
+- ユーザーから「パーソナライズされた結果が出るべき部分でテンプレ出力はないか」との追加確認を受け、LLM生成失敗時のフォールバック文言を横断調査。対象: `core/engine/orchestrator.py`のスコア理由生成、`PDFreport/improved_commentary_generator.py`の三視点コメンタリー生成。
+- 調査結果1(問題なし、良設計): `PDFreport/score_reasoning.py`の`ScoreReason`モデルはデフォルト値が空文字列/空リスト(汎用文言ではない)。LLM失敗時は`orchestrator.py`側で`fallback_reason()`という**ルールベースだが実データ(実際のスコア内訳・低評価項目・実際のtitle/description等のevidence・業界別アドバイス)を使う個別化されたフォールバック**に切り替わる設計になっており、汎用テンプレへのすり替わりは無い。
+- 発見(修正済み・確度中): `PDFreport/improved_commentary_generator.py::generate_report_commentary_v2`の747行目で、`summary_text=summary_result.summary_text or "分析結果の要約を準備中です。"`となっていた。兄弟フィールド(`sentiment_commentary`/`topics_commentary`/`marketing_perspective`等)のフォールバックは全て「...の詳細は利用できません。」と失敗を正直に伝える文言なのに対し、この1箇所だけ**「準備中です」という進行中を示唆する文言**になっていた。これは完成・納品されるPDFレポートの最終出力であり「準備中」という事実はあり得ない。LLMが技術的に空文字列`summary_text=""`を返した場合(Pydanticスキーマ上は空文字列でも検証を通過する)にこの文言が紛れ込み、レポートが未完成であるかのように読める状態だった。「分析結果の要約は利用できません。」に統一。
+- 参考記録(未修正・要検討、UIデザイン判断が必要なため今回は対応外): `generate_report_commentary_v2`/`generate_perspective_commentary`には他にも複数箇所で「マーケティング分析の生成中にエラーが発生しました。」等のフォールバック文言があり、これらは失敗を正直に伝えている点では問題ないが、実際にPDFへレンダリングされる際(`pdf_data_mapper.py`)に**フォールバック文言と正常なLLM生成文が同じスタイルで表示され、視覚的な区別が無い**ことを確認した。読み手が読み飛ばして正常な分析結果だと誤認するリスクは残る。修正には warning バッジ表示等のPDFレイアウト変更判断が必要なため、今回はコード修正せず記録のみ残す。
+- changed files:
+  - `PDFreport/improved_commentary_generator.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`: OK。
+  - 該当テキストに対する専用テストは存在せず(grep確認済み)。
+  - `pytest tests/`(全体): 184 passed(影響なしを再確認)。
+
+### 追補2: PDF可視区別対応の着手前に「そもそも到達可能か」を検証 → 到達不能と判明(訂正)
+
+- ユーザーの「進めます」を受け、上記「参考記録」のPDFフォールバック文言の視覚的区別(warningバッジ表示等)を実装しようとしたが、着手前に呼び出し経路を再確認した結果、**`PDFreport/improved_commentary_generator.py`・`PDFreport/reporting.py`・`PDFreport/score_reasoning.py`のアンケート解説生成システム一式が、現在のライブUIのどこからも呼ばれていない**ことが判明した。
+- 検証内容:
+  - `generate_report_commentary_v2`/`generate_perspective_commentary`/`generate_summary_commentary`(`improved_commentary_generator.py`)、`generate_high_quality_pdf_report`/`generate_pdf_report`(`reporting.py`)いずれも、それぞれの定義ファイル自身以外から呼ばれている箇所が無いことをgrepで確認(`tests/test_pdf_security.py`からのテスト呼び出しのみ)。`reporting.py`の`generate_pdf_report`のdocstringには「この関数は堅牢なPDF生成システムに置き換えられました。robust_pdf_generator.pyのgenerate_robust_pdf_report()を使用してください」とあるが、`PDFreport/robust_pdf_generator.py`というファイル自体がこのコードベースに存在しない。
+  - `score_reasoning.py`の`generate_score_reason`/`fallback_reason`は`core/engine/orchestrator.py`から実際に呼ばれ`self.last_analysis_results["score_reasons"]`に格納されるが、この`score_reasons`キーを読み出している箇所がコードベース全体を検索しても存在しない(計算されるが誰にも表示されない)。
+  - 実際にコトミガキの「レポート出力」ボタンが呼ぶのは`core/application/docx_report_service.py::export_detailed_docx_report`と`core/application/markdown_report_service.py::export_detailed_markdown_report`(`nicegui_app.py`)であり、これらはPDFreportのアンケート解説生成系を一切importしていない。
+  - `nicegui_app.py`内の`@ui.page`登録ルートは`/`と`/runs/{run_id}`の2つのみ(コードベース全体を再検索して確認)で、「アンケート」「survey」向けの別ページ/別ルートは存在しない。
+- 結論: 追補1で見つけた「分析結果の要約を準備中です」の修正、および今回着手予定だった`reporting.py`の`defaults_text`辞書(サイレントに汎用マーケティング文言へすり替わる、より深刻な未開示フォールバック)は、いずれも**現在のライブアプリのどのユーザー導線からも到達しない**コード。`core/ui/reports/executive_summary.py`の`results_panel()`と同種の「実装済みだが配線されていない」パターン。
+- 判断: 到達不能コードへのUI設計変更(warningバッジ追加等)は実利が無いため、着手を保留しユーザーに実態を報告して次の方針を確認する。既に行った「準備中」→「利用できません」の文言修正はコード品質として妥当なため元に戻さない。
+- changed files: `WORKLOG.md`のみ(コード変更なし)。
+
+### 追補3: 「このシステム自体が今も必要か」の経緯調査
+
+- ユーザーから「このシステム自体(PDFreportのアンケート解説生成一式)が今も必要か確認したい」との依頼を受け、`AGENTS.md`の変更履歴と`WORKLOG.md`を遡り、生きた導線が無い理由を調査。
+- 判明した経緯:
+  - `AGENTS.md`の変更履歴によると、2026年1月22日〜1月30日ごろに`PDFreport/high_quality_pdf_generator.py`・`PDFreport/sections/`が活発に更新されており、当時はPDF出力が生きた導線だったことが分かる。
+  - 一方`WORKLOG.md`の2026-06-16「Report export button with Markdown and Word」エントリでは、既存の「詳細Markdown」ボタンを「レポート出力」ボタン(Markdown/Word選択式)へ整理し、「レポート本文は既存MarkdownをSSOTとして維持し、Wordは同内容をdocx化」と明記。この時点で現行の`core/application/docx_report_service.py`/`markdown_report_service.py`が導入されている。
+  - `docx_report_service.py`をgrep確認したところ、OpenAI/LLM呼び出しを一切含まない。既に`orchestrator.py`側(gpt-5.4-nano移行済み)で計算済みのスコア・法務チェック・推奨事項などの構造化データを整形するだけで、独自にAI解説文を生成する必要が無い設計。
+  - `PDFreport/site_health_pdf.py`(AGENTS.mdに「[NEW]サイトヘルスページ生成」と記載)も同様にコードベース全体でどこからも参照されていないことを確認。PDFreport配下のPDF生成パイプライン一式(`high_quality_pdf_generator.py`・`improved_commentary_generator.py`・`reporting.py`・`site_health_pdf.py`・`score_reasoning.py`)がまとめて到達不能。
+- 結論(推定、確定情報ではない): 2026年1月時点ではPDF+AI解説文が現行の報告手段だったが、2026年6月16日にMarkdown/Word(docx)ベースのレポート出力へ置き換えられ、その際PDFreportのAI解説文生成パイプラインは削除されずそのまま放置された可能性が高い。現行のdocx/markdown出力はLLMを使わず構造化データの整形のみで完結しており、機能的な依存関係は無い。
+- 補足(本セッション内の関連事実): 本セッション前半のGPT-5.4-nano移行作業で`PDFreport/utils/text_professionalizer.py`と`PDFreport/llm_client.py::generate_commentary()`(モデル未検出バグの修正含む)を移行したが、これらの唯一の呼び出し元は`improved_commentary_generator.py`であり、今回の調査で判明した通りそれ自体が到達不能。移行作業とバグ修正自体は正しい内容だったが、**現状は稼働しないコードに対する修正だった**ことを記録しておく。
+- 次の判断が必要な事項(ユーザー確認待ち、未着手):
+  - PDFreport配下のPDF生成パイプライン一式を削除するか、将来の再利用に備えて残すか
+  - 削除する場合、`tests/test_pdf_security.py`など関連テストの扱い
+  - 残す場合、`defaults_text`のサイレント置換問題を「いつか直す」課題として明示的に記録するか
+- changed files: `WORKLOG.md`のみ(コード変更なし、調査のみ)。
+
+### 追補4: PDFreport一式のアーカイブ(削除ではなく退避)
+
+- ユーザーの「何かエラーが起きた場合のことを考えて、アーカイブしましょう。テストデータも。」を受け、削除ではなく退避する形で対応。
+- 事前の依存関係調査:
+  - `PDFreport/`配下の全26 `.py`ファイル(サブディレクトリ`config/`・`models/`・`sections/`・`utils/`含む)について、`PDFreport`外からの参照を横断grepで確認。生きた参照は2箇所のみ:
+    1. `core/engine/orchestrator.py`が`PDFreport.score_reasoning`から`build_seo_reason_payload`/`build_aio_reason_payload`/`generate_score_reason`/`fallback_reason`を`try/except`付きでimport(失敗時は全て`None`に落ちる設計)。
+    2. `tests/test_pdf_security.py`が`PDFreport.llm_client`/`PDFreport.config.pdf_config`を直接import(try/exceptなし)。
+  - `orchestrator.py`側の呼び出し箇所(1949行目)は`if build_seo_reason_payload and build_aio_reason_payload:`という外側ガードで保護されており、import失敗時はブロック全体がスキップされる**安全な設計**であることをコード読み込みで確認(1995/2000行目の`build_seo_reason_payload(...)`自体は無条件呼び出しだが、外側ガードのおかげで`None`が渡ることはない)。アーカイブしても`orchestrator.py`は無改修で安全。
+  - `tests/test_pdf_security.py`は`try/except`無しでimportするため、アーカイブすると確実にImportErrorで壊れる。これは「テストデータも」というユーザー指示の対象として一緒に退避する。
+- 実施内容:
+  - `PDFreport/`ディレクトリ一式を`archive/pdfreport_dead_pipeline_archive_20260709/PDFreport/`へ移動(ファイル削除ではなく`mv`、中身は変更なし)。
+  - `tests/test_pdf_security.py`を`archive/pdfreport_dead_pipeline_archive_20260709/tests/test_pdf_security.py`へ移動。
+  - `core/engine/orchestrator.py`は無改修(try/except構造がそのまま安全に機能するため)。
+- validation:
+  - `py_compile nicegui_app.py core/engine/orchestrator.py core/application/docx_report_service.py core/application/markdown_report_service.py`: OK。
+  - `pytest tests/`: **175 passed**(移動前184 passed。差分9件は`test_pdf_security.py`が定義していたテスト数と完全一致、他への影響なし)。
+  - 実機確認: `nicegui_app.py`を起動し`/runs/26`(保存済みrun)を再読み込み。サーバーログ・コンソールともにエラー0件、「評価」「レポート出力」が正常表示されることを確認。
+  - API実行回数: `0`。
+- 補足: `archive/pdfreport_dead_pipeline_archive_20260709/`は`.distignore`の`**/archive/`ルールにより配布パッケージから除外される(notecodeの`archive/writer_only_deadcode_archive_20260602/`と同じ扱い)。将来復元する場合は`PDFreport/`をこのディレクトリから元の場所へ戻すだけでよい(コード自体は変更していないため)。
+- changed files:
+  - 移動: `PDFreport/**` → `archive/pdfreport_dead_pipeline_archive_20260709/PDFreport/**`
+  - 移動: `tests/test_pdf_security.py` → `archive/pdfreport_dead_pipeline_archive_20260709/tests/test_pdf_security.py`
+  - `WORKLOG.md`
+- changed files: `WORKLOG.md`のみ(コード変更なし、調査のみ)。
+
+---
+
+## 2026-07-09 (Claude) 評価カード誤読修正・エンジニア作業票source日本語化・既知脆弱性CVE詳細表示・FAQ debug内部語彙整理
+
+- 実施者: Claude（Sonnet 5, CLI agent）。ユーザー指示によりUI表示層のみを変更。分析アルゴリズム・スコア計算・DBスキーマ・検出ロジック（脆弱性照合含む）は無変更。
+- decision:
+  - `claude_ui_polish_pass_20260709_p0`
+- scope:
+  - **評価カードの「総合評価」ラベル誤読修正** (`_render_saved_run_evaluation`) →
+    - `priority_level`（高=対応優先度が高い=悪い状態）が「総合評価: 高」という見出しの下に出ると、非エンジニアには「評価が高い＝良い」と誤読されるリスクがあった。
+    - ラベルを「総合評価」→「対応優先度」に変更し、`_priority_urgency_caption()` を追加して高/中/低それぞれに「早めの対応をおすすめします。」等の一言を添えた。
+    - `summary_workspace.top_actions`（既存データ、新規計算なし）から最優先1件のタイトルを拾い、「まず1件: ◯◯（詳しくは下の「やること」）」の1行を追加し、評価カードから次の行動への導線を作った。
+  - **エンジニア作業票 source チップの日本語化**（`_engineer_source_display()` 新設） →
+    - `build_engineer_handoff_items()` が返す `source` は検出元のraw slug（`link_health_summary`, `site_health.security` 等の内部id）で、そのままチップ表示されていた。
+    - 固定マッピング `_ENGINEER_SOURCE_LABELS` を追加し、日本語ラベルを表示。未知のslugは `category`（既存の日本語カテゴリ）へフォールバック。raw slugは削除せず、表示テキストと異なる場合のみ tooltip（「検出元ID: ◯◯」）として保持。
+    - 本日先に実装された固定既知脆弱性DB照合機能（`fixed_vulnerability_intelligence_snapshot_enabled`）が生成する issue id `known_vulnerability_candidate` / `public_technology_risks` も明示的にマッピングに含め、新機能のsourceが「unmapped fallback」で埋もれないことを確認した。
+  - **既知脆弱性候補のCVE/CVSS詳細をエンジニア向けタブへ追加**（`_render_known_vulnerability_detail()` 新設） →
+    - 調査の結果、`core/site_health/vulnerability_intelligence.py` が算出する CVE ID / CVSS / KEV / references / 修正版情報は、`signals.fixed_vulnerability_intelligence.matches` として `technical_workspace.site_health_checks[key="security"].public_technology_risks.signals` まで正しく到達しているにもかかわらず、UI側では要約文（「既知脆弱性候補があります」）だけが表示され、CVE番号・CVSSスコア自体はどこにも表示されていなかった（表示漏れ、算出漏れではない）。
+    - エンジニア向けタブの「OGP / セキュリティ / 見やすさ・使いやすさ」詳細展開の中に、既存データを読むだけの折りたたみ「既知脆弱性候補の詳細（CVE） N件」を追加。component / version / CVE ID / 重要度 / KEV / CVSS / 修正版 / 検出URL / references / display_note を表示。**照合ロジック・DB参照・スコア計算は一切変更していない**。
+  - **FAQ debug折りたたみの内部語彙整理**（`_faq_topic_display()` 新設） →
+    - 「提案理由の見立てを見る」展開内の `topic: pricing` のような内部スラッグ表記をマッピング（`_FAQ_TOPIC_LABELS`）で「分類: 料金」等に変更。
+    - `score {float}` という内部信頼度の生数値表示（ペルソナ候補行）を削除し、ラベル＋signalsのみ表示に変更。
+    - **本日別セッションで先に実施された `presentation_layer_followup_fixes_completed`（FAQカード本体からの `source_label`/`evidence_terms`/`confidence` 削除）はそのまま尊重し、上書きしていない。** 本変更はさらに一段折りたたんだ debug 展開内部のみが対象。
+  - 併せて確認: 別セッションが本日実施した `presentation_layer_audience_segmentation_completed`（6軸レーダー折りたたみ、やることタブの生データ削除、色トークン統一）とは重複せず、独立した箇所を対象にしたことをコード上で確認済み。
+- changed files:
+  - `core/ui/saved_workspace.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile`（`.venv` 経由）: OK。
+  - `ast.parse`: OK。
+  - 純関数スモークテスト（`.venv` 経由、`PYTHONIOENCODING=utf-8`）: `_priority_urgency_caption('高'/'中'/'低')`、`_engineer_source_display()`（マッピング一致・フォールバック・空値）、`_faq_topic_display()`（マッピング一致・未知値パススルー）が期待通りの日本語文字列を返すことを確認。
+  - 実描画スモークテスト: `.venv` の nicegui で使い捨てページ（`ui.page`）を一時起動し、CVE番号を含む合成データ（component=jquery, cve_ids=(CVE-2020-11022, CVE-2020-11023), cvss_score=6.1 等）で `_render_known_vulnerability_detail()` と `_render_saved_run_evaluation()` を実際にHTTP経由でレンダリングし、返却HTMLに `CVE-2020-11022` / `CVSS 6.1` / `対応優先度` / urgency caption文言 / `まず1件` が含まれることを確認（HTTP 200）。テスト用一時ファイルは検証後に削除済み。
+  - サンプルデータ（実運用runのFAQ/リライト/脆弱性照合結果）が手元にないため、合成データによる構造検証にとどまる。実データでの見え方確認は未実施（要フォローアップ）。
+  - 実行中サービスへのブラウザ再検証は本セッションでは未実施（`techie-hub\start.bat` 経由の常駐プロセス起動・停止は行っていない）。次回起動時に `/runs/{run_id}` のエンジニア向けタブで「既知脆弱性候補の詳細（CVE）」展開、評価カードの「対応優先度」表示を目視確認することを推奨。
+
+---
+
+## 2026-07-08 (分析開始プログレスバー修正)
+### Dashboard progress loop initial socket wait fix
+
+- decision:
+  - `dashboard_progress_initial_socket_wait_fix`
+- scope:
+  - 分析開始時のプログレス表示が 0% のまま動かない可能性を修正。
+  - 初回ページ表示直後に `has_socket_connection == False` になる一時状態を、離脱ではなく接続待ちとして扱うよう変更。
+  - 実際のブラウザ離脱は既存の `on_disconnect` / stop event で停止するため、分析ロジック・スコア計算・DB スキーマは変更しない。
+  - 開始直後の見た目も 0% 固定に見えないよう、初期表示を `準備中 - 初期化` の 2% に変更。
+- changed files:
+  - `nicegui_app.py`
+  - `tests/test_dashboard_ui.py`
+  - `WORKLOG.md`
+- validation:
+  - `python -m py_compile aio2-main\nicegui_app.py aio2-main\tests\test_dashboard_ui.py` -> OK。
+  - system Python の `python -m pytest -q aio2-main\tests\test_dashboard_ui.py` は `html_sanitizer` 未導入で collection 不可。
+  - `aio2-main\.venv\Scripts\python.exe` は `pytest` 未導入、`.codex-ui-test-venv` は未配置。
+  - `.venv` で直接 helper smoke を実行し、接続待ち/更新/停止の判定と、初期表示が `(2%)` になることを確認。
+  - Browser retest: `http://127.0.0.1:8081/` を開き、`https://example.com` で分析開始後、進捗が `URL取得 - HTML取得/エンコード判定 (18%)` まで更新されることを確認。0% 固定は再現せず。
+  - 検証後、sandbox 内の一時起動では常駐プロセスが保持されないため、sandbox 外で `techie-hub\start.bat force --no-pause` を実行し、HUB / Kotomigaki を標準ランタイムに復元。`http://127.0.0.1:8090/` と `http://127.0.0.1:8081/` の HTTP 200 を確認。
+
+## 2026-07-08 (固定既知脆弱性DB照合)
+### URLチェック固定SQLiteスナップショット取り込み + hash_key照合
+
+- decision:
+  - `fixed_vulnerability_intelligence_snapshot_enabled`
+- scope:
+  - URLチェックの現時点ローカル脆弱性DBを固定スナップショットとしてコトミガキへ取り込み、通常分析中に公開HTML/JS URLから見える component / version だけを既知脆弱性候補として照合する。
+  - 外部CVE/OSV/GitHub/KEV APIの通常分析中取得、差分更新、定期同期、DB書き込み、広範クロール、攻撃手順/PoC/payload表示は実装しない。
+  - 照合は URLチェックと同じ `hash_key` 方式（`ecosystem / identifier_kind / canonical_component_key` の SHA-256）を使い、固定SQLite DBの index から候補だけを引く。25万件規模のDBを総当たりしない。
+  - UI/結果文言は「既知脆弱性候補」「保守担当者へ更新確認」を中心にし、該当0件を「安全」と断定しない。
+- changed files:
+  - `ALGORITHM.md`
+  - `config/vulnerability_intelligence.sqlite3`
+  - `AGENTS.md`
+  - `core/site_health/vulnerability_intelligence.py`
+  - `core/site_health/security_checker.py`
+  - `tests/test_fixed_vulnerability_intelligence.py`
+  - `WORKLOG.md`
+- validation:
+  - `python -m py_compile aio2-main\core\site_health\vulnerability_intelligence.py aio2-main\core\site_health\security_checker.py aio2-main\tests\test_fixed_vulnerability_intelligence.py aio2-main\tests\test_public_technology_risks.py` -> OK。
+  - `python -m pytest -q aio2-main\tests\test_fixed_vulnerability_intelligence.py aio2-main\tests\test_public_technology_risks.py` -> 15 passed。
+  - 固定DB実参照 smoke: `jquery 3.4.1` に対して `matched 5`、`record_count 259804`、`reference_date 2026-07-08` を確認。CVE-2020-11022 / CVE-2020-11023 を含む候補が version range match で返った。
+
+## 2026-07-08 (続報)
+### FAQ提案カード整理・重複箇条書き修正・構造化データ折りたたみ + 既存キャッシュのクリア
+
+- decision:
+  - `presentation_layer_followup_fixes_completed`
+- scope:
+  - ユーザーが実機スクリーンショットで報告した3件の「非エンジニアには分かりにくい」表示を修正。分析ロジック・検出ロジックは無変更。
+  - **FAQ提案カード** (`core/ui/saved_workspace.py`) →
+    - `source_label`（"issue ベース"等の内部分類ラベル）、`evidence_terms`（根拠語チップ）、`confidence`（信頼度）を非エンジニア向けカードから削除。いずれも検出アルゴリズムの内部判断根拠であり、コンテンツ担当者が使う情報ではないため。
+    - `risk_if_wrong`（注意文）は実質的な内容ガイドのため単独で保持。
+    - `schema_candidate`（"JSON-LD化を検討"等）は常に固定文言かつ開発者向けのため、設置先の表示から除外。
+    - セクション説明文からも「根拠語」の言及を削除（表示しなくなったため）。
+  - **「古いjQueryが読み込まれています」等の重複箇条書き** (`core/site_health/maintenance_risk.py`) →
+    - `_issue_titles()` が同一タイトルを重複除去せずに並べていたのが原因（1サイトでjQuery関連の検出が7件あり、同じ文言が7回分そのまま箇条書きになり得る状態だった）。
+    - タイトル文字列で重複除去する処理を追加。表示件数の上限（デフォルト4件）は重複除去後に適用されるよう変更。
+  - **「参考（後で見る）」内の構造化データブロック** (`core/ui/saved_workspace.py`) →
+    - 隣接する「公開条件の詳細を見る」と同じ折りたたみパターンに統一し、ラベルを「構造化データの詳細を見る（開発者向け）」に変更。既定で折りたたみ、対象読者を明示。
+  - **既存キャッシュのクリア** (`data/analysis_history.db`) →
+    - `_enrich_saved_snapshot_from_result()` は `setdefault` で `maintenance_risk` をスナップショットへ一度だけ書き込みキャッシュする設計のため、コード修正だけでは保存済みレポートの表示は変わらないと判明。
+    - DBを `data/analysis_history.db.bak_20260708` にバックアップした上で、`analysis_runs.snapshot_json` 内の `implementation_workspace.maintenance_risk` / `technical_workspace.maintenance_risk` を持つ全15件（run 9〜23）からその2キーのみ削除。次回表示時に `build_maintenance_risk_summary()` が再計算する。スコア系のキャッシュ値（`maintenance_risk_score_snapshot` 等）はロジック変更対象外のため触れていない。
+- changed files:
+  - `core/ui/saved_workspace.py`
+  - `core/site_health/maintenance_risk.py`
+  - `data/analysis_history.db`（15件のスナップショットJSONから2キーを削除。バックアップ: `data/analysis_history.db.bak_20260708`）
+- validation:
+  - `py_compile`: OK
+  - `build_maintenance_risk_summary()` を run 22 の `analysis_result.json` に対して直接実行し、フロントエンド資産カードの bullets が 7件（重複込み）→ 2件（重複除去後）になることを確認。
+  - Browser retest（`http://127.0.0.1:8081/runs/22`）:
+    - 「文章改善」タブ: FAQ提案カードから `issue ベース`/`根拠語`/`信頼度:` の文字列が消えたことを確認。「注意」「対象読者」「設置先」は保持。
+    - 「実装・設定」タブ: DBキャッシュクリア前は「古いjQueryが読み込まれています」が4回表示、クリア後は1回（「古い可能性のあるフロントエンド資産があります」と合わせて2件）に減ったことを確認。
+    - 「構造化データの詳細を見る（開発者向け）」の折りたたみボタンが既定で非展開であることを確認。
+  - サービス再起動: 検証のため一時的にポート8081を差し替え、検証後は `techie-hub\start_runtime.ps1` と同じ起動コマンド（venv python + `run_app.py` + `PORT`/`KOTOMIGAKI_STRICT_PORT` 環境変数）でプロセスを復元し、HTTP 200 を確認済み。
+
+## 2026-07-08
+### UI/表示改善（非エンジニア向け段階化、情報密度削減、色トークン統一）
+
+- decision:
+  - `presentation_layer_audience_segmentation_completed`
+- scope:
+  - 分析ロジック・スコア計算・DB スキーマは無変更。表示側（`core/ui/saved_workspace.py`）のみ修正。
+  - **P0a: 「やること」タブの生データ削除** →
+    - `_render_task_action_detail_lines()` で `_accessibility_engineer()` → `_accessibility_audience()` に変更。
+    - 非エンジニア向けタブでは「見直し箇所」「次に渡す相手」を表示。「対象要素」「確認方法」などの HTML タグはエンジニア向けタブのみに限定。
+  - **P0b: 評価サマリーの圧縮** →
+    - 6軸チャート・低い軸再掲・ページ役割確認を `ui.expansion("詳細診断を見る（軸別スコア・ページ役割）")` に移動。
+    - 既定状態では 4 指標＋結論 1 文のみ表示。
+    - html lang 等の見出し = 本文が一字一句同じ注意カード両方を表示していた重複を、見出しだけ表示するよう修正（`if detail_text.strip() != title_text.strip()` チェック追加）。
+  - **P0c: 色トークン統一** →
+    - 「総合評価」ラベル 6 箇所を `text-gray-500` → `card-hint`（`--text-muted: #6B5A4D`）に統一。
+    - 状態バッジ（改善余地・要対応等）の色は範囲外とし、新しいブランド色トークン定義待ちのため保持。
+- changed files:
+  - `core/ui/saved_workspace.py` (3 箇所の修正を 1 ファイルで）
+- validation:
+  - `py_compile`: OK
+  - `ast.parse`: OK
+  - Browser retest: desktop と 375×812（モバイル幅）で横スクロールなし、機能欠落なし確認済み。
+  - Smoke check:
+    - コトミガキ `/runs/22` で「やること」タブ開く → 「見直し箇所」「次に渡す相手」表示、生データ削除確認。
+    - エンジニア向けタブ開く → 「対象要素」「確認方法」「検出元」は保持、削除なし確認。
+    - 評価サマリー上部に「詳細診断を見る（軸別スコア・ページ役割）」ボタン表示、既定では非展開。
+
+## 2026-07-08
+### OpenAI JSON retry and async client cleanup narrow fix
+
+- scope:
+  - Narrow fix for UI/API execution findings from `https://example.com/`.
+  - Kept scoring, analysis rules, DB schema, and provider payload shape unchanged.
+  - Retried HTTP 200 LLM responses when the body is not a parseable JSON object, with a short JSON-only correction message on later attempts.
+  - Closed OpenAI clients explicitly after UI analysis and one-shot PDF score-reason LLM calls to avoid delayed `httpx.AsyncClient.aclose()` cleanup after the event loop closes.
+- changed files:
+  - `core/engine/orchestrator.py`
+  - `core/application/analysis_run_service.py`
+  - `nicegui_app.py`
+  - `PDFreport/llm_client.py`
+  - `PDFreport/score_reasoning.py`
+  - `tests/test_orchestrator_security.py`
+  - `WORKLOG.md`
+- validation:
+  - `py_compile` passed for the changed Python files.
+  - Direct retry harness passed: invalid HTTP 200 JSON output retried once, second attempt received the short JSON-only correction, and final failure reports `HTTP 200`, invalid model JSON, and the actual attempt count.
+  - Browser UI retest used headless Chrome against `http://127.0.0.1:8081/`, entered `https://example.com/`, clicked `分析する`, and reached `/runs/21`.
+  - Browser console/page errors/request failures: none.
+  - DB evidence: `analysis_runs.id=21`, URL `https://example.com/`, analyzed_at `2026-07-08 02:48:25` UTC, SEO `38`, AIO `35`, legal `100`, total issues `1`, result path `data/poc_outputs/runs/21/analysis_result.json`.
+  - App log after `2026-07-08T11:43:17` shows OpenAI model/chat HTTP 200 and `保存完了: run_id=21`; no `AsyncClient.aclose`, `Event loop is closed`, `Citation phrase extraction failed`, or `Citation content plan failed` entries in that run.
+  - `.venv` still has no `pytest`, so pytest collection was not run.
+
+## 2026-07-08
+### UI smoke check
+
+- scope:
+  - TECHIE cross-service UI check for `http://127.0.0.1:8081/`.
+  - Browser verified `コトミガキ | TECHIE`, URL input, comparison URL/condition expanders, `分析する`, `保存済み履歴を見る`, history table, and `履歴CSV`.
+  - Entered `https://example.com/` into the URL field and confirmed `分析する` remained enabled.
+  - After API execution approval, clicked `分析する` for `https://example.com/`.
+- result:
+  - HTTP 200 and page rendered.
+  - Live analysis started from UI, disabled `分析する` during execution, and saved run `17`.
+  - OpenAI model check and chat completion calls returned HTTP 200.
+  - DB evidence: `analysis_runs.id=17`, URL `https://example.com/`, analyzed_at `2026-07-08 01:22:42` UTC, SEO `38`, AIO `35`, legal `100`, total issues `1`, result path `data/poc_outputs/runs/17/analysis_result.json`.
+  - Not clean green: app log recorded `Citation phrase extraction failed` warning, then post-save async cleanup errors `AsyncClient.aclose() ... RuntimeError('Event loop is closed')` after `保存完了: run_id=17`.
+  - Console observation: one browser resource access warning/error (`net::ERR_NETWORK_ACCESS_DENIED`) only; no app JS exception observed.
+  - Product code changed: false.
+
+## 2026-07-08
+### Kotomigaki press release draft and visual assets
+
+- scope:
+  - Created a press release draft for Kotomigaki launch messaging under `marketing/press_release_2026/`.
+  - Tightened the headline/lead so the service category, price, diagnostic scope, and output are visible immediately.
+  - Kept the copy to the requested wording rules: ChatGPT only among AI service names, no legal-check positioning, and `サイトの弱点(セキュリティの穴)` instead of vulnerability wording.
+  - Created a deterministic press-release radar UI image with Japanese labels and copied a generated key visual into the same asset folder.
+  - Did not change app runtime, scoring, analysis logic, pricing logic, or service docs.
+- changed files:
+  - `marketing/press_release_2026/press_release_kotomigaki_draft.md`
+  - `marketing/press_release_2026/ASSET_NOTES.md`
+  - `marketing/press_release_2026/build_press_release_assets.py`
+  - `marketing/press_release_2026/kotomigaki_radar_ui.png`
+  - `marketing/press_release_2026/kotomigaki_key_visual.png`
+  - `WORKLOG.md`
+- validation:
+  - Generated `kotomigaki_radar_ui.png` with `.venv\Scripts\python.exe marketing\press_release_2026\build_press_release_assets.py`.
+  - Visually checked the radar UI image and key visual for text clipping, readable Japanese labels, and absence of unwanted generated text.
+  - No code tests run because this was a marketing/docs/assets-only slice.
+
+## 2026-07-06
+### Cross-Suite UI Clarity Pass — Kotomigaki Contribution
+
+- scope:
+  - ユーザー評価「コトミガキが特に分かりにくい」「専門的だから仕方ないわけではない」を受けた表示専用の改修。スコアリング・分析ロジック（`core/aio_analyzer.py` 等）には一切触れていない。全体の背景は `C:\tetie\WORKLOG.md` の「Cross-Suite UI Clarity Pass」を参照。
+  - `kotomegane\docs\cross_product\UI_UNIFICATION_PLAN_2026-03-31.md` の積み残しタスクを実施: `core/ui/styles.py` の `:root` に `--self`/`--self-soft`/`--competitive`/`--competitive-soft`/`--external`/`--external-soft`（kotomeganeと同値）と `.card-primary`/`.card-secondary`/`.card-detail`/`.text-self`/`.text-competitive`/`.text-external` を追加。既存の15カードクラスのうち補助/詳細相当の6クラス（`action-preview-card`, `evaluation-summary-card`, `detail-tabs-card`, `implementation-note-card`, `diagnostic-note-card`, `reference-note-card`）の `box-shadow`/`border` 値をtierの重みに合わせて調整。主役相当のクラス（`dashboard-analyze-card` 等）は元々 `.card` ベースの強い影を継承済みのため変更なし。
+  - `comparison_tab.py` の「自社vs競合」優劣表示（著者情報・運営組織）を `text-green-600`/`text-gray-500` の直書きから `.text-self` トークン参照へ置換。難易度表示（緑/黄/赤）は重大度軸のため対象外。
+  - 詳細結果タブ6つ（`core/ui/tabs/aio_tab.py`, `seo_tab.py`, `health_tab.py`, `comparison_tab.py`, `simulation_tab.py`; `industry_tab.py` は確認のみで変更なし）を「平易な結論を先頭に表示し、生スコア・計算式・専門用語は `ui.expansion(...)` へ格納」する構成へ再編。`aio_tab.py` の「AIOスコア計算式」（生スコア×調整係数=最終スコア）は象徴的な悪例だったため最優先で対応。
+  - `saved_workspace.py` の保存済み分析タブ名を `評価/改善/リライト/設定/技術/比較` から、各タブが内部で既に使っていた見出し文言 `サマリー/やること/文章改善/実装・設定/エンジニア向け/履歴と比較` に統一（`show_header=False` でこれまで隠れていた文言をタブラベルへ採用）。
+  - `saved_workspace.py` と `health_tab.py` の保守メトリクス表示（`personal fields`, `file upload`, `sensitive`, `external action`, `checked endpoints`, `problem endpoints`）を日本語ラベルへ変更。
+  - `nicegui_app.py` のダッシュボード入力面: 「検索/AI」バランススライダーに両端の意味とデフォルト値の説明、業界/作成サービス/種別が任意設定であることの説明、「比較サイト」欄の目的説明、Markdown/Word レポート出力の使い分け説明を追加。
+  - `doorknock\doorknock_pdf.py` の営業PDFで同じ指標が「LLMO」と表記されていた不整合を「AIO」に統一（UI側の呼称に合わせた）。
+- changed files:
+  - `core/ui/styles.py`
+  - `core/ui/tabs/aio_tab.py`
+  - `core/ui/tabs/seo_tab.py`
+  - `core/ui/tabs/health_tab.py`
+  - `core/ui/tabs/comparison_tab.py`
+  - `core/ui/tabs/simulation_tab.py`
+  - `core/ui/saved_workspace.py`
+  - `nicegui_app.py`
+  - `../doorknock/doorknock_pdf.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -c "import ast; ast.parse(open(<file>, encoding='utf-8').read())"` を全編集ファイルに実行 -> OK。
+  - `aio_tab.py`/`seo_tab.py`/`health_tab.py`/`comparison_tab.py`/`simulation_tab.py` を、合成モックデータで直接描画する一時ハーネス（セッション内でのみ作成し使用後に削除、リポジトリには残していない）で `preview_start` から起動し、結論が先頭に出ること・折りたたみが正しく開閉すること・元の情報が欠落していないことをスナップショット/DOM抽出で確認。
+  - `PORT=8081` で `nicegui_app.py` を起動し、スライダー・業界選択・比較サイト欄の新規文言がDOMに反映されていることと、サーバー/コンソールエラーがないことを確認。
+  - `doorknock_pdf.py` は `ast.parse` のみ（実際のPDF生成は未実行）。
+- result:
+  - decision: `kotomigaki_ui_clarity_pass_complete`
+  - スコアリング/分析ロジック変更: なし
+  - API送信回数: `0`（合成データ・静的検証のみ）
+- guardrails:
+  - 分析エンジン・レポート生成ロジックは未変更。
+  - Python側の `.classes()` 呼び出しのクラス名は変更していない（Task 3のカード調整はCSS値のみ）。
+  - AGENTS.md 更新なし（source of truth / 恒久ルール変更なし）。
+
+### Existing Azure replacement DOCX/export persistence decision note
+
+- scope:
+  - Recorded that saved-run Word export is a current export path, owned by `core/application/docx_report_service.py`.
+  - Clarified the delivery context: this is not a first Azure migration; the system already exists on Azure and the request is an improved-version replacement.
+  - Locked the added feature scope to Kotomigaki report save/download only.
+  - Clarified that the replacement should not treat local `data/poc_outputs/exports` as durable storage for generated CSV/Markdown/DOCX files.
+  - Documented the Azure target expectation: save generated reports to durable storage such as Azure Storage using the existing tenant-id separation, and return downloads through an authenticated endpoint or short-lived SAS URL.
+  - Kept this as documentation only; no runtime behavior, DOCX content generation, UI labels, or dependency files were changed.
+- changed files:
+  - `AGENTS.md`
+  - `ALGORITHM.md`
+  - `WORKLOG.md`
+- validation:
+  - Documentation-only update; no code tests run.
+  - Confirmed current implementation references before recording: `nicegui_app.py` uses `ui.download()` for Word export, `core/application/docx_report_service.py` writes `.docx` via `EXPORTS_DIR`, and `requirements.txt` includes `python-docx==1.2.0`.
+
+---
+
+## 2026-06-28
+### Dashboard analysis progress visibility narrow fix
+
+- scope:
+  - Kept the existing dashboard spinner, but added a visible compact progress band directly under the analyze controls.
+  - Progress now shows current stage, detail, percent, elapsed time, and the 1-3 minute estimate while analysis is running.
+  - Explicitly updates the NiceGUI progress label/bar from the dashboard async refresh loop and immediately after analysis starts, so users do not only see the spinner.
+  - Kept the change inside `nicegui_app.py`; no result workspace, engine scoring, or saved history behavior was changed.
+- changed files:
+  - `nicegui_app.py`
+  - `tests/test_dashboard_ui.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py tests\test_dashboard_ui.py`
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_dashboard_ui.py` could not run because `pytest` is not installed in the local `.venv`.
+  - System `pytest -q tests\test_dashboard_ui.py` could not collect because system Python does not have `html_sanitizer`.
+  - Direct `.venv` helper check passed for progress text stage/detail/percent/elapsed/estimate formatting.
+  - `PORT=8081 HEADLESS=1 .venv\Scripts\python.exe nicegui_app.py` reached `NiceGUI ready to go on http://127.0.0.1:8081`; the foreground check was stopped by the tool timeout. Background `Start-Process` persistence was not completed because PowerShell raised a duplicate `Path`/`PATH` environment key error.
+
+---
+
+## 2026-06-24
+### Site health endpoint health checks slice
+
+- scope:
+  - Added `core/site_health/endpoint_health_checker.py` as the owner for passive public endpoint health checks, keeping `security_checker.py` as the aggregator.
+  - Added robots fake-200 checks for `/robots.txt` returning HTML or text without basic robots directives.
+  - Added sitemap fake-200 checks for `/sitemap.xml`, `/wp-sitemap.xml`, and `/sitemap_index.xml` returning HTML instead of XML, without duplicating sitemap freshness/coverage ownership in `sitemap_analyzer.py`.
+  - Added unused WordPress endpoint fake-200 checks for non-WordPress-looking sites where `/wp-sitemap.xml` or `/wp-json/` returns top-page-like HTML.
+  - Added exactly one generated missing-URL request for soft 404 suspicion, using lightweight title/body/final-URL heuristics and no URL discovery.
+  - Added PHP/PleskLin header exposure checks for `X-Powered-By` / `Server`, treating PHP 5.x and 7.0-7.4 as EOL-series confirmation candidates without CVE assertions.
+  - Strengthened public HTML form signals with sensitive terms, external action detection, and a combined "public protection hints not visible" issue while avoiding server-side vulnerability assertions.
+  - Registered endpoint issue ids in `maintenance_risk.py` so they affect the existing maintenance score/cards and flow through `public_technology_risks -> site_health_checks -> engineer_tasks`.
+  - Added endpoint engineer task wording with confirmation URL, HTTP status, Content-Type, excerpt, commands, and pass conditions.
+  - Added `plan/endpoint_health_checks_2026-06-24/README.md` documenting the slice owner, non-invasive boundary, and output contract.
+  - Follow-up fix from user validation: versionless jQuery core assets such as `/js/jquery.js` are now checked by reading up to 256KB of the already referenced public JS file and parsing `jQuery vX.Y.Z`; this detected `https://healthrent.duskin.jp/js/jquery.js` as jQuery 1.7.1 and routes it to `jquery_before_3_5`.
+  - Follow-up wording polish: non-engineer-facing endpoint card title changed from `公開endpoint健全性` to `公開設定の応答確認`, `プライバシー侵害` risk wording softened to `不要なブラウザ機能利用の懸念`, and old frontend assets no longer make the `WordPress保守確認` card warn unless WordPress-specific public signs are present.
+- changed files:
+  - `ALGORITHM.md`
+  - `plan/endpoint_health_checks_2026-06-24/README.md`
+  - `core/site_health/endpoint_health_checker.py`
+  - `core/site_health/security_checker.py`
+  - `core/site_health/maintenance_risk.py`
+  - `core/application/technical_summary_builder.py`
+  - `core/application/markdown_report_service.py`
+  - `core/ui/saved_workspace.py`
+  - `core/ui/tabs/health_tab.py`
+  - `tests/test_endpoint_health_checker.py`
+  - `tests/test_public_technology_risks.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\security_checker.py core\site_health\endpoint_health_checker.py core\site_health\maintenance_risk.py core\application\technical_summary_builder.py core\ui\saved_workspace.py core\ui\reports\executive_summary.py core\ui\tabs\health_tab.py core\application\markdown_report_service.py`
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_endpoint_health_checker.py tests\test_public_technology_risks.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py` could not run because `pytest` is not installed in the local `.venv`.
+  - Manual direct calls for 24 target test functions passed, covering endpoint fake-200, soft 404, PHP/PleskLin header exposure, form risk signals, internal HTTP links, versionless jQuery asset header detection, endpoint engineer tasks, public technology risk regressions, engineer handoff, and Markdown report output.
+  - Live follow-up verification for `https://healthrent.duskin.jp/` confirmed `jquery_before_3_5` for `https://healthrent.duskin.jp/js/jquery.js` with `jQuery v1.7.1`; security score became 44 and maintenance score became 70.
+  - Follow-up wording search found no remaining non-engineer-facing strings such as `侵害されています`, `攻撃されています`, `感染`, or `悪用されています` in the site-health/application/UI paths.
+
+### Site health maintenance/update management UI and radar integration
+
+- scope:
+  - Added `core/site_health/maintenance_risk.py` as the classification owner for public maintenance issues, maintenance risk score, and non-engineer-facing cards.
+  - Added `update_signal_mismatch` by combining visible update-date freshness with sitemap `lastmod`, while keeping `sitemap_unavailable_or_invalid` as the priority issue when sitemap retrieval/parsing fails.
+  - Expanded frontend asset inventory beyond jQuery to URL-visible `jquery-ui / bootstrap / swiper / slick / modernizr` candidates while keeping jQuery < 3.5.0 as the high-confidence high-severity rule.
+  - Added maintenance/update cards to saved-run Settings and live health display: update consistency, WordPress maintenance, forms, old frontend assets, browser defense headers, and sitemap/robots consistency.
+  - Added maintenance risk score to the existing radar through the `保守・技術基盤` axis; no separate radar chart was added.
+  - Extended engineer tasks with confirmation commands and pass conditions, preserving the existing `public_technology_risks -> site_health_checks -> engineer_tasks` flow.
+  - Added Markdown `保守・更新管理` section with the same non-engineer summary cards and kept engineer confirmation items in the technical section.
+- changed files:
+  - `ALGORITHM.md`
+  - `core/site_health/security_checker.py`
+  - `core/site_health/maintenance_risk.py`
+  - `core/application/technical_summary_builder.py`
+  - `core/application/analysis_run_service.py`
+  - `core/engineer_handoff_builder.py`
+  - `core/ui/saved_workspace.py`
+  - `core/ui/reports/executive_summary.py`
+  - `core/ui/tabs/health_tab.py`
+  - `core/application/markdown_report_service.py`
+  - `tests/test_public_technology_risks.py`
+  - `tests/test_engineer_handoff_builder.py`
+  - `tests/test_markdown_report_service.py`
+  - `tests/test_executive_summary.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\security_checker.py core\site_health\maintenance_risk.py core\application\technical_summary_builder.py core\application\analysis_run_service.py core\engineer_handoff_builder.py core\ui\saved_workspace.py core\ui\reports\executive_summary.py core\ui\tabs\health_tab.py core\application\markdown_report_service.py tests\test_public_technology_risks.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py tests\test_executive_summary.py`
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_public_technology_risks.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py tests\test_executive_summary.py` could not run because `pytest` is not installed in the local `.venv`.
+  - Manual direct calls for the target test functions passed, including update mismatch, frontend asset inventory, engineer handoff, Markdown maintenance section, and radar axis tests.
+  - Live public-data verification for `https://www.kyotokogyo.co.jp/` confirmed WordPress 6.1 generator exposure, jQuery 2.2.4, external CDN without SRI, UA tag, public REST users including `admin`, sitemap `lastmod` 2022-03-01, visible date 2025-11-01, `update_signal_mismatch`, maintenance cards, engineer command fields, and `保守・技術基盤` score reduction.
+
+### Site health public maintenance risk expansion
+
+- scope:
+  - Expanded `core/site_health/security_checker.py` public technology risks with non-invasive checks for form risk signals, same-domain HTTP navigation left inside HTTPS pages, and unavailable/invalid `/sitemap.xml`.
+  - Added visible update-date freshness as a separate public signal: recent visible dates are kept as evidence only, while dates older than 365 days become a maintenance confirmation candidate.
+  - Form checks are limited to public HTML evidence: HTTP form actions, password fields on non-HTTPS pages, file upload forms without visible bot-protection hints, personal-information forms without visible privacy-consent hints, and POST forms without visible CSRF/nonce hints.
+  - EC transaction/product-data auditing was intentionally not added in this slice to avoid false positives on non-EC URLs.
+  - Added engineer verification wording for the new issue ids so saved UI, Markdown report, and handoff output can show concrete confirmation steps through the existing `site_health_checks` flow.
+- changed files:
+  - `ALGORITHM.md`
+  - `core/site_health/security_checker.py`
+  - `core/application/technical_summary_builder.py`
+  - `tests/test_public_technology_risks.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\security_checker.py core\application\technical_summary_builder.py tests\test_public_technology_risks.py`
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_public_technology_risks.py` could not run because `pytest` is not installed in the local `.venv`.
+  - Manual direct calls for the public technology risk tests passed, including the new form/internal-HTTP/sitemap cases and the search-form false-positive guard.
+
+---
+
+## 2026-06-23
+### URL check and accessibility reuse review
+
+- scope:
+  - Reviewed `C:\Users\横山裕明\OneDrive - 京都工業株式会社\デスクトップ\URLチェック` and identified low-risk reusable checks from its public HTML/static parser.
+  - Reviewed `C:\Users\横山裕明\OneDrive - 京都工業株式会社\デスクトップ\アクセシビリティ`; confirmed the Playwright / axe-core scanner family is already bundled under `tools/accessibility_scanner/`, so no duplicate migration was added in this slice.
+  - Added public HTML checks for known suspicious external asset domains such as `polyfill.io`, `staticfile.org`, `bootcdn.net`, and related traces, plus `target="_blank"` links missing `rel="noopener"`.
+  - Added UI/engineer handoff verification wording for the new public technology risk issue ids.
+- changed files:
+  - `ALGORITHM.md`
+  - `core/site_health/security_checker.py`
+  - `core/application/technical_summary_builder.py`
+  - `tests/test_public_technology_risks.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\security_checker.py core\application\technical_summary_builder.py tests\test_public_technology_risks.py`
+  - `.venv\Scripts\python.exe -m pytest -q tests\test_public_technology_risks.py` could not run because `pytest` is not installed in the local `.venv`.
+  - Manual direct calls for `test_public_technology_risks_detects_wordpress_surface()`, `test_public_technology_risks_reuses_url_checker_static_asset_signals()`, `test_public_technology_risks_avoids_rest_probe_without_wordpress_hint()`, and `test_sitemap_analyzer_keeps_static_generator_hint()` passed.
+  - Manual `build_site_health_checks()` verification confirmed the new issue ids appear in `engineer_tasks` with dedicated verification text.
+  - Manual `build_detailed_markdown_report()` verification confirmed the new issue ids and evidence URLs appear in the report output.
+
+---
+
+## 2026-06-23
+### Public technology risk surfacing in UI and reports
+
+- scope:
+  - Promoted `site_health.security.raw.public_technology_risks` into saved-run `site_health_checks` with concrete issue titles, public-risk count, and engineer-facing task rows.
+  - Added public technology risk rows to the engineer handoff builder so saved UI and Markdown reports show target, work, verification, and detection source for items such as old jQuery, public WordPress REST users, CDN assets without SRI, stale/static sitemap, and Universal Analytics leftovers.
+  - Expanded saved workspace site-health detail rendering so security checks can show engineer verification steps directly in the technical tab.
+  - Expanded detailed Markdown report site-health output with issue bullets and engineer verification notes.
+- changed files:
+  - `core/application/technical_summary_builder.py`
+  - `core/engineer_handoff_builder.py`
+  - `core/application/markdown_report_service.py`
+  - `core/ui/saved_workspace.py`
+  - `tests/test_engineer_handoff_builder.py`
+  - `tests/test_markdown_report_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\application\technical_summary_builder.py core\engineer_handoff_builder.py core\application\markdown_report_service.py core\ui\saved_workspace.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py`
+  - Manual direct calls for `test_handoff_includes_public_security_tasks()` and `test_build_detailed_markdown_report_includes_actionable_sections()` passed.
+  - Live public-data verification for `https://www.kyotokogyo.co.jp/` confirmed saved-run-equivalent `site_health_checks.security.detail` contains `公開技術リスク 6件`, `engineer_tasks` contains 6 concrete rows, engineer handoff includes public-risk rows, and generated Markdown contains old jQuery / WordPress REST API / Universal Analytics entries plus verification steps.
+  - `pytest` remains unavailable in the local `.venv` and system Python, so full pytest execution was not run.
+
+---
+
+## 2026-06-23
+### Public technology risk detection for site health
+
+- scope:
+  - Added a lightweight public-technology risk check to Kotomigaki site health so public HTML/headers/sitemap data can catch issues such as exposed WordPress generator versions, old jQuery, external CDN assets without SRI, Universal Analytics leftovers, old IE polyfills, public WordPress REST users, and stale/static sitemap hints.
+  - Kept the check non-invasive: no `.git`, backup-file, admin brute force, vulnerability scan, or directory probing. The only additional public endpoint check is `/wp-json/wp/v2/users` when WordPress hints are already present.
+  - Passed existing `sitemap_info` into site health so stale `lastmod` and static generator hints can be surfaced inside the security result.
+  - Added sitemap generator hint extraction for static sitemap comments such as `xml-sitemaps.com`.
+- changed files:
+  - `ALGORITHM.md`
+  - `core/site_health/security_checker.py`
+  - `core/engine/site_health_engine.py`
+  - `core/engine/orchestrator.py`
+  - `core/sitemap_analyzer.py`
+  - `tests/test_public_technology_risks.py`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\security_checker.py core\engine\site_health_engine.py core\engine\orchestrator.py core\sitemap_analyzer.py tests\test_public_technology_risks.py`
+  - Manual test script with mocked WordPress REST users confirmed all intended issue ids are emitted and clean non-WordPress HTML does not trigger a REST probe.
+  - Live public-data verification for `https://www.kyotokogyo.co.jp/` through `run_full_site_health_check` confirmed `site_health.security.raw.public_technology_risks.issue_count == 6`, including WordPress generator, jQuery 2.2.4, external CDN without SRI, Universal Analytics, public REST users, and stale/static sitemap.
+  - `pytest` was not available in the local `.venv` or system Python, so pytest execution was not run.
+
+---
+
+## 2026-06-21
+### NotebookLM source pack for Kotomigaki algorithm explanation
+
+- scope:
+  - Rebuilt `Notebook/` as a flat NotebookLM source pack for explaining Kotomigaki as an SEO/AIO software product and preparing a talk script.
+  - Moved the previous Notebook contents to `Notebook_previous_20260621_001938/`.
+  - Copied 243 source files plus 2 guide/manifest files into `Notebook/`; unsupported source/code extensions such as `.py`, `.html`, `.css`, `.toml`, `.json`, `.mjs`, and `.env.example` were copied with `.md` filenames.
+  - Excluded binary assets, fonts, screenshots, sample PDFs, runtime outputs, virtual environments, and Notebook backups.
+- changed files:
+  - `Notebook/`
+  - `WORKLOG.md`
+- validation:
+  - Verified `Notebook/` has 245 files, 0 subdirectories, 0 unsupported extensions, 0 `.py` files, and remains under the 300-file cap.
+  - Verified representative algorithm sources are present: orchestrator, AIO analyzer, scoring engine, citation generator, knowledge graph, Wikidata client, SEO, site health, legal checks, report/export, and tests.
+
+---
+
+## 2026-06-18
+### Google max-snippet character display removal
+
+- scope:
+  - Saved-run Google control cards no longer display the `max-snippet` character-limit row such as `3000文字まで`.
+  - `max_snippet` remains in analysis data; only the UI/actionable display row was removed.
+- changed files:
+  - `core/ui/saved_workspace.py`
+  - `tests/test_characterization_ui.py`
+  - `WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\ui\saved_workspace.py tests\test_characterization_ui.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py -q` -> 20 passed, 1 warning
+
+---
+
+## 2026-06-17
+### Affiliate disclosure wording clarification
+
+- scope:
+  - Stealth marketing check wording now explains that affiliate presence alone is not the score-drop reason; missing or unclear PR/ad disclosure is the actionable risk.
+  - Non-affiliate results now show `PR表記が必要なアフィリエイト要素: 未検出` with a short explanation of detected article-pattern signals and score impact.
+  - Health-tab status cards now display the stealth-marketing summary text above item details.
+  - Saved run loading now refreshes the stealth-marketing formatted display payload from saved raw data, so old `analysis_result.json` files can be compared with current wording without mutating the raw source.
+- changed files:
+  - `core/application/analysis_run_service.py`
+  - `core/legal_checks/stealth_marketing.py`
+  - `core/ui/tabs/health_tab.py`
+  - `tests/test_analysis_run_service.py`
+  - `tests/test_stealth_marketing_formatting.py`
+  - `WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\legal_checks\stealth_marketing.py core\ui\tabs\health_tab.py tests\test_analysis_run_service.py tests\test_stealth_marketing_formatting.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py tests\test_stealth_marketing_formatting.py tests\test_executive_summary.py tests\test_markdown_report_service.py tests\test_docx_report_service.py -q` -> 47 passed, 1 warning
+  - Run 2 raw stealth-marketing result formatted with the new copy now states that known affiliate links/URLs are undetected and score-drop/actionable risk applies when ad/PR elements lack disclosure.
+  - Same-source run 2 Markdown comparison between `detailed-report-run-2-20260617-160542.md` and `detailed-report-run-2-20260617-170111.md` differs only by output timestamp; DOCX readback keeps 234 paragraphs, 2 tables, and 24 table rows.
+
+### Legal pass item filtering for saved reports
+
+- scope:
+  - Legal summary pass items such as `アフィリエイトコンテンツ: 検出されず` are no longer promoted into priority actions or score-drop drivers.
+  - Affiliate content itself is not treated as a score-drop reason; missing or unclear PR/ad disclosure remains the actionable legal risk.
+  - Bumped saved snapshot schema version so existing run details are rebuilt without stale pass-item actions.
+- changed files:
+  - `core/application/analysis_run_service.py`
+  - `core/ui/reports/executive_summary.py`
+  - `tests/test_analysis_run_service.py`
+  - `tests/test_executive_summary.py`
+  - `WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\ui\reports\executive_summary.py tests\test_analysis_run_service.py tests\test_executive_summary.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py tests\test_executive_summary.py tests\test_markdown_report_service.py tests\test_docx_report_service.py -q` -> 44 passed, 1 warning
+  - Regenerated run 2 reports: `data/poc_outputs/exports/detailed-report-run-2-20260617-160542.md` and `.docx`; readback confirms `アフィリエイトコンテンツ: 検出されず` and `unknownに関する確認候補` are absent from priority actions and score-drop sections.
+
+### Accessibility action detail retention for saved reports
+
+- scope:
+  - Saved-run accessibility improvement details now keep enough generated rows for `interactive_names`, so the UI and regenerated Markdown/DOCX can show target element, work, verification, and detection source for icon/link button name issues.
+  - Bumped saved snapshot schema version so existing run details are rebuilt with the expanded accessibility detail payload.
+- changed files:
+  - `core/application/analysis_run_service.py`
+  - `tests/test_analysis_run_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py tests\test_analysis_run_service.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py tests\test_docx_report_service.py -q` -> 39 passed, 1 warning
+  - Browser verification on `/runs/2`: improvement card for `リンクやアイコンボタンに操作名を付ける` now shows `制作・開発向け詳細`, `<button class="header_btn">`, work, verification, and detection source.
+  - Regenerated run 2 reports: `data/poc_outputs/exports/detailed-report-run-2-20260617-155006.md` and `.docx`; readback confirms no raw `SEO technical_score` / `AIO pid` strings and DOCX handoff table includes the button accessible-name row.
+
+### Report UX specificity and engineer handoff prioritization
+
+- scope:
+  - Saved-run improvement cards now surface accessibility engineer details inline: target element, work item, verification, and detection source.
+  - Engineer handoff rows now prioritize concrete accessibility work before applying the display/export limit, avoiding loss behind legacy/link/schema rows.
+  - Internal-link and schema handoff checks now include concrete verification steps such as `curl -I`, link-source confirmation, and schema validator acceptance.
+  - Markdown score drivers now use Japanese labels and normalized score text instead of raw internal keys such as `technical_score` / `pid`.
+- changed files:
+  - `core/engineer_handoff_builder.py`
+  - `core/ui/saved_workspace.py`
+  - `core/application/analysis_run_service.py`
+  - `core/application/markdown_report_service.py`
+  - `tests/test_engineer_handoff_builder.py`
+  - `tests/test_markdown_report_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\engineer_handoff_builder.py core\ui\saved_workspace.py core\application\analysis_run_service.py core\application\markdown_report_service.py tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py tests\test_analysis_run_service.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_engineer_handoff_builder.py tests\test_markdown_report_service.py tests\test_analysis_run_service.py tests\test_docx_report_service.py -q` -> 38 passed, 1 warning
+  - Saved-run data check for runs 1/2/3: engineer handoff starts with concrete accessibility rows; raw `SEO technical_score` / `AIO pid` strings are absent from generated Markdown
+  - Browser verification on `/runs/2`: improvement cards show `制作・開発向け詳細`, target elements, work items, and verification; engineer tab starts with concrete accessibility handoff rows
+  - DOCX readback for run 2: engineer handoff table contains accessibility rows, concrete targets, work, and verification; raw score keys are absent
+
+### DOCX export dependency profile fix
+
+- scope:
+  - Windows PoC dependency profile also installs `python-docx==1.2.0`, matching the canonical runtime dependency used by Word report export.
+  - Saved-run Word export now logs DOCX generation exceptions and shows a short Japanese UI notification instead of failing silently in the menu action.
+- changed files:
+  - `requirements-windows.txt`
+  - `nicegui_app.py`
+  - `tests/test_dependency_profiles.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py core\application\docx_report_service.py tests\test_docx_report_service.py tests\test_dependency_profiles.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_docx_report_service.py tests\test_dependency_profiles.py -q` -> 2 passed, 1 warning
+  - `.codex-ui-test-venv\Scripts\python.exe -m pip check` -> no broken requirements
+  - Browser verification on `/runs/3`: `レポート出力` button and `Word（.docx）` menu are present; clicking generated `data/poc_outputs/exports/detailed-report-run-3-20260617-135814.docx`
+  - `python-docx` readback of generated DOCX -> 246 paragraphs, 244 non-empty paragraphs, 2 tables
+
+### Dependency audit hardening
+
+- scope:
+  - Updated vulnerable pins reported by `pip-audit`: `fastapi`, `starlette`, and `python-multipart`.
+  - Left `diskcache==5.6.3` as a documented temporary risk acceptance because no fixed release is published.
+- changed files:
+  - `requirements.txt`
+  - `../SECURITY_RISK_ACCEPTANCE.md`
+  - `../WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests/test_safe_fetch_security.py tests/test_orchestrator_security.py -q` -> 12 passed
+  - `.codex-ui-test-venv\Scripts\python.exe -m pip check` -> no broken requirements
+  - `python -m pip_audit -r aio2-main/requirements.txt` with `PYTHONUTF8=1` -> only accepted `diskcache==5.6.3 / CVE-2025-69872`
+  - `python -m pip_audit -r aio2-main/requirements.txt --ignore-vuln CVE-2025-69872` with `PYTHONUTF8=1` -> no known vulnerabilities, 1 ignored
+  - `npm audit` in `tools/accessibility_scanner` -> 0 vulnerabilities
+
+## 2026-06-16
+### Report export button with Markdown and Word
+
+- scope:
+  - 保存済み詳細ページの `詳細Markdown` を、見落としにくい `レポート出力` ボタンへ変更
+  - 出力形式を `Markdown` と `Word（docx）` の2種に整理
+  - レポート本文は既存MarkdownをSSOTとして維持し、Wordは同内容をdocx化
+- changed files:
+  - `nicegui_app.py`
+  - `core/application/docx_report_service.py`
+  - `core/application/__init__.py`
+  - `requirements.txt`
+  - `tests/test_docx_report_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\application\docx_report_service.py core\application\markdown_report_service.py nicegui_app.py tests\test_docx_report_service.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_markdown_report_service.py tests\test_docx_report_service.py -q` -> 3 passed, 1 warning
+  - `.codex-ui-test-venv\Scripts\python.exe -c "... export_detailed_docx_report(load_saved_run_bundle(1/2)) ..."` -> run 1/2 の `.docx` を生成確認
+  - Browser確認: `/runs/1` 右上に `レポート出力` 主ボタン、メニュー内に `Markdown（.md）` / `Word（.docx）` を確認
+  - `render_docx.py` によるPNGレンダリングは `soffice` 不在で未実施
+
+### Engineer handoff checklist for UI and Markdown
+
+- scope:
+  - エンジニア向けタブと詳細Markdownで、具体的な作業指示が先に読めるように整理
+  - 保存済みsnapshotから `分類 / 対象 / 作業 / 確認方法 / 検出元` の作業票を生成
+- changed files:
+  - `core/engineer_handoff_builder.py`
+  - `core/ui/saved_workspace.py`
+  - `core/application/markdown_report_service.py`
+  - `tests/test_markdown_report_service.py`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\engineer_handoff_builder.py core\application\markdown_report_service.py core\ui\saved_workspace.py tests\test_markdown_report_service.py`
+  - `.venv\Scripts\python.exe -c "... build_engineer_handoff_items ..."` でアクセシビリティ作業票の直接生成を確認
+  - `pytest` は既存 `.venv` の `pygments.formatters.terminal` 欠落で起動前に停止
+
+### UI output verification: Kyoto Kogyo and Duskin Healthrent
+
+- scope:
+  - NiceGUI UIをブラウザ操作し、`https://www.kyotokogyo.co.jp/` と `https://healthrent.duskin.jp/` の保存済み詳細を確認
+  - エンジニア向けタブの `エンジニア作業票` が対象URL、作業、確認方法を含むか確認
+  - 詳細Markdownに同じ作業票が出力され、2サイトで内容がパーソナライズされるか確認
+- observed output:
+  - Kyoto Kogyo: 旧公開ページ `data.html` / `system.html` の301/308整理、内部リンク追加、構造化データ、アクセシビリティ確認が中心
+  - Duskin Healthrent: 料金/予約/相談・資料請求ページとして判定され、画像説明文、空リンク/クロール不能リンク、LCP、内部リンク孤立、入力欄ラベル、landmark確認が中心
+  - アクセシビリティは表示軸と作業票に反映され、Run 2では `main/nav/header/footer landmark` と検索入力欄 `<input class="iSearchAssist" name="kw" type="text">` の作業指示を確認
+- artifacts:
+  - `data/poc_outputs/runs/1/analysis_result.json`
+  - `data/poc_outputs/runs/2/analysis_result.json`
+  - `data/poc_outputs/exports/detailed-report-run-1-20260616-202344.md`
+  - `data/poc_outputs/exports/detailed-report-run-2-20260616-203642.md`
+- validation:
+  - `.codex-ui-test-venv\Scripts\python.exe -m pytest tests\test_markdown_report_service.py -q` -> 2 passed, 1 warning
+  - `.codex-ui-test-venv\Scripts\python.exe -m py_compile core\engineer_handoff_builder.py core\application\markdown_report_service.py core\ui\saved_workspace.py tests\test_markdown_report_service.py`
+  - `.codex-ui-test-venv\Scripts\python.exe -c "... load_saved_run_bundle ... build_engineer_handoff_items ..."` -> run 1/2 とも12件、target/work/verifyを確認
+
+## 2026-06-14
+### Pre-analysis history and personalized output value fix
+
+- scope:
+  - 分析実行前に履歴確認が可能か、保存結果 / Markdown がテンプレート的でなく URL 固有の付加価値を出せているかを確認
+  - トップ画面の分析カードから保存済み履歴へ移動する導線を追加
+  - 保存スナップショットの上部要約に `ページ役割` / `不足` / `最初の一手` / `前回比` を追加し、古い snapshot は再生成対象にする
+  - 詳細Markdown冒頭に `このURL固有の見立て` を追加
+- changed files:
+  - `nicegui_app.py`
+  - `core/application/analysis_run_service.py`
+  - `core/application/markdown_report_service.py`
+  - `tests/test_analysis_run_service.py`
+  - `tests/test_markdown_report_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py core\application\analysis_run_service.py core\application\markdown_report_service.py tests\test_analysis_run_service.py tests\test_markdown_report_service.py`
+  - `.venv\Scripts\python.exe -m pytest tests\test_dashboard_ui.py tests\test_analysis_run_service.py tests\test_markdown_report_service.py -q` -> 45 passed, 1 warning
+  - Playwright temporary server check: top page shows `保存済み履歴を見る`, `履歴検索`, `履歴CSV`, and 2 saved rows before running analysis
+  - Playwright saved-run check: `/runs/2` shows `ページ役割: 料金/予約/相談・資料請求ページ`, missing-content summary, first action, and `見やすさ・使いやすさ: 77`
+  - Markdown builder check: run 2 report includes `## 0. このURL固有の見立て`
+
+### Radar accessibility visibility fix
+
+- scope:
+  - コトミガキの改善マップ / レーダーチャートで、アクセシビリティ監査スコアが保存済み結果に入っていても、キャンバス描画と低い軸リストだけでは画面上で確認しづらい問題を確認
+  - レーダー計算式は維持し、全軸の点数チップをチャート下に表示して `見やすさ・使いやすさ` の反映を明示
+  - `accessibility_score_snapshot` を欠く古い保存スナップショットは再生成対象にする
+- changed files:
+  - `core/ui/reports/executive_summary.py`
+  - `core/ui/saved_workspace.py`
+  - `core/application/analysis_run_service.py`
+  - `tests/test_analysis_run_service.py`
+  - `WORKLOG.md`
+- validation:
+  - `.venv\Scripts\python.exe -m py_compile core\ui\reports\executive_summary.py core\ui\saved_workspace.py core\application\analysis_run_service.py tests\test_analysis_run_service.py`
+  - `.venv\Scripts\python.exe -m pytest tests\test_executive_summary.py tests\test_analysis_run_service.py -q` -> 38 passed, 1 warning
+  - Playwright temporary server check: `/runs/1` shows `見やすさ・使いやすさ: 90`; `/runs/2` shows `見やすさ・使いやすさ: 77`; both show one radar canvas
+
+## 2026-06-13
+### Report quality and accessibility audit execution package
+
+- owner:
+  - `kotomigaki_report_accessibility_audit_2026-06-13`
+- scope:
+  - 新規レポート品質、アクセシビリティ表示、非エンジニア向け伝達性、エンジニア向けUI妥当性、パーソナライズ性、UI操作による実機能確認を audit-first で確認する実行パッケージを追加
+  - Codex が別ウィンドウまたは `/goal` で、トップ画面から新規分析、保存済み詳細、詳細Markdown出力、アクセシビリティ表示確認まで進められるよう phase / gate / stop rule を固定
+  - product code、score formula、legal meaning、LLMモデル選択、UI全体再設計は未変更
+- changed files:
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/README.md`
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/TASK.md`
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/PROGRESS.md`
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/ROLLBACK.md`
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/EXECUTION_PROMPT.md`
+  - `plan/kotomigaki_report_accessibility_audit_2026-06-13/artifacts/README.md`
+  - `WORKLOG.md`
+- validation:
+  - docs-only change; product tests not required at package creation
+  - file presence/readback checked for package files and key audit sections
+
+## 2026-06-12
+### History archive for report-quality test
+
+- owner:
+  - `kotomigaki_history_archive_for_quality_test_20260612`
+- scope:
+  - 新しい分析項目とレポート品質の確認前に、既存の分析履歴を削除せず timestamp archive へ退避
+  - 現行環境は空履歴で起動し、分析実行前でも履歴検索 / 履歴CSV 導線が表示されることを確認
+  - fresh DB 起動時に履歴読み取りが schema 初期化前に走って 500 になる不具合を修正
+  - 分析API送信、外部アクセスを伴う新規分析、スコア計算、レポート生成ロジックは未実行 / 未変更
+- changed files:
+  - `core/storage/database.py`
+  - `data/archives/analysis_history_20260612_213535/ARCHIVE_MANIFEST.md`
+  - `WORKLOG.md`
+- archived files:
+  - `data/analysis_history.db` -> `data/archives/analysis_history_20260612_213535/data/analysis_history.db`
+  - `data/poc_outputs/runs` -> `data/archives/analysis_history_20260612_213535/data/poc_outputs/runs`
+  - `data/poc_outputs/exports` -> `data/archives/analysis_history_20260612_213535/data/poc_outputs/exports`
+  - `outputs/monitoring` -> `data/archives/analysis_history_20260612_213535/outputs/monitoring`
+- validation:
+  - `.venv\\Scripts\\python.exe -m py_compile core\\storage\\database.py` -> PASS
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_analysis_run_service.py -q` -> 32 passed
+  - `from core.storage.database import get_history; get_history(limit=5)` on fresh DB -> `[]`
+  - SQLite counts after archive: `analysis_runs=0`, `issues=0`, `crawl_pages=0`
+  - `Invoke-WebRequest http://127.0.0.1:8081/` -> HTTP 200
+  - `Invoke-WebRequest http://127.0.0.1:8081/runs/154` -> HTTP 200 with not-found message, no archived URL content
+  - Browser verification: top page showed `最近の分析はまだありません`, `履歴検索`, `履歴CSV`; old `healthrent.duskin.jp` and run `154` were not visible
+
+### Analysis timestamp JST display normalization
+
+- owner:
+  - `kotomigaki_analysis_timestamp_jst_display_20260612`
+- scope:
+  - 履歴一覧、保存済み詳細、履歴比較、詳細Markdown、履歴CSV、優先アクションCSVの分析時刻を `YYYY-MM-DD HH:MM JST` または `MM/DD HH:MM JST` として表示
+  - SQLite `CURRENT_TIMESTAMP` 由来の裸時刻はUTC保存値として扱い、表示時にAsia/Tokyoへ変換
+  - 新規保存snapshotではDBの `analysis_runs.analyzed_at` を分析時刻の正本にし、`analyzed_at_display` と `run_note` にJST表示を保存
+  - DB schema、保存済みraw値、分析ロジック、API送信は変更なし
+- changed files:
+  - `core/application/time_display.py`
+  - `core/application/analysis_run_service.py`
+  - `core/application/markdown_report_service.py`
+  - `core/application/csv_export_service.py`
+  - `core/ui/dashboard.py`
+  - `core/ui/saved_workspace.py`
+  - `core/ui/panels.py`
+  - `tests/test_time_display.py`
+  - `tests/test_dashboard_ui.py`
+  - `tests/test_csv_export_service.py`
+  - `tests/test_markdown_report_service.py`
+- validation:
+  - `.venv\\Scripts\\python.exe -m py_compile core\\application\\time_display.py core\\application\\analysis_run_service.py core\\application\\markdown_report_service.py core\\application\\csv_export_service.py core\\ui\\dashboard.py core\\ui\\saved_workspace.py core\\ui\\panels.py` -> PASS
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_time_display.py tests\\test_dashboard_ui.py tests\\test_csv_export_service.py tests\\test_markdown_report_service.py -q` -> 18 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_analysis_run_service.py tests\\test_markdown_report_service.py tests\\test_csv_export_service.py tests\\test_dashboard_ui.py tests\\test_time_display.py -q` -> 50 passed
+
+### Accessibility wording normalization for main surfaces
+
+- owner:
+  - `kotomigaki_accessibility_wording_20260612`
+- scope:
+  - 非エンジニア向けの主画面、改善カード、保存済み詳細、レーダー軸で、アクセシビリティ項目を `見やすさ・使いやすさ改善スコア` / `自動検出` / `見やすさ・使いやすさ` 中心に整理
+  - 内部カテゴリ key と技術詳細の検出元表示は維持し、JIS/WCAG適合認証のように見える主画面文言は追加しない
+  - API送信、分析ロジック、スコア計算、DB schema は変更なし
+- changed files:
+  - `core/site_health/accessibility_checker.py`
+  - `core/site_health/browser_accessibility_scanner.py`
+  - `core/site_health/advice_generator.py`
+  - `core/application/accessibility_improvement_builder.py`
+  - `core/application/analysis_run_service.py`
+  - `core/application/technical_summary_builder.py`
+  - `core/application/markdown_report_service.py`
+  - `core/ui/tabs/health_tab.py`
+  - `core/ui/tabs/seo_tab.py`
+  - `core/ui/saved_workspace.py`
+  - `core/ui/reports/executive_summary.py`
+  - `tests/test_accessibility_checker.py`
+  - `tests/test_executive_summary.py`
+- validation:
+  - `.venv\\Scripts\\python.exe -m py_compile core\\site_health\\accessibility_checker.py core\\site_health\\browser_accessibility_scanner.py core\\application\\accessibility_improvement_builder.py core\\application\\analysis_run_service.py core\\application\\technical_summary_builder.py core\\application\\markdown_report_service.py core\\ui\\tabs\\health_tab.py core\\ui\\tabs\\seo_tab.py core\\ui\\saved_workspace.py core\\ui\\reports\\executive_summary.py core\\site_health\\advice_generator.py` -> PASS
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_accessibility_checker.py tests\\test_analysis_run_service.py tests\\test_markdown_report_service.py tests\\test_executive_summary.py -q` -> 56 passed
+  - `rg` で主画面用の旧 `アクセシビリティ改善スコア` / `アクセシビリティUXスコア` が残っていないことを確認
+
+### Accessibility display audience split
+
+- アクセシビリティ改善表示を、非エンジニア向けとエンジニア向けに分離する narrow fix を追加
+  - 開始時スナップショット: `outputs/snapshots/20260612-114103-accessibility-display-split`
+  - `core/application/accessibility_improvement_builder.py` で `audience`（影響 / 見直し箇所 / 次に渡す相手）と `engineer`（対象要素 / 行うべき作業 / 確認方法 / 検出元）を分離
+  - 実検出0件または高スコアで具体 issue がない場合、固定テンプレートの汎用修正カードを `actions` として前面表示せず、`confirmation_items` として技術補足側へ下げる
+  - `core/ui/tabs/seo_tab.py` / `core/ui/saved_workspace.py` で、SEOタブ・保存済み「改善」「設定」は非エンジニア向け文言だけを表示し、旧snapshotのアクセシビリティ項目もタイトルベースで丸める
+  - 保存済み「技術」タブと詳細Markdownでは、実検出ありのアクセシビリティ項目に対象要素、作業内容、確認方法、検出元を表示
+  - `ALGORITHM.md` のアクセシビリティ節に、表示分離と固定テンプレート抑制ルールを追記
+- 検証:
+  - `.venv\\Scripts\\python.exe -m py_compile core\\application\\accessibility_improvement_builder.py core\\application\\analysis_run_service.py core\\application\\markdown_report_service.py core\\ui\\tabs\\seo_tab.py core\\ui\\saved_workspace.py` -> PASS
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_accessibility_checker.py tests\\test_analysis_run_service.py tests\\test_markdown_report_service.py -q` -> 51 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_accessibility_checker.py tests\\test_analysis_run_service.py tests\\test_markdown_report_service.py tests\\test_executive_summary.py -q` -> 56 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests -q` -> 142 passed
+  - Browser smoke -> `http://127.0.0.1:8081/` でトップ表示、`http://127.0.0.1:8081/runs/154` の「改善」タブで旧snapshot由来の `aria-label` / `<img>` 等が前面表示されず、非エンジニア向け丸め文言に置換されることを確認
+
+### Integrated TECHIE smoke follow-up
+
+- `C:\tetie\techie-hub\start.bat` からの統合起動確認で、保存済みrunのアクセシビリティ出所がUI/Markdownで落ちる箇所を narrow fix
+  - `core/application/technical_summary_builder.py` でアクセシビリティのサイトヘルス技術補足に `実ブラウザ自動検出` / `HTML自動検出` を付与
+  - `core/ui/saved_workspace.py` で、既存snapshotが古い場合も `result.site_health.accessibility.source` から保存済み詳細表示を補完
+  - `core/application/markdown_report_service.py` で詳細Markdownのサイトヘルス欄にも同じ出所を補完
+  - `tests/test_analysis_run_service.py` / `tests/test_markdown_report_service.py` に回帰テストを追加
+- 検証:
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_analysis_run_service.py tests\\test_accessibility_checker.py tests\\test_markdown_report_service.py -q` -> 50 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests -q` -> 141 passed
+  - `https://example.com/` の新規分析 run `154` -> `site_health.accessibility.source=browser`
+  - `data\\poc_outputs\\exports\\detailed-report-run-154-20260612-102254.md` -> アクセシビリティ `改善スコア` と `実ブラウザ自動検出` を確認
+  - Browser smoke -> `http://127.0.0.1:8081/runs/154` の設定タブに `見やすさ・使いやすさ改善`、技術タブに `実ブラウザ自動検出`、旧run `153` も表示崩れなし
+
+### Dashboard history initial render fix
+
+- コトミガキ起動直後に履歴検索/CSVだけが表示され、保存済みrunの行が出ない不具合を修正
+  - `nicegui_app.py` の `dashboard_section` を初回に呼び出し、`_load_dashboard_rows()` 後の保存済み履歴をマウントするよう変更
+  - refreshable section の更新導線は既存どおり維持
+- 検証:
+  - `.venv\\Scripts\\python.exe -m py_compile nicegui_app.py` -> PASS
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_analysis_run_service.py tests\\test_markdown_report_service.py -q` -> 34 passed
+  - Browser smoke -> `http://127.0.0.1:8081/` 起動直後に `最近の分析`、`50件`、`example.com`、`healthrent.duskin.jp` の履歴行を確認
+
+### Browser accessibility scanner integration
+
+- SEOコンサル向けの「人間からの見やすさ / 使いやすさ / ユニバーサルデザイン」指標として、アクセシビリティスキャナーを既存UIへ違和感なく組み込む narrow fix を追加
+  - `tools/accessibility_scanner/` に必要な Playwright / axe-core スキャン部分を内蔵し、デスクトップ上の別ソフト移動に依存しない構成へ変更
+  - `core/site_health/browser_accessibility_scanner.py` を追加し、内蔵スキャナーの JSONを `site_health.accessibility.raw/formatted/wcag` 形へ変換
+  - `core/engine/site_health_engine.py` で内蔵スキャナーが利用可能な場合は実ブラウザ検査を優先し、Node.js未導入・npm依存未導入・失敗時は既存の `AccessibilityChecker` へ fail-open
+  - `color_contrast` / `zoom_scaling` / `aria_semantics` / `keyboard_focus` / `screen_reader_structure` を改善アクション化し、SEO改善・保存済み設定・技術補足の既存枠に流し込む
+  - 実ブラウザ検査時の表示を `見やすさ・使いやすさ改善スコア` / `実ブラウザ自動検出` に整理し、新規タブは追加しない
+  - レーダーのアクセシビリティ軸は既存の `accessibility_score_snapshot` を継続利用
+  - `tools/accessibility_scanner/package.json` / `package-lock.json` で依存を固定し、`node_modules` は `.gitignore` 対象
+  - 内蔵スキャナーと開発中の外部ソフトの現行スクリプト SHA-256 が一致することを確認
+  - コトミガキ側の優先アクション変換を調整し、内蔵スキャナー由来の `max_severity` が `serious` の `zoom_scaling` は「技術補足 / 中」扱いにして、行動完了ブロッカーと同列にしないよう修正
+- 検証:
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_accessibility_checker.py -q` -> 16 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_analysis_run_service.py tests\\test_executive_summary.py tests\\test_characterization_ui.py -q` -> 55 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_accessibility_checker.py tests\\test_analysis_run_service.py tests\\test_executive_summary.py -q` -> 52 passed
+  - `.venv\\Scripts\\python.exe -m pytest tests\\test_schema_validator.py -q` -> 3 passed
+  - `.venv\\Scripts\\python.exe -m py_compile core\\site_health\\browser_accessibility_scanner.py core\\engine\\site_health_engine.py core\\application\\accessibility_improvement_builder.py core\\application\\analysis_run_service.py core\\ui\\tabs\\health_tab.py core\\ui\\tabs\\seo_tab.py core\\ui\\saved_workspace.py` -> PASS
+  - `KOTOMIGAKI_BROWSER_ACCESSIBILITY=1` で `https://example.com/` の `run_full_site_health_check` smoke -> `source=browser`, `見やすさ・使いやすさ改善スコア`, `seo_accessibility_ux_v1`
+  - `tools/accessibility_scanner` 内蔵スキャナー単体 smoke: `node scripts/run-safe-url-scan.mjs https://example.com/` -> `completed`, score `90`, `seo_accessibility_ux_v1`
+
+## 2026-06-11
+### Accessibility score regression fixtures
+
+- アクセシビリティ改善スコアの代表HTML fixtures と回帰テストを追加
+  - `tests/fixtures/accessibility/` に空白ページ、良好な基本ページ、altなし多数、共通ヘッダーbutton名なし、フォームラベルなし、見出し飛び、landmarkなしの fixture を追加
+  - `tests/test_accessibility_checker.py` で、空白ページが高得点にならないこと、altなし多数 / labelなし / 見出し飛び / landmarkなしが該当 group に出ることを固定
+  - 共通ヘッダーの同一 button 名なしは同一HTML署名で集約し、同じ部品問題を過剰に減点しないよう `core/site_health/accessibility_checker.py` を調整
+  - 代表HTML fixture でも LLM fallback 時に件数・順位が変わらないことを追加検証
+  - `ALGORITHM.md` のアクセシビリティ節に共通部品の重複集約ルールを追記
+  - 検証: `.venv\\Scripts\\pytest.exe -q tests\\test_accessibility_checker.py` -> 15 passed
+  - 検証: `.venv\\Scripts\\pytest.exe -q tests` -> 138 passed
+
+### Accessibility action builder LLM fallback design
+
+- アクセシビリティ検出結果を「ユーザーが具体的に何をするか」へ変換する action builder を拡張
+  - `core/application/accessibility_improvement_builder.py` で `priority_rank / priority_score / impact / urgency / effort / category / action` をルールベースで固定
+  - 任意の LLM 整形は `title / action / reason / verification` の文面だけに限定し、順位・件数・重要度は変更不可にした
+  - GPT-5.4 nano 利用時向けに `reasoning.effort` を `none` または `low` に丸め、`temperature=0.0`、JSON Schema固定、`prompt_version / model / reasoning / ruleset_version / html_hash` の metadata 保存を追加
+  - LLM整形は課題グループ単位で `max_parallel` を 1-5 に制限し、失敗時は固定テンプレート fallback に戻す
+  - `ALGORITHM.md` のアクセシビリティ節に action builder の責務と LLM 境界を追記
+  - テスト追加: `tests/test_accessibility_checker.py`
+  - 検証: `.venv\\Scripts\\pytest.exe -q tests` -> 130 passed
+
+### Priority action accessibility normalization
+
+- 概要レポート / 優先アクション生成にアクセシビリティ改善項目を統合
+  - `core/application/analysis_run_service.py` で SEO / AIO / 法務 / 技術 / アクセシビリティ項目を `category / impact / urgency / effort / action` へ正規化し、LLMを使わない deterministic sort に変更
+  - altなし / button名なし / labelなし等の重大アクセシビリティ group は「今すぐやること」上位へ出し、軽微なアクセシビリティ項目は SEO改善または技術補足へ回すよう分類
+  - `core/application/csv_export_service.py` の優先アクションCSVに `category` / `urgency` を追加
+  - テスト追加/更新: `tests/test_analysis_run_service.py`, `tests/test_csv_export_service.py`
+  - 検証: `.venv\\Scripts\\pytest.exe -q tests\\test_analysis_run_service.py tests\\test_accessibility_checker.py tests\\test_csv_export_service.py tests\\test_characterization_ui.py` -> 58 passed
+
+### SEO accessibility improvement section narrow fix
+
+- 目的
+  - 新規タブを作らず、既存の SEO改善表示内に `アクセシビリティ改善` セクションを追加する
+  - アクセシビリティを、検索エンジン・AI・支援技術が読み取りやすいHTML構造として扱う
+  - スコアだけでなく、上位の具体アクション、対象要素、理由、確認方法を非エンジニア向けに表示する
+  - HTML検出詳細は技術補足へ退避する
+
+- 実施内容
+  - `core/application/accessibility_improvement_builder.py`
+    - `site_health.accessibility.raw.issue_groups` から、上位3-5件の作業カードを生成
+    - `img alt` / `a button accessible name` / `form label` / `h1` / 見出し階層 / landmark / `html lang` / `title` / `iframe title` 向けの非エンジニア文言を定義
+  - `core/ui/tabs/seo_tab.py`
+    - SEOタブ内に `アクセシビリティ改善` セクションを追加
+    - 各カードに `作業内容 / 対象 / 理由 / 確認方法` を表示
+  - `core/ui/panels.py`
+    - SEOタブへ `site_health` を渡す。タブ構成自体は変更しない
+  - `core/application/analysis_run_service.py`
+    - 保存 snapshot の `implementation_workspace.accessibility_improvements` に同じ作業カードを保存
+  - `core/ui/saved_workspace.py`
+    - 保存済み結果の `実装・設定` に `アクセシビリティ改善` を表示
+    - 検出詳細は既存の `エンジニア向け` の `OGP / セキュリティ / アクセシビリティ` に残す
+  - `tests/test_accessibility_checker.py` / `tests/test_analysis_run_service.py`
+    - builder の文言、対象要素、理由、確認方法、snapshot保存を focused tests で固定
+
+- 検証
+  - `.venv\Scripts\python.exe -m pytest tests\test_accessibility_checker.py tests\test_analysis_run_service.py tests\test_characterization_ui.py -q`
+    - PASS（53 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m py_compile core\application\accessibility_improvement_builder.py core\ui\tabs\seo_tab.py core\ui\panels.py core\application\analysis_run_service.py core\ui\saved_workspace.py`
+    - PASS
+
+### Executive summary radar accessibility axis narrow fix
+
+- 目的
+  - 改善マップのレーダー軸から `表示安全` を外し、`アクセシビリティ` に差し替える
+  - 法務・表示確認はレーダー軸ではなく「先に確認」アラートに残す
+  - 技術基盤スコアの平均からアクセシビリティを外し、リンク健全性 / OGP / セキュリティに限定する
+
+- 実施内容
+  - `core/ui/reports/executive_summary.py`
+    - `accessibility_score_snapshot` を優先し、なければ `site_health.accessibility.formatted.score` を参照
+    - レーダー軸を `アクセシビリティ` に変更し、ヒントを `読み上げ / キーボード / 代替テキスト` に変更
+    - 技術基盤の算出対象から accessibility を除外
+  - `core/application/analysis_run_service.py`
+    - 新規保存 snapshot の `summary_workspace` に `accessibility_score_snapshot` を保存
+  - `core/ui/saved_workspace.py`
+    - 保存済み結果のレーダーでも `アクセシビリティ` 軸を表示
+    - 古い snapshot でアクセシビリティ点がない場合は fallback 50点でレーダー表示を維持
+  - `tests/test_executive_summary.py` / `tests/test_analysis_run_service.py`
+    - live / saved のレーダー軸、法務アラート、snapshot 保存を focused tests で固定
+
+- 検証
+  - `.venv\Scripts\python.exe -m pytest tests\test_executive_summary.py tests\test_analysis_run_service.py -q`
+    - PASS（33 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m py_compile core\ui\reports\executive_summary.py core\ui\saved_workspace.py core\application\analysis_run_service.py`
+    - PASS
+
+### Accessibility machine-readable improvement score narrow fix
+
+- 目的
+  - `core/site_health/accessibility_checker.py` を、認証・適合判定ではなく「機械可読アクセシビリティ改善スコア」として扱う
+  - LLMを使わず、取得済みHTMLから自動検出できる項目だけを deterministic に採点する
+  - 空白ページや構造の少ないページが高得点にならないよう、本文量・構造量による score cap を入れる
+
+- 実施内容
+  - `core/site_health/accessibility_checker.py`
+    - 対象を `html lang` / `title` / `h1` / 見出し階層 / `main nav header footer` landmark / `img alt` / `a button` の accessible name 候補 / `input select textarea` label / `iframe title` に限定
+    - raw出力に `score` / `score_status` / `issue_groups` / `affected_counts` / `top_actions` / `scoring_version` を追加
+    - `ACCESSIBILITY_SCORE_WEIGHTS` による重み付き合算と `score_cap` を実装
+    - 旧互換APIは残しつつ、返却文言は「改善スコア」「自動検出」へ整理
+  - `core/ui/tabs/health_tab.py`
+    - 表示サマリーを「改善スコア: n点 / 自動検出」に変更
+    - advanced表示は `issue_groups` を優先して改善候補を表示
+  - `core/application/technical_summary_builder.py`
+    - 旧 `wcag_level` 表示の取り込みを削除
+  - `tests/test_accessibility_checker.py`
+    - 良好HTML、欠落HTML、空白ページcap、UI整形文言の focused tests を追加
+  - `ALGORITHM.md`
+    - スコア方針、対象項目、score cap、出力キーを追記
+
+- 検証
+  - `.venv\Scripts\python.exe -m pytest tests\test_accessibility_checker.py -q`
+    - PASS（4 passed）
+  - `.venv\Scripts\python.exe -m py_compile core\site_health\accessibility_checker.py core\ui\tabs\health_tab.py core\application\technical_summary_builder.py core\engine\site_health_engine.py`
+    - PASS
+
+- 残リスク
+  - `C:\tetie\aio2-main` は作業時点で Git リポジトリとして認識されず、`git status` / `git diff` は取得不能。
+
+### UI/application responsibility split
+
+- 目的
+  - 既存挙動を変えずに、肥大化していた `analysis_run_service.py` / `panels.py` / `nicegui_app.py` の責務を owner 単位で分ける
+  - UI文言整理や新機能追加は混ぜず、既存 private API 互換 import を残す
+
+- 実施内容
+  - `core/application/intent_role_map.py`
+    - 検索意図・ページ役割マップ生成を抽出
+    - `build_search_intent_role_map()` を公開名にし、既存 `_build_search_intent_role_map` 経由の互換も維持
+  - `core/application/faq_suggestion_builder.py`
+    - FAQ候補、persona、context、debug payload 生成を抽出
+    - `analysis_run_service.py` は snapshot 組み立て時に payload を利用する入口へ縮小
+  - `core/application/technical_summary_builder.py`
+    - legacy page / link health / schema / llms / crawl scope / site health summary を抽出
+  - `core/ui/saved_workspace.py`
+    - 保存済み詳細の評価 / 改善 / リライト / 設定 / 技術 / 比較タブを抽出
+  - `core/ui/panel_components.py`
+    - snapshot card、compact row、status / priority badge、diff helper などを抽出
+  - `core/ui/styles.py`
+    - `nicegui_app.py` の NiceGUI head CSS/script を抽出
+  - `AGENTS.md` / `ALGORITHM.md`
+    - 変更後の owner 境界を追記
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\application\intent_role_map.py core\application\faq_suggestion_builder.py core\application\technical_summary_builder.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（28 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m py_compile core\ui\panels.py core\ui\saved_workspace.py core\ui\panel_components.py nicegui_app.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py tests\test_dashboard_ui.py -q`
+    - PASS（30 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_dashboard_ui.py -q`
+    - PASS（10 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m py_compile nicegui_app.py core\application\analysis_run_service.py core\ui\panels.py core\application\markdown_report_service.py core\ui\dashboard.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py tests\test_characterization_ui.py tests\test_dashboard_ui.py tests\test_markdown_report_service.py -q`
+    - PASS（60 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（117 passed, 1 warning）
+  - NiceGUI HTTP smoke（`HEADLESS=1`, `PORT=8097`）
+    - `/` 200
+    - `/runs/153` 200
+    - `export_detailed_markdown_report()` / `export_priority_actions_csv()` を saved bundle 153 で実行し、出力ファイル作成を確認
+
+- 残リスク
+  - `C:\tetie\aio2-main` は作業時点で Git リポジトリとして認識されず、`git status` / `HEAD` / `git diff` は取得不能。開始スナップショットは `outputs/snapshots/20260611_150850` に保存した。
+  - 分割後も旧 private 名の互換 import を残しているため、次回以降に外部参照を公開名へ寄せる余地がある。
+
+### saved detail detailed Markdown export narrow fix
+
+- 目的
+  - `outputs/reports/.../report.md` レベルの詳細分析を、保存済み詳細画面からダウンロードできる導線にする
+  - 追加API送信を行わず、保存済み result JSON / snapshot JSON から再構成する
+
+- 実施内容
+  - `core/application/markdown_report_service.py`
+    - `build_detailed_markdown_report()` と `export_detailed_markdown_report()` を追加
+    - スコア、最優先アクション、検索意図・ページ役割、FAQ/引用候補、旧HTML公開リスク、内部リンク機会、補足データをMarkdownへ出力
+  - `nicegui_app.py`
+    - `/runs/{run_id}` の右上に `詳細Markdown` ダウンロードボタンを追加
+  - `core/application/__init__.py`
+    - Markdown export service を application API へ公開
+  - `ALGORITHM.md` / `AGENTS.md`
+    - 保存済み分析の詳細Markdown出力 owner を追記
+  - `tests/test_markdown_report_service.py`
+    - 主要セクションの出力とファイル書き出しを検証
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\markdown_report_service.py core\application\__init__.py nicegui_app.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_markdown_report_service.py tests\test_csv_export_service.py -q`
+    - PASS（5 passed, 1 warning）
+
+## 2026-06-08
+### saved detail search intent / page role map P2 narrow fix
+
+- 目的
+  - コード・snapshot・技術タブには出ている `検索意図・ページ役割マップ` を、保存済み詳細の非エンジニア向け上段評価領域でも確認できるようにする
+  - 改善タブの secondary actions で `検索意図` タスクが表示上限外に埋もれないようにする
+
+- 実施内容
+  - `core/ui/panels.py`
+    - saved detail 上段の評価領域で、`summary_workspace.intent_role_map` から `ページの役割確認` を表示
+    - 表示項目を `このページの役割 / 不足 / 次にやること` の3項目だけに限定
+    - 上段評価領域には `confidence / source_hits / intent_signals / page_signals / FAQPage / JSON-LD` を出さない
+    - 改善タブの `続き N件` expansion 内で、secondary actions の6件目以降にある `検索意図` タスクを表示候補の先頭へ寄せる
+  - `tests/test_characterization_ui.py`
+    - saved detail 上段向け role map 表示項目が3項目に限定されることを検証
+    - secondary actions の表示上限外にある `検索意図` タスクが表示候補に入ることを検証
+
+- UI確認
+  - `HEADLESS=1`, `PORT=8092` で NiceGUI を起動し、`http://127.0.0.1:8092/runs/152` を in-app Browser で確認
+  - 上段評価領域で `ページの役割確認` が `最優先アクション` の後ろに表示されることを確認
+  - 上段評価領域には `このページの役割 / 不足 / 次にやること` が表示され、debug 語や `FAQPage` / `JSON-LD` は出ていないことを確認
+  - 改善タブの `続き 11件` を開くと、`検索意図` タスクが表示候補に入ることを確認
+  - 設定タブは短い作業要約のまま、技術タブは `source_hits / intent_signals / page_signals` を含む debug / 根拠確認のままであることを確認
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\ui\panels.py tests\test_characterization_ui.py tests\test_analysis_run_service.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py -q`
+    - PASS（20 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（28 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（115 passed, 1 warning）
+  - `api_send_count: 0`
+
+- 残リスク
+  - 390px 横 overflow の P3 は今回の必須修正に含めていない
+  - run 152 の技術タブ内には旧 snapshot 由来の `判定: 中` 表記が残るが、今回の非エンジニア向け上段には判定ラベルを出していない
+
+## 2026-06-07
+### search intent / page role map P3 wording narrow fix
+
+- 目的
+  - 受け入れレビューで残った P3 文言リスクだけを最小変更で整理する
+  - `判定: 高/中/低` が重要度に見える誤読と、公共・団体系で不足文言が商取引寄りに見える誤読を減らす
+
+- 実施内容
+  - `core/application/analysis_run_service.py`
+    - `confidence_label` を `判定根拠: 高/中/低` に変更
+    - `料金/予約/相談・資料請求ページ` の不足名を `料金・費用条件` から `費用・条件・必要情報` へ変更
+    - `変更・キャンセル条件` を `変更・注意事項・対象外条件` へ変更し、公共・団体系でも注意事項や対象外条件として読める文言へ寄せた
+  - `core/ui/panels.py`
+    - `confidence_label` がない旧 snapshot の fallback も `判定根拠: 高/中/低` に変更
+  - `tests/test_analysis_run_service.py`
+    - 公共・団体系の資料請求/申込ケースで、購入・予約・キャンセル寄りの不足名に戻らないことを検証
+  - `tests/test_characterization_ui.py`
+    - UI helper の fallback ラベルを検証
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\ui\panels.py tests\test_analysis_run_service.py tests\test_characterization_ui.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（28 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py -q`
+    - PASS（18 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（113 passed, 1 warning）
+  - `api_send_count: 0`
+
+- 残リスク
+  - 役割判定は引き続きルールベースであり、公共・団体系専用 role は追加していない
+
+### search intent / page role map UX organization narrow fix
+
+- 目的
+  - 既存の `検索意図・ページ役割マップ` を作り直さず、タブ間の重複表示を減らして UX 情報整理を改善する
+  - 非エンジニアには意思決定に必要な最小情報、エンジニアには作業場所・根拠・デバッグ情報を分けて表示する
+
+- 実施内容
+  - `core/application/analysis_run_service.py`
+    - `料金/予約/相談ページ` を `料金/予約/相談・資料請求ページ` に変更
+    - 料金系 role の intent / recommended_action / summary を、購入・予約偏重ではなく相談・申込・資料請求にも合う文言へ調整
+    - `confidence_label`（`判定: 高/中/低`）を追加し、UI が英語キーを直接出さずに済む形へ整理
+    - `engineer_notes.fix_locations` を短い項目リスト化し、既存の `add_headings / add_faq / structured_data / internal_links` は維持
+    - `technical_workspace.summary_cards` から `intent_role_map` を外し、schema / llms.txt / link health より強く見えないようにした
+    - `SNAPSHOT_SCHEMA_VERSION` を 9 に更新し、旧 snapshot は再構築対象へ入るようにした
+  - `core/ui/panels.py`
+    - サマリーの `ページの役割確認` を `最優先3件` の後ろへ移動
+    - 概要表示を `このページの役割 / 不足 / 次にやること` の3件に限定し、判定は1か所だけ日本語表示にした
+    - 実装・設定タブは短い作業要約へ絞り、エンジニア向けタブは `intent_signals / source_hits / page_signals / engineer_notes` 中心へ整理
+    - 役割マップFAQ、本文FAQ候補、構造化データ、内部リンク機会マップの使い分けをエンジニア向け expansion 内に短く明記
+  - `tests/test_analysis_run_service.py`
+    - overview 3件制限、日本語判定ラベル、新 role 名、公共・団体系の資料請求/申込ケース、technical summary からの除外、debug signal 維持を検証
+  - `tests/test_characterization_ui.py`
+    - 判定ラベルと `fix_locations` 表示 helper の文言を検証
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\ui\panels.py tests\test_analysis_run_service.py tests\test_characterization_ui.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（28 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py -q`
+    - PASS（18 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（113 passed, 1 warning）
+
+- 残リスク
+  - 役割判定は引き続きルールベースであり、既存 saved run は snapshot 再構築時に保存済み result の情報量に依存する
+  - `api_send_count: 0`
+
+### search intent / page role map narrow fix
+
+- 目的
+  - 分析対象ページが SEO/LLMO 上で担うべき役割を、非エンジニアには意思決定しやすく、エンジニアには作業指示として使える粒度で表示する
+  - 特定業種に固定せず、未知のBtoC業種でも `料金/予約/相談` や `集客` などの汎用役割へ倒せるようにする
+
+- 実施内容
+  - `core/application/analysis_run_service.py`
+    - `検索意図・ページ役割マップ` を snapshot に追加
+    - `page_role / intent_signals / user_intent / missing_content / recommended_action / non_engineer_summary / engineer_notes / confidence / evidence_terms` を生成
+    - タイトル、meta、見出し、CTA語、本文由来の論点語、URL path token から根拠語を抽出
+    - summary / task / implementation / technical workspace に同一 payload を必要な粒度で配置
+    - `SNAPSHOT_SCHEMA_VERSION` を 8 に更新し、既存 saved run は再読込時に再構築対象へ入るようにした
+  - `core/ui/panels.py`
+    - 概要では「このページの役割 / 不足 / 次にやること」の最大3件だけを表示
+    - 判定根拠語、実装場所、追加見出し、FAQ、構造化データ、内部リンクは expansion / エンジニア向け側へ退避
+  - `tests/test_analysis_run_service.py`
+    - 未知のBtoC生活サービスで `料金/予約/相談ページ` として破綻しないことを追加検証
+    - 汎用ガイドページが特定業種へ固定されず `集客ページ` に倒れることを追加検証
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\ui\panels.py tests\test_analysis_run_service.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（27 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pytest tests\test_characterization_ui.py -q`
+    - PASS（17 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（111 passed, 1 warning）
+
+- 残リスク
+  - 役割判定はルールベースのため、本文全量が snapshot に入っていない既存結果では title / headings / URL / 既存診断語を中心に判定する
+  - `api_send_count: 0`
+
+### reproducible environment lock narrow fix
+
+- 目的
+  - 複数人開発や別環境移行で、依存関係を `.venv` の偶然に依存せず再構築できるようにする
+  - production code / スコア式 / 付加価値機能は変更せず、環境再現性の入口だけを追加する
+
+- 実施内容
+  - `constraints.lock.txt`
+    - 2026-06-07 時点の検証済み `.venv` から、推移依存を含む exact pin を固定
+  - `requirements-dev.txt`
+    - `requirements.txt` に加え、監査/テスト用の `pip-audit==2.10.0` と `pytest==9.0.3` を固定
+  - `scripts/rebuild_venv.ps1`
+    - Python 3.11 の `.venv` 作成、`pip==26.1.2` 固定、constraints 付き install、`pip check`、任意の `pip-audit` までを1コマンド化
+    - `-Recreate` 時は repo 配下の `.venv` 以外を削除しない guard を追加
+    - `-NoDev` で runtime-only install、`-SkipAudit` で監査スキップを可能にした
+  - `docs/reproducible_environment.md`
+    - canonical rebuild、runtime-only rebuild、検証コマンド、依存更新手順、既知の `diskcache` 残リスクを文書化
+
+- canonical rebuild
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\rebuild_venv.ps1 -Recreate`
+  - runtime-only は `-NoDev` を付ける
+  - `requirements-windows.txt` は WeasyPrint を外した Windows PoC profile として保持し、複数人開発の正本は `requirements.txt` + `constraints.lock.txt` とする
+
+- 検証
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\rebuild_venv.ps1 -VenvPath outputs\rebuild_smoke_venv -SkipAudit`
+    - PASS。新規一時 venv で constraints 付き install と `pip check` が完了
+  - `outputs\rebuild_smoke_venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `outputs\rebuild_smoke_venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py -q`
+    - PASS（25 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（109 passed, 1 warning）
+  - `.venv\Scripts\python.exe -m pip_audit -r requirements.txt`
+    - `diskcache==5.6.3 / CVE-2025-69872` の 1件のみ残存
+  - `PYTHONUTF8=1; .venv\Scripts\python.exe -m pip_audit -r requirements-windows.txt`
+    - PASS（No known vulnerabilities found）
+  - `.venv\Scripts\python.exe -m pip_audit`
+    - `diskcache==5.6.3 / CVE-2025-69872` の 1件のみ残存
+
+- 残リスク
+  - `diskcache==5.6.3 / CVE-2025-69872`
+    - `pip-audit` に fix version が提示されていないため、依存監査上の既知残リスクとして継続管理
+  - `api_send_count: 0`
+
+### dependency vulnerability audit narrow fix
+
+- 目的
+  - 直前のコード/LLM脆弱性監査で未実施だった依存関係脆弱性監査を `pip-audit` で実施する
+  - 付加価値機能や production code は変更せず、依存 pin と `.venv` の安全な範囲の更新に限定する
+
+- 監査対象
+  - `requirements.txt`
+  - `requirements-windows.txt`
+  - `.venv` の実インストール環境
+
+- 初回監査結果
+  - `requirements.txt`: 6パッケージ / 13件
+    - `nicegui==3.6.1`: `PYSEC-2026-95`, `CVE-2026-25516`, `CVE-2026-27156`, `CVE-2026-33332`, `CVE-2026-45553`, `CVE-2026-45554`
+    - `requests==2.32.5`: `CVE-2026-25645`
+    - `python-dotenv==1.2.1`: `CVE-2026-28684`
+    - `python-multipart==0.0.22`: `CVE-2026-40347`, `CVE-2026-42561`
+    - `starlette==0.50.0`: `PYSEC-2026-161`
+    - `diskcache==5.6.3`: `CVE-2025-69872`（修正版提示なし）
+  - `.venv`: 15パッケージ / 45件
+    - 上記に加え、`aiohttp`, `idna`, `lxml`, `lxml-html-clean`, `pillow`, `pip`, `pygments`, `pytest`, `urllib3` が検出された
+  - `requirements-windows.txt`
+    - 通常実行では日本語コメントのため `UnicodeDecodeError` が出た
+    - `PYTHONUTF8=1` 付き再実行で `No known vulnerabilities found`
+
+- 実施内容
+  - `requirements.txt`
+    - `nicegui` を `3.6.1` から `3.12.0` へ更新
+    - `requests` を `2.32.5` から `2.33.0` へ更新
+    - `python-dotenv` を `1.2.1` から `1.2.2` へ更新
+    - `fastapi` を `0.128.1` から `0.136.3` へ更新
+    - `starlette==1.0.1` を patched transitive として明示固定
+    - `python-multipart` を `0.0.22` から `0.0.27` へ更新
+  - `.venv`
+    - 上記に加え、実環境監査の検出対象として `aiohttp==3.14.0`, `lxml==6.1.1`, `lxml-html-clean==0.4.5`, `Pygments==2.20.0`, `urllib3==2.7.0`, `idna==3.15`, `pillow==12.2.0`, `pytest==9.0.3`, `pip==26.1.2` を反映
+
+- 修正しなかった依存
+  - `diskcache==5.6.3`
+    - `pip-audit` に fix version が提示されていない
+    - 製品コードから直接 import はなく、`instructor` の推移依存として入っている
+    - 脆弱性条件は「攻撃者が cache directory に書ける場合の pickle 読込」であり、通常の外部HTTP利用者が `.venv` や cache directory へ書ける前提ではないため、今回は findings / 残リスクとして保持
+
+- 再監査
+  - `.venv\Scripts\python.exe -m pip check`
+    - PASS（No broken requirements found）
+  - `.venv\Scripts\python.exe -m pip_audit -r requirements.txt`
+    - `diskcache==5.6.3` の 1件のみ残存
+  - `PYTHONUTF8=1; .venv\Scripts\python.exe -m pip_audit -r requirements-windows.txt`
+    - PASS（No known vulnerabilities found）
+  - `.venv\Scripts\python.exe -m pip_audit`
+    - `diskcache==5.6.3` の 1件のみ残存
+
+- 検証
+  - `.venv\Scripts\python.exe -m py_compile core\application\analysis_run_service.py core\ui\panels.py nicegui_app.py`
+    - PASS
+  - `.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（109 passed, 1 warning）
+  - NiceGUI HTTP smoke
+    - 既存 `8081` は使用中だったため、`8092` で一時起動
+    - `http://127.0.0.1:8092/` が HTTP 200 を返し、トップページ本文に `コトミガキ / TECHIE / NiceGUI` 系文字列を確認
+
+- 補足
+  - `pip install` 後に `.venv\Lib\site-packages\~il`, `~iohttp`, `~xml` の一時ディレクトリ削除警告が出た
+  - 削除を試みたが `.pyd` がロックされており残存。依存解決・監査・テストには影響なし
+  - `api_send_count: 0`
+
+### code / LLM security audit narrow fix
+
+- 目的
+  - コード脆弱性・LLM脆弱性の監査で見つかった保存済みartifact信頼境界と、外部ページ由来テキストのLLM prompt boundary を narrow fix で補強する
+  - API送信なしで、ローカルコード・既存テスト・保存済み構成を根拠に確認する
+
+- Findings
+  - Medium: DB の `result_path` をそのまま `Path(...).read_text()` しており、DB改ざん時に `runs/` 外のローカルJSONを dashboard / saved detail が読める余地があった
+  - Medium: `core/aio_suggestions.py` と `core/aio/gap_analyzer.py` が外部ページ本文・SchemaをLLM promptへ入れる際、未信頼データ境界とロール注入除去が弱い箇所が残っていた
+
+- 実施内容
+  - `core/application/artifact_paths.py`
+    - `resolve_existing_result_path()` を追加し、`analysis_result.json` の読取を `RUNS_DIR` 配下・既存ファイル・サイズ上限内に限定
+  - `core/application/analysis_run_service.py`
+    - saved detail rehydrate と前回比計算で、DB由来 `result_path` を検証してから読むよう変更
+  - `core/ui/dashboard.py`
+    - 履歴一覧の実スコア補正で、`result_path` が `RUNS_DIR` 外なら snapshot fallback へ戻すよう変更
+  - `core/aio_suggestions.py`
+    - 外部ページ本文・構造化サマリーを `未信頼データ` と明示し、role風文字列・control token・code fence を除去してから prompt に入れるよう変更
+  - `core/aio/gap_analyzer.py`
+    - 本文とSchema payloadを値単位でサニタイズし、外部データ内の命令を実行しない境界説明を追加
+  - `tests/test_analysis_run_service.py` / `tests/test_dashboard_ui.py` / `tests/test_llm_prompt_boundary.py`
+    - `runs/` 外 `result_path` の拒否、snapshot fallback、LLM prompt boundary を追加検証
+  - `tests/test_aio_analyzer.py`
+    - 既存の古い `requests.get` monkeypatch を、現行の `safe_fetch_url` 経路に合わせて補正
+
+- 検証
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m py_compile core\application\artifact_paths.py core\application\analysis_run_service.py core\ui\dashboard.py core\aio_suggestions.py core\aio\gap_analyzer.py tests\test_analysis_run_service.py tests\test_dashboard_ui.py tests\test_llm_prompt_boundary.py`
+    - PASS
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m pytest tests\test_safe_fetch_security.py tests\test_orchestrator_security.py tests\test_pdf_security.py tests\test_csv_export_service.py tests\test_link_audit.py tests\test_legacy_page_probe.py tests\test_analysis_run_service.py tests\test_dashboard_ui.py tests\test_llm_prompt_boundary.py -q`
+    - PASS（66 passed, 1 warning）
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m pytest tests -q`
+    - PASS（109 passed, 1 warning）
+
+- 補足
+  - 全体 `pytest -q` は `新しいフォルダー (13)` 配下の対象外テストが `seo_llmo_auditor` 未導入で collection error になるため、製品側 `tests/` を正として確認
+  - `pip-audit` は venv に未導入のため未実行
+  - `api_send_count: 0`
+
+### internal link opportunity map narrow fix
+
+- 目的
+  - 監査報告で高優先とされた「内部リンク機会マップ」を、認知負荷を増やさず実装する
+  - `孤立/低リンク` の検出から、「どこから、どこへ、何文言でリンクするか」まで作業指示へ落とす
+
+- 実施内容
+  - `core/application/analysis_run_service.py`
+    - `internal_link_summary` と `link_health_report` から `link_opportunities` を最大3件生成
+    - 各候補に `source_url / target_url / recommended_anchor / placement / reason / check` を追加
+    - URL文字列だけの場合はpathから主題語を取り、`httpsの詳細` のような不自然なアンカーを避ける
+  - `core/ui/panels.py`
+    - `実装・設定` では上位2件だけを短く表示
+    - `エンジニア向け` では上位3件を「リンク元 / リンク先 / 推奨アンカー / 設置場所 / 完了確認」に分けて表示
+    - 既存のリンク先監査詳細は折りたたみのまま維持
+  - `tests/test_analysis_run_service.py`
+    - snapshot に内部リンク機会マップが保存されることを検証
+
+### FAQ / engineer detail concreteness narrow fix
+
+- 目的
+  - 監査報告で弱いとされた FAQ提案とエンジニア向け詳細を、SEO/LLMOコンサルの作業指示として使える粒度へ上げる
+  - API生成へ寄せず、既存のルールベース出力に根拠語・回答骨子・設置先・検証条件を追加する
+
+- 実施内容
+  - `core/application/analysis_run_service.py`
+    - FAQ context に `page_service_terms / location_terms / transaction_terms / customer_intent_terms / raw_page_title_headings` を追加
+    - FAQ候補に `answer_outline / recommended_section / schema_candidate / evidence_terms / confidence / risk_if_wrong` を追加
+    - `business_goal == 自動判定` をFAQ本文へ直接出さないよう調整
+    - 不動産売却・査定文脈で、料金・査定フロー・空き家/相続相談に寄せるFAQへ補正
+    - schema / llms.txt / 内部リンクサマリーに実装場所、確認コマンド、合格条件、検証方法を追加
+  - `core/ui/panels.py`
+    - FAQ提案カードに回答骨子、設置先、FAQPage候補、根拠語、注意点を表示
+    - エンジニア向けタブで構造化データのAI回答価値・必須項目・検証方法、llms.txtのContent-Type/推奨本文、内部リンクの修正手順を表示
+  - `tests/test_analysis_run_service.py`
+    - FAQ新フィールドの保持と、不動産売却ページで法人/導入寄りにずれないことを検証
+
+- 追加調整
+  - 不動産売却・査定に限定せず、全業種対象のBtoCプロファイルへ一般化。飲食・介護/福祉・アパレル/物販・美容/サロン・教育/スクールは例示的な補正であり、対象業種を限定しない
+  - 未知のBtoC業種でも、予約・相談・料金・利用開始などの顧客行動語から汎用BtoC profile へ倒す
+  - BtoCプロファイルがある場合は、`企業` というサイト種別だけで `法人担当者向け` に倒さない
+  - 公共・団体ドメインではBtoCプロファイルより公共案内 guardrail を優先
+  - 飲食・介護・アパレルの代表ケースに加え、未知業種の生活サービスでも料金/予約/相談FAQに寄ることを回帰テストで確認
+
+### old static HTML public-risk narrow fix
+
+- 目的
+  - `data.html` / `system.html` のような旧サイト由来の静的HTMLが、検索やAI回答に残るリスクを検出する
+  - 通常クロールやsitemap参照だけでは見つけにくい非リンク旧ページを、認知負荷を増やさず検出時だけ強く出す
+
+- 実在確認
+  - `https://www.kyotokogyo.co.jp/data.html`
+    - HTTP 200 / final URL `.html` / robots `index,follow` / canonicalなし
+  - `https://www.kyotokogyo.co.jp/system.html`
+    - HTTP 200 / final URL `.html` / robots `index,follow` / canonicalなし
+  - `company.html` と `service.html` は現行URLへ移り canonical あり、`contact.html` は404のため要対応対象外
+
+- 実施内容
+  - `core/seo/legacy_page_probe.py`
+    - 代表的な旧HTML候補とslug由来候補を上限付きで確認
+    - `200 / index可能 / canonicalなし / final .html` のみ要対応として抽出
+  - `core/engine/orchestrator.py`
+    - 分析結果に `legacy_page_report` を追加
+  - `core/application/analysis_run_service.py`
+    - 検出時だけ `公開リスク` としてサマリー、Top3、設定/技術ワークスペースへ反映
+  - `core/ui/panels.py`
+    - 概要は件数中心、URL一覧と対応方法はエンジニア向けタブに表示
+  - `tests/test_legacy_page_probe.py` / `tests/test_analysis_run_service.py`
+    - 旧HTML検出条件とUI snapshot 昇格の回帰テストを追加
+
+- 検証
+  - `py -m py_compile core\seo\legacy_page_probe.py core\engine\orchestrator.py core\application\analysis_run_service.py core\ui\panels.py`
+    - PASS
+  - `py -m pytest tests\test_legacy_page_probe.py tests\test_analysis_run_service.py::test_ui_snapshot_promotes_legacy_pages_without_extra_clean_state_card tests\test_characterization_ui.py::test_build_summary_priority_note_prefers_actionable_counts -q`
+    - PASS（4 passed, 1 warning）
+
+- 追加調整
+  - 非エンジニア向け表示は「検索やAI回答が古い情報を拾う可能性」に寄せ、`301 / canonical / noindex` は主説明から後退
+  - エンジニア向け表示に `対応タスク` と `完了確認` を追加し、移転先決定、301/308設定、暫定canonical/noindex、sitemap/内部リンク確認、`curl -I` 確認まで作業指示として表示
+
+## 2026-06-03
+### safe_fetch NAT64 DNS narrow fix
+
+- 目的
+  - `www.d-w-c.jp` のように公開IPv4とNAT64系AAAAを同時に返すURLが、`UNSAFE_URL: private_ip_not_allowed` で分析開始前に落ちる誤検知を解消する
+  - SSRF対策として、localhost / private / link-local / multicast / unspecified / non-global IP の拒否は維持する
+
+- 実施内容
+  - `core/safe_fetch.py`
+    - IP拒否判定を「危険カテゴリまたは非global」へ整理し、`64:ff9b::/96` 系のように `is_reserved=True` でも `is_global=True` のNAT64アドレスを許可
+    - 複数解決時は既存どおり公開IPv4を優先して固定接続するため、`www.d-w-c.jp` は `153.125.141.228` へ接続される
+  - `tests/test_safe_fetch_security.py`
+    - NAT64 + 公開IPv4の解決結果を許可する回帰テストを追加
+    - CGNAT共有アドレスなど `is_global=False` の非公開系アドレスを拒否するテストを追加
+
+- 検証
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m py_compile core\safe_fetch.py tests\test_safe_fetch_security.py`
+    - PASS
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m pytest tests\test_safe_fetch_security.py -q`
+    - PASS（8 passed）
+  - `C:\tetie\aio2-main\.venv\Scripts\python.exe -m pytest tests\test_analysis_run_service.py tests\test_orchestrator_security.py -q`
+    - PASS（23 passed, 1 warning）
+  - `safe_fetch_url("https://www.d-w-c.jp/")`
+    - PASS（HTTP 200 / final_ip=`153.125.141.228`）
+
 ## 2026-04-23
 ### dashboard first-view UX narrow fix（一次タスク優先）
 

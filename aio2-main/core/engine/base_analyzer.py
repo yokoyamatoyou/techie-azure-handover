@@ -4,6 +4,8 @@
 import os
 from typing import Optional
 
+from core.env_keys import resolve_env_var
+
 
 class BaseAnalyzer:
     """Base class for SEO/AIO analysis with API setup."""
@@ -11,7 +13,7 @@ class BaseAnalyzer:
     def __init__(self, analysis_mode: str = "standard"):
         self.analysis_mode = analysis_mode
 
-        self.api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.api_key: Optional[str] = resolve_env_var("OPENAI_API_KEY")
         self.client = None
         self.max_retries = 3
         self.timeout = 30

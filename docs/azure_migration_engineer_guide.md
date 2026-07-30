@@ -1,226 +1,141 @@
-# Azure 移行・保守エンジニア向けガイド
+# エンジニア向け Azure 移行指示書
 
-本資料は、TECHIE Azure 環境を保守・復旧・追加開発するエンジニア向けの技術ガイドです。
+Stripe 連携のリセラーモデルを前提とした、TECHIE の Azure 移行手順と設計指示です。**課金・Stripe の実装は現時点では未実装**であり、本ドキュメントは設計方針と実装時の指示として参照してください。
 
-## 1. 目的
+---
 
-この package は、TECHIE の本番 Azure 環境に関する以下を引き継ぐためのものです。
+## 1. 目的とスコープ
 
-- アプリケーション source code
-- Docker / Container Apps / App Service の deploy script
-- Azure Bicep infrastructure
-- PostgreSQL schema
-- Stripe / usage / reseller 関連の共通 backend
-- 運用・障害対応のための補足資料
+### このパッケージの用途
+- TECHIE を Azure 上で稼働させるために必要な**コード・設定・運用ドキュメント**の最小セットを提供する。
+- 移行担当エンジニアが、デプロイ構成・課金設計・マルチテナント・運用手順を一括して参照できるようにする。
 
-## 2. サービス構成
+### TECHIE の 3 サービス
+| サービス | 内部名 | 機能 | 本パッケージ内パス |
+|----------|--------|------|-------------------|
+| コトメイク | notecode | テーマ/URL/PDF から記事・SNS 文を自動生成 | `../notecode/` |
+| コトミガキ | aio2-main | SEO/AIO・法務・サイトヘルスを分析し UI/PDF に出力 | `../aio2-main/` |
+| コトムスビ | doorknock | コトミガキの分析結果から代理店向け 2 ページ PDF を生成 | `../doorknock/` |
 
-| サービス | フォルダ | 役割 | 主な port |
-|---|---|---|---|
-| TECHIE Hub | `techie-hub` | WIX からの最初の遷移先。各 service への入口です。 | `8090` |
-| コトメイク | `notecode` | ブログ・記事生成。OpenAI / image generation を使用します。 | `8080` |
-| コトミガキ | `aio2-main` | SEO/AIO 分析、改善レポート、PDF 出力を行います。 | `8081` |
-| コトメガネ | `kotomegane` | LLM 観測、手動実行、batch/scheduled 実行を行います。 | `8083` |
-| 共通処理 | `shared` | auth、Stripe、usage/credit、repository を含みます。 | service 内で import |
-| Azure infra | `infra` | Bicep、PostgreSQL init SQL を含みます。 | - |
+### Azure 移行後の想定構成
+- **techie-hub**: 統合 UI 入口（ブラウザで 8080/8081/8082 の各サービスへリンク）。
+- **notecode**: 記事生成 API + NiceGUI UI。ポート 8080。
+- **aio2-main**: 分析 API + NiceGUI UI。ポート 8081。
+- **doorknock**: PDF 生成 API。ポート 8082。
 
-## 3. 本番 URL
+---
 
-- WIX first redirect / Hub: `https://app.techie.jp`
-- API / コトメイク custom domain: `https://api.techie.jp`
-- Stripe webhook: `https://api.techie.jp/webhook/stripe`
-- コトメイク Container App: `https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
-- コトミガキ Container App: `https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
-- コトメガネ Container App: `https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io`
+## 2. 前提条件
 
-## 4. Azure resource 概要
+### ランタイム・サブスクリプション
+- **Python**: 3.10 以上（notecode / aio2-main / doorknock で共通）。
+- **Azure**: デプロイ先のサブスクリプション・リソースグループ・ネットワークの用意。
+- **OpenAI API**: 記事生成・分析で利用。API キーは環境変数または Key Vault で管理すること。
 
-| Resource | 用途 |
-|---|---|
-| Resource Group `TECHIE` | 本番 resource group です。 |
-| Azure Container Registry | 各アプリの Docker image を保存します。 |
-| Container Apps Environment | `kotomake`, `kotomigaki`, `kotomegane` 等を実行します。 |
-| Azure App Service | custom domain `app.techie.jp`, `api.techie.jp` 側の container を実行します。 |
-| PostgreSQL Flexible Server | tenant、contract、usage ledger、Stripe/Reseller 関連データを保存します。 |
-| Storage Account / Queues | webhook、payout、coupon などの非同期処理 queue を保持します。 |
-| Application Insights / Log Analytics | runtime log、監視、障害調査に使用します。 |
-| Bicep files | `infra/main.bicep` と `infra/modules/` が resource 定義です。 |
+### 環境変数・シークレット（一覧のみ。値は移管物に含めない）
+- `OPENAI_API_KEY` … OpenAI 呼び出し用。
+- （任意）`AZURE_OPENAI_*` … Azure OpenAI 利用時。
+- その他、各サービスで参照する設定は `config.json` / `.env` のテンプレ（`config.json.example` / `.env.example`）を参照し、本番値は Azure Key Vault 等で注入すること。
 
-## 5. デプロイ手順
+### 設定テンプレの扱い
+- **notecode**: `notecode/config.json.example` を `config.json` にコピーし、必須項目（LLM モデル名・API キー参照先・quality_pipeline 等）を環境に合わせて設定する。実キーはファイルに書かず、環境変数または Key Vault 参照にすること。
 
-通常のアプリ refresh は以下です。
+---
 
-```powershell
-.\deploy-azure0429-refresh-kyotokyotechie.ps1 -Environment prod
-```
+## 3. Azure 上のデプロイ構成
 
-この script は以下を実行します。
+### 推奨トポロジ候補
+- **App Service** (Web App): 各サービスを 1 App ずつ、または techie-hub を 1 App・他を別 App で構成。
+- **Container Apps**: コンテナ化してデプロイする場合。notecode / aio2-main / doorknock をそれぞれ 1 コンテナにし、techie-hub は静的＋リンク集またはリバースプロキシとして配置可能。
+- **AKS**: 複数インスタンス・オートスケールが必要な場合の候補。初期は App Service / Container Apps で十分なことが多い。
 
-1. ACR credential を取得
-2. `kotomake` image を build
-3. `kotomigaki` image を build
-4. `techie-hub` image を build
-5. Container Apps / App Service の image を更新
-6. コトメガネ deploy script を呼び出し
-7. production URL と revision を表示
+### ポートと起動
+- ローカル/techie-hub 起動時: コトメイク 8080、コトミガキ 8081、コトムスビ 8082。Azure 上では各サービスの「リスニングポート」を同じにし、外部アクセスは App Gateway / Front Door / 各 App の HTTPS で終端すること。
 
-Azure 基盤、DB schema、usage API、shared config を変更する場合は以下です。
+### ネットワーク・認証
+- 管理画面・API は認証で保護すること（Azure AD / OAuth2 / API Key のいずれか）。
+- 入力経路（URL 取得・PDF/DOCX アップロード・プロンプト入力）はサニタイズ済みであることを前提にし、CORS・リクエスト制限を環境に合わせて設定すること。
 
-```powershell
-.\deploy-stage3-kyotokyotechie.ps1 -Environment prod
-```
+---
 
-DB schema 適用済みの場合:
+## 4. 課金・提供形態: Stripe 連携のリセラーモデル（直契約・差額支払）
 
-```powershell
-.\deploy-stage3-kyotokyotechie.ps1 -Environment prod -SkipDatabaseInit
-```
+**注意**: 本節は設計・実装指示であり、現行コードに Stripe 実装は含まれていません。エンジニアは以下を実装する際の仕様として扱ってください。
 
-コトメガネのみ更新する場合:
+### 契約構造
+- **プラットフォーム提供者**（貴社）と**リセラー（代理店）**は**直契約**とする。
+- **エンド顧客**への請求はプラットフォームが行い、利用料を回収する。
+- リセラーには、契約に基づく**差額（リセラー取り分）**を**プラットフォームがリセラーに支払う**。リセラーがエンド顧客に直接請求する形態はとらない。
 
-```powershell
-.\deploy-kotomegane-kyotokyotechie.ps1 -Environment prod
-```
+### Stripe の役割
+- **プラットフォーム側の Stripe**: エンド顧客へのサブスクリプション・従量課金の請求、入金の受領を行う。プラン別月額や利用メーター（生成回数・分析回数等）を Stripe で管理する。
+- **差額の支払い**: リセラーに渡す差額は、Stripe 以外の決済（銀行振込・別口の Stripe Transfer 等）でプラットフォームからリセラーへ支払う。または、Stripe Connect の「プラットフォームが集金し、リセラーに配分を送金する」形で実装する。いずれにせよ「プラットフォームが請求し、差額をリセラーに渡す」流れを満たすこと。
+- **リセラーがエンド顧客に直接請求するモデル（Connect Standard 等）は採用しない**。請求主体はプラットフォームに一元化する。
 
-## 6. 必要な runtime / framework
+### Webhook と再試行
+- **Webhook**: 支払い成功・解約・失敗（payment_failed 等）を Stripe Webhook で受信し、アプリ側でサブスク状態・利用可否を更新する。
+- **失敗時**: Webhook の再試行ポリシーに従い、冪等になるよう処理すること。必要に応じてキュー（Azure Service Bus / Storage Queue）で遅延再試行する。
 
-- Python: 3.11 系 container を主に使用
-- NiceGUI: 各 UI service で使用
-- Docker: ACR build / Container Apps deploy で使用
-- Azure CLI: deploy script 実行に必要
-- Bicep: Azure infrastructure deploy に必要
-- PostgreSQL: Azure Database for PostgreSQL Flexible Server
+### Azure メーターとの関係
+- **Azure 側**: 利用量（App の実行時間・ストレージ・外部 API 呼び出し等）は Azure のメーターで計上する。これは「プラットフォームが Azure に支払うコスト」の把握用。
+- **Stripe 課金**: エンド顧客への請求はプラットフォームの Stripe で行う。利用メーターと Stripe の課金単位（例: 生成 1 回 = 1 単位）の対応表を用意し、回収額とリセラーへの差額支払の計算根拠を明確にすること。
 
-各 service の Python dependency は以下を確認してください。
+---
 
-- `notecode/requirements.txt`
-- `aio2-main/requirements.txt`
-- `kotomegane/requirements.txt`
-- `doorknock/requirements.txt`
+## 5. マルチテナント・セキュリティ
 
-## 7. 環境変数
+### テナント分離単位
+- テナント = リセラー 1 社またはエンド顧客 1 社。テナントごとにデータ・設定・利用上限を分離する。
+- 分離方法: データベースのテナント ID、Blob/Queue のプレフィックス、設定ストアのキー命名でテナントを識別する。
 
-本番 secret は Git に含めません。Azure App Settings / Container Apps environment variables で管理します。
+### データ・設定の分離
+- 生成結果・監査ログ・アップロードファイルはテナント ID 付きで保存し、他テナントから参照不可とする。
+- シークレット（API キー等）はテナント別に Key Vault または設定ストアで保持し、実行時にのみ注入する。
 
-主な項目:
+### 認可境界
+- 管理 API・管理画面は「プラットフォーム管理者」のみ。リセラー向け API は「自テナント＋配下の顧客」のみ。エンド顧客は「自社のデータのみ」に限定する。
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `POSTGRES_ADMIN_PASSWORD`: DB admin password
-- `OPENAI_API_KEY`: OpenAI API key
-- `STRIPE_SECRET_KEY`: Stripe secret key
-- `STRIPE_PUBLISHABLE_KEY`: Stripe publishable key
-- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signature secret
-- `STRIPE_WEBHOOK_URL`: `https://api.techie.jp/webhook/stripe`
-- `HUB_BASE_URL`: `https://app.techie.jp`
-- `SERVICE_BASE_URL` / `API_BASE_URL`: `https://api.techie.jp`
-- `ENTRA_EXTERNAL_ID_*`: Entra External ID 連携用
-- `GEMINI_API_KEY`: Gemini を使用する場合のみ
-- `ANTHROPIC_API_KEY`: Claude を使用する場合のみ
+---
 
-## 8. Database
+## 6. 移行ステップ
 
-DB 初期化 SQL:
+### PoC
+- 1 サービス（例: notecode）を 1 インスタンスで Azure にデプロイし、起動・生成・ログ出力を確認する。
+- 確認項目: 起動ログ、生成完了、`latest_generation_output.json` / `generation_audit_log.jsonl` の出力、環境変数で API キーを渡す動作。
 
-```text
-infra/init.sql
-```
+### Pilot
+- 3 サービス + techie-hub を同一サブスクリプションに配置し、外部から HTTPS でアクセスできるようにする。
+- 確認項目: ポート 8080/8081/8082 の疎通、techie-hub からのリンク、ロールバック手順の実施可能性（`rollback_runbook.md` に従った切り戻し）。
 
-主な table:
+### 本番
+- 認証・マルチテナント・Stripe 連携（設計済みの範囲）を実装し、段階ロールアウトする。監査ログ・アラート・SLA/SLO を運用で監視する。
 
-- `service_usage_account`
-- `usage_event_ledger`
-- `subscription_contract`
-- `customer_account`
-- `reseller_master`
-- `customer_reseller_assignment`
-- `billing_event_ledger`
-- `webhook_event_log`
-- `reseller_payout_ledger`
-- `coupon_request`
+---
 
-DB 復旧は Azure PostgreSQL Flexible Server の backup / point-in-time restore を前提とします。
+## 7. 運用手順への参照
 
-## 9. Stripe / billing
+| 項目 | 参照先（本パッケージ内または本番リポジトリ） |
+|------|---------------------------------------------|
+| ロールバック | `../notecode/newalgorithm/rollback_runbook.md` |
+| 受入基準 | `../notecode/newalgorithm/acceptance_report.md` |
+| 既知の変更履歴・受け入れチェック | 本番の `C:\tetie\azure-handoff-2026-02-09-ja.md`（可能なら参照） |
+| ログ互換・主要キー | `../notecode/newalgorithm/log_compat_matrix.md` |
+| 依存リスク・代替案 | `../notecode/newalgorithm/dependency_risk_report_phase06.md` |
 
-Stripe webhook endpoint:
+---
 
-```text
-https://api.techie.jp/webhook/stripe
-```
+## 8. 監査ログ・障害対応
 
-注意:
+### 監査ログの場所
+- **notecode**: `logs/generation_audit_log.jsonl`、`logs/latest_generation_output.json`。パイプライン内の `newalgorithm_pipeline_audit.jsonl`（存在する場合）。
+- 主要キー: `reason_code`、`status`、`pipeline_check`。詳細は `log_compat_matrix.md` を参照。
 
-- browser GET は正しい webhook test ではありません。
-- Stripe Dashboard から test event を送信して確認します。
-- 署名なし POST が invalid signature になる場合、signature validation は有効です。
-- webhook event は idempotent に処理する必要があります。
+### 障害時の確認順序
+1. アプリログ（`logs/app.log`）で例外・エラーメッセージを確認。
+2. 監査ログで `reason_code` と失敗ステップを特定。
+3. ロールバックが必要な場合は `rollback_runbook.md` のレベル 0/1/2 に従う。
 
-## 10. Usage / credit
-
-usage API:
-
-- `GET /api/usage/summary?service_key=<service-key>`
-- `POST /api/usage/consume`
-- `POST /api/usage/grant`
-
-service key:
-
-- `kotomake`
-- `kotomigaki`
-- `kotomegane`
-
-credit 消費 trigger:
-
-- コトメイク: 生成 click
-- コトミガキ: 分析 click
-- コトメガネ: manual run / batch job submit / scheduled job 作成
-
-詳細は `docs/stage3_azure_usage_spec.md` を参照してください。
-
-## 11. ログ確認
-
-Azure 側:
-
-- Container Apps logs
-- App Service logs
-- Application Insights
-- Log Analytics
-- Storage Queue / dead-letter queue
-
-アプリ側:
-
-- `logs/`
-- service runtime stdout/stderr
-- usage ledger / webhook ledger
-
-## 12. 障害対応の基本順序
-
-1. 対象 URL が疎通するか確認します。
-2. Container App / App Service の latest revision と running status を確認します。
-3. Application Insights / Container Apps logs で exception を確認します。
-4. `DATABASE_URL`、OpenAI、Stripe 等の environment variable が設定されているか確認します。
-5. DB schema が最新か `infra/init.sql` と照合します。
-6. Stripe webhook の場合は Stripe Dashboard 側の delivery log と signature error を確認します。
-7. credit 関連の場合は `service_usage_account` と `usage_event_ledger` を確認します。
-
-## 13. 削除禁止 resource
-
-以下は本番稼働に必要なため、削除しないでください。
-
-- PostgreSQL Flexible Server
-- Storage Account / Queues
-- Azure Container Registry
-- Container Apps Environment
-- `kotomake`, `kotomigaki`, `kotomegane`, `techie-hub`
-- App Service custom domain 側 resource
-- Application Insights / Log Analytics
-
-## 14. 今後の推奨構成
-
-現状は本番直接反映の構成です。今後は以下を推奨します。
-
-- staging resource group を作成
-- staging DB / staging app / staging Stripe webhook を分離
-- GitHub Actions または Azure DevOps で CI/CD 化
-- staging で UI、Stripe、認証、credit 消費、prompt injection test を実施
-- production へ promote する運用に変更
+### SLA/SLO（案）
+- 可用性: 目標 99.5% 以上（月間）。計測は Azure Monitor で行う。
+- 生成完了: 正常系で 90% が 120 秒以内（環境に応じて調整）。計測は監査ログのタイムスタンプから算出可能。
+- 詳細な SLO は運用開始後に実績に基づき設定すること。

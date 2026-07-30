@@ -5,6 +5,13 @@ from typing import Any, Protocol
 
 from config import AppConfig
 
+
+def build_batch_item_custom_id(run_id: str, request_index: int, iteration_index: int) -> str:
+    run_fragment = str(run_id or "").strip().replace("-", "_")
+    run_fragment = "".join(ch for ch in run_fragment if ch.isalnum() or ch == "_")
+    run_fragment = run_fragment or "run_unknown"
+    return f"{run_fragment}__item_{int(request_index):06d}__iter_{int(iteration_index):03d}"
+
 @dataclass
 class SourceItem:
     url: str

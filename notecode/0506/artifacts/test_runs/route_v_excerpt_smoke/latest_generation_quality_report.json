@@ -1,0 +1,30 @@
+{
+  "quality_check": {
+    "pass": true,
+    "score": 100,
+    "issues": [],
+    "rewrite_needed": false,
+    "stylometry": {
+      "sentence_count": 3,
+      "avg_sentence_length": 42,
+      "median_sentence_length": 28,
+      "max_sentence_length": 80,
+      "sentence_length_variance": 738.6666666666666,
+      "paragraph_count": 2,
+      "paragraph_shape": [
+        2,
+        1
+      ],
+      "ending_distribution": {
+        "ます": 1,
+        "other": 1,
+        "ください": 1
+      },
+      "repeated_connectors": [],
+      "first_person_variants": [],
+      "third_party_terms": [],
+      "model_frequent_words": [],
+      "issue_candidates": []
+    }
+  }
+}

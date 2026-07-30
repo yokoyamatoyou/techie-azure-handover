@@ -10,6 +10,8 @@
 from typing import Literal, Dict, Any
 from dataclasses import dataclass
 
+from core.llm_responses_client import supports_temperature
+
 
 @dataclass
 class ModelConfig:
@@ -119,14 +121,10 @@ class ModelSelector:
             "timeout": 180,
         }
         
-        # 推論モデルはtemperatureとresponse_formatを除外する場合がある
-
-        # ユーザーが「再現性」を求めているため、可能な限り決定論的な動作を強制
-        # temperature=0.0でランダム性を排除
-        # (APIがサポートしていない場合は無視されるかエラーになる可能性がある)
-        
-        # 【修正】推論モデル(o1 / o3等)はtemperatureをサポートしないため除外
-        if "o1" not in model_config.name and "o3" not in model_config.name:
+        # Temperature is only sent to models known to accept it. GPT-5/o1/o3
+        # family names are intentionally handled by prefix, so future dated or
+        # variant names do not fall back to an incompatible sampling parameter.
+        if supports_temperature(model_config.name):
             params["temperature"] = 0.0
         
         # response_formatはモデルによってサポート状況が異なる

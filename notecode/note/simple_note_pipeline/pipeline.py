@@ -204,9 +204,47 @@ _EXPERIMENTAL_PROMPT_STACK_STAGE_ORDER = ("support", "planner", "writer", "edito
 _SECTION_WRAPPER_RE = re.compile(r"\[SECTION\]\s*(.*?)\s*\[/SECTION\]", flags=re.DOTALL)
 _USED_FACT_IDS_TAG_RE = re.compile(r"\[USED_FACT_IDS\]\s*([\s\S]*?)\s*\[/USED_FACT_IDS\]", re.IGNORECASE)
 _COMPARATIVE_CLOSING_HEADING = "結論とおすすめの分け方"
+_MATERIALIZED_LATE_HALF_ISSUE_TYPES = {
+    "late_half_source_return",
+    "late_half_closing_specificity",
+    "late_half_surface_rhythm",
+}
+_MATERIALIZED_LATE_HALF_REPAIR_LINES = {
+    "later_recall_not_visible_in_late_half": "後半に、素材にある具体情報を一つ戻してから結ぶ。source外の情報は足さない。",
+    "late_half_empty": "後半の空白や薄さを、素材にある具体情報だけで補う。",
+    "generic_closing_phrase": "最後を一般論で閉じず、素材にある条件・対応範囲・確認材料のどれかへ戻す。",
+    "late_half_sentence_ending_repetition": "後半の文末・句読点・接続を局所的に散らし、意味と見出し順は変えない。",
+    "ending_bucket_monotony": "文末単調は target sentence cluster と直前直後だけで散らし、対象外の本文は変えない。",
+}
 _CROSS_DEPARTMENT_PROMPT_ECHO_RE = re.compile(
     r"複数部門で記事作成を回す(?:なら|場合)[^。]{0,100}(?:承認フロー|責任分担|責任の置き方|担当責任)",
 )
+
+MATERIALIZED_ONEPASS_ROUTE_ID = "materialized_onepass_editor_route_v1"
+ANCHOR_PATCH_ROUTE_ID = "materialized_anchor_patch_route_v2"
+SIMPLE_ONEPASS_ROUTE_ID = "materialized_simple_onepass_route_v1"
+_REJECTED_MATERIALIZED_ROUTE_FLAGS = (
+    "enable_materialized_onepass_editor_route_v1",
+    "enable_materialized_anchor_patch_route_v2",
+    "enable_materialized_simple_onepass_route_v1",
+)
+_REJECTED_MATERIALIZED_ROUTE_IDS = (
+    MATERIALIZED_ONEPASS_ROUTE_ID,
+    ANCHOR_PATCH_ROUTE_ID,
+    SIMPLE_ONEPASS_ROUTE_ID,
+)
+
+
+def _has_rejected_materialized_route_request(contract: Mapping[str, Any]) -> bool:
+    if any(bool(contract.get(flag)) for flag in _REJECTED_MATERIALIZED_ROUTE_FLAGS):
+        return True
+    requested_ids = {
+        str(contract.get("vnext_route_id") or "").strip(),
+        str(contract.get("vnext_route_variant_id") or "").strip(),
+        str(contract.get("route_id") or "").strip(),
+        str(contract.get("route_variant_id") or "").strip(),
+    }
+    return bool(requested_ids.intersection(_REJECTED_MATERIALIZED_ROUTE_IDS))
 _COMPANY_INTRO_CURRENT_BUSINESS_ECHO_RE = re.compile(
     r"^(?P<subject>.+?)(?:は|では)[、,\s]*(?P<activities>.+?)を支援(?:してい(?:ます|る)|する)(?:会社)?(?:です)?。?$"
 )
@@ -2871,6 +2909,53 @@ def _apply_company_intro_naturalness_enrichment(
     return diagnostics
 
 
+def _materialized_late_half_issue_type(warning: str) -> str:
+    if warning in {"later_recall_not_visible_in_late_half", "late_half_empty"}:
+        return "late_half_source_return"
+    if warning == "generic_closing_phrase":
+        return "late_half_closing_specificity"
+    if warning == "late_half_sentence_ending_repetition":
+        return "late_half_surface_rhythm"
+    if warning == "ending_bucket_monotony":
+        return "ending_bucket_monotony"
+    return "late_half_source_return"
+
+
+def _materialized_anchor_patch_final_guard_ending_monotony(diagnostics: Mapping[str, Any]) -> bool:
+    if int(diagnostics.get("ending_bucket_max_run", 0) or 0) >= 3:
+        return True
+    soft_warnings = {
+        str(item or "").strip()
+        for item in list(diagnostics.get("soft_warnings") or [])
+        if str(item or "").strip()
+    }
+    if soft_warnings.intersection({"ending:bucket_monotony", "ai:ending_monotony"}):
+        return True
+    return any(
+        isinstance(item, Mapping)
+        and str(item.get("issue_type") or "").strip() == "ending_bucket_monotony"
+        for item in list(diagnostics.get("flagged_spans") or [])
+    )
+
+
+def _materialized_late_half_target_headings(draft: DraftSections) -> list[str]:
+    sections = _extract_revision_sections(draft.body)
+    if not sections:
+        return []
+    split_at = max(0, len(sections) // 2)
+    headings = [heading for heading, body in sections[split_at:] if heading and str(body or "").strip()]
+    return headings[:3] or [sections[-1][0]]
+
+
+def _apply_materialized_late_half_audit_repair_signal(
+    contract: Mapping[str, Any],
+    draft: DraftSections,
+    diagnostics: Dict[str, Any],
+    audit: Mapping[str, Any],
+) -> Dict[str, Any]:
+    return dict(diagnostics)
+
+
 def _repair_improves_company_intro_naturalness(
     current: Mapping[str, Any],
     repaired: Mapping[str, Any],
@@ -3947,6 +4032,7 @@ def _build_repair_entry_telemetry(
     flagged_spans = list(diagnostics.get("flagged_spans") or [])
     naturalness_enrichment = dict(diagnostics.get("company_intro_naturalness_enrichment") or {})
     hidden_late_validation = dict(diagnostics.get("hidden_late_validation") or {})
+    materialized_late_half_repair = dict(diagnostics.get("materialized_late_half_repair") or {})
     entry = {
         "repair_required": bool(diagnostics.get("repair_required")),
         "repair_trigger_score": float(diagnostics.get("repair_trigger_score") or 0.0),
@@ -3974,6 +4060,25 @@ def _build_repair_entry_telemetry(
         },
         "skip_reason": "",
     }
+    if materialized_late_half_repair.get("checked"):
+        entry["materialized_late_half_repair"] = {
+            "checked": bool(materialized_late_half_repair.get("checked")),
+            "activated": bool(materialized_late_half_repair.get("activated")),
+            "stage": str(materialized_late_half_repair.get("stage") or ""),
+            "repair_recommended": bool(materialized_late_half_repair.get("repair_recommended")),
+            "repair_scope": str(materialized_late_half_repair.get("repair_scope") or ""),
+            "warnings": list(materialized_late_half_repair.get("warnings") or [])[:8],
+            "target_headings": list(materialized_late_half_repair.get("target_headings") or [])[:3],
+        }
+    reconstruction = dict(repair_metadata.get("materialized_anchor_patch_reconstruction") or {})
+    if reconstruction.get("checked"):
+        entry["materialized_anchor_patch_reconstruction"] = reconstruction
+    raw_summary = dict(repair_metadata.get("repair_candidate_raw_summary") or {})
+    if raw_summary:
+        entry["repair_candidate_raw_summary"] = raw_summary
+    reconstructed_summary = dict(repair_metadata.get("reconstructed_candidate_summary") or {})
+    if reconstructed_summary:
+        entry["reconstructed_candidate_summary"] = reconstructed_summary
     if repair_applied:
         entry["skip_reason"] = "repair_applied"
         entry["repair_applied"] = True
@@ -5232,6 +5337,10 @@ class MinimalPipeline:
             repaired_diagnostics,
             repaired_editor_report,
         )
+        if dict(repair_metadata.get("materialized_anchor_patch_reconstruction") or {}).get("applied"):
+            repair_metadata["reconstructed_candidate_summary"] = dict(
+                repair_metadata.get("repair_candidate_summary") or {}
+            )
         scope_preserved = True
         if use_patch_path:
             scope_preserved = _repair_preserves_flagged_scope(draft, repaired, flagged_spans)
@@ -5932,7 +6041,17 @@ class MinimalPipeline:
         article_type = str(contract.get("article_type") or "explanatory_article").strip().lower()
         source_pack = build_source_pack(contract)
         use_prompt_stack_experiment = _is_prompt_stack_experiment_enabled(contract)
-        compact_plan = [] if use_prompt_stack_experiment else self._maybe_build_compact_plan(contract, source_pack)
+        if _has_rejected_materialized_route_request(contract):
+            return _build_pipeline_failure_result(
+                contract,
+                reason_code=error_codes.SYS_PIPELINE_FAILURE,
+                message="Rejected materialized route flags are archived",
+            )
+        compact_plan = (
+            []
+            if use_prompt_stack_experiment
+            else self._maybe_build_compact_plan(contract, source_pack)
+        )
         if compact_plan:
             contract["_semantic_ledger"] = [dict(item) for item in compact_plan]
         note_target_chars = target_chars(
@@ -6184,7 +6303,6 @@ class MinimalPipeline:
                     }
                 }
                 raise opener_failure
-
             self._set_generation_progress("output_format", 94, detail="出力を整形しています。")
             result = build_result(
                 contract=contract,

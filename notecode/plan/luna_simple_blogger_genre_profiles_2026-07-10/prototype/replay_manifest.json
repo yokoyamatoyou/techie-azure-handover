@@ -1,0 +1,11 @@
+{
+  "article_types": ["company_service_intro", "announcement", "case_study", "comparison_guide", "market_explanation", "daily_activity"],
+  "cases": [
+    {"id":"company_service_intro","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/02_company_service_intro.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/company_service_intro/r3/c1/source_packets.json","saved_signal_labels":["仕事","商品","現場"]},
+    {"id":"announcement","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/04_announcement.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/announcement/r2/b1/source_packets.json","saved_signal_labels":["日付","対象","変更点"]},
+    {"id":"case_study","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/06_case_study.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/case_study/r/a1/source_packets.json","saved_signal_labels":["課題","対応","変化"]},
+    {"id":"comparison_guide","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/01_comparison_guide.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/comparison_guide/r/a1/source_packets.json","saved_signal_labels":["source固有の違い","対象物","使われる場面"]},
+    {"id":"market_explanation","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/03_market_explanation.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/market_explanation/r3/c2/source_packets.json","saved_signal_labels":["source上の変化","現場の論点","具体物"]},
+    {"id":"daily_activity","baseline_article":"notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/05_daily_activity.md","source_packet":"notecode/logs/0628/rv_ui_img_20260628_180205/daily_activity/r2/b1/source_packets.json","saved_signal_labels":["場所","道具","動作"]}
+  ]
+}

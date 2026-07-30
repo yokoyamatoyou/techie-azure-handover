@@ -16,6 +16,7 @@ from urllib3.poolmanager import PoolKey, _default_key_normalizer
 
 from core.config import config
 from core.rate_limiter import rate_limiter
+from core.site_health.url_instruction_guard import inspect_url_for_untrusted_instruction
 
 ALLOWED_SCHEMES = {"http", "https"}
 ALLOWED_PORTS = {80, 443, 8080, 8443}
@@ -69,16 +70,17 @@ def _is_private_ip(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    return any(
+    if any(
         [
             addr.is_private,
             addr.is_loopback,
             addr.is_link_local,
             addr.is_multicast,
-            addr.is_reserved,
             addr.is_unspecified,
         ]
-    )
+    ):
+        return True
+    return not addr.is_global
 
 
 def _resolve_host(host: str) -> tuple[str, ...]:
@@ -118,6 +120,11 @@ def _pick_connect_ip(ips: Sequence[str]) -> str:
 
 
 def resolve_public_target(url: str) -> ResolvedTarget:
+    instruction_screen = inspect_url_for_untrusted_instruction(url)
+    if instruction_screen.get("status") == "suspicious_untrusted_instruction":
+        # Do not include the URL or decoded text in exceptions: callers may persist
+        # exception messages in results or logs.
+        raise UnsafeURLError(url, "untrusted_instruction_url")
     parsed = urlparse(url)
     scheme = (parsed.scheme or "").lower()
     if scheme not in ALLOWED_SCHEMES:

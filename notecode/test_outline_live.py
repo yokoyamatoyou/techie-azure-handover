@@ -1,6 +1,7 @@
 """_parse_outline の実動作テスト: MCP4と同じパターンのLLM応答を渡して検証"""
 import sys
-sys.path.insert(0, r"C:\tetie\notecode")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from note.outline_mixin import OutlineMixin
 

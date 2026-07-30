@@ -1,11 +1,27 @@
 # Current State 2026-03-30
 
+## 2026-07-10 コスト削減設定
+
+- 標準の単発確認は、元質問 + 拡張質問3件を5回実行する合計20リクエストへ縮小した。定期/Batchの保存済み `repeat_count=20` は維持する。
+
+## 2026-07-11 横断UX監査のUI補正
+
+- mobile 390px の共通ナビはロゴを縮小し、4つの移動先を1行で維持する。
+- desktopの主入力は質問 / 自社照合の2列を維持し、片側だけが長く空くのを避けるため `結果を見る` を2列横断の次行へ置く。設定の `対象AI` と `保存済み条件` は1列の読み順にする。
+- read-only/demo modeで無効化するのは保存・送信系のまま維持し、`サイト改善へ` / `発信作成へ` は通常の遷移リンクとして高コントラスト表示する。
+- provider/API/LLM send、DB schema、保存データ、scheduler、scoringは変更していない。
+
 ## Summary
 
 `kotomegane` は `LLMO Prompt Loop PoC` に再編済みです。  
 旧 AI トラフィック解析アプリは `archive/2026-03-30-ai-traffic-analytics/` に退避しています。
 
 2026-03-30 の更新で、PoC UI の再整理、`USD + JPY(160)` 表示、価値訴求を先に出す日本語UI、接続先候補の折りたたみ表示、`gpt-5.4-nano` 実動確認に加えて、provider adapter 入口、`.env` / 環境変数の runtime 明示、`allowed_domains` soft constraint 明示まで完了しました。
+2026-06-08 の市場既定補正で、`config/llmo_poc_settings.json` と `AppConfig` の既定入力を `介護保険 / 福祉用具レンタル` 向けへ切り替えました。対象URLは `https://healthrent.duskin.jp/`、比較対象はヤマシタコーポレーション、パナソニック エイジフリー、フランスベッド、フロンティアを既定にし、混在ドメインは `official_url_scopes` と `domain_scope_type` で path / business scope を分けて評価する current state です。`market` mode の query-only 方針は維持し、これらの情報は provider request ではなく返答後のローカル照合・比較候補・評価軸として扱います。
+2026-05-24 の UI/UX refactor O-03..O-09 で、画面上部を `今の入力`、設定タブを `保存済み条件`、結果面を `今回の結果` / `保存済みの累積傾向` / `保存済みの結果` / `全実行履歴` / `自動チェックの推移` として分離しました。自動チェック設定は曜日選択から週回数を読み取り表示し、外部送信ボタンには helper を追加しています。これらは label / layout / grouping / read-model display の変更のみで、DB schema、provider payload、scheduler dispatch、scoring、billing rules は変更していません。
+同日の設定タブ情報設計改善で、`確認内容の名前` は `保存名`、`自動チェックに使う確認内容` は `自動チェックの対象` へ寄せ、保存済み条件 -> 今回だけまとめて分析 / 曜日を決めて自動チェックの関係を設定タブ内で読めるようにしました。自動チェック form は `対象 -> 曜日 -> 時刻 -> 有効 -> 保存` の順に近づけ、長い dropdown 表示は短い保存名 + 件数 + 対象AIへ圧縮し、詳細は補助 text と table 側へ下げています。結果詳細の冒頭には `次にやること` section を追加しました。DB schema、provider payload、scheduler dispatch、scoring、billing rules は変更していません。
+同日の UX-ADD-01 で、UI診断 / デモ用に `KOTOMEGANE_READONLY_DEMO=1` の read-only/demo 起動モードを追加しました。この mode では startup scheduler と result enrichment maintenance を開始せず、manual LLM/API send、provider batch submit、provider batch retrieve/import は provider client creation 前に block します。UI 上部に `read-only/demo mode` banner を出し、通常起動では既存 scheduler / provider 経路を維持します。
+同日の最終 UI/UX 実機改善で、mobile 390px の入力エリアを左右カラムから縦積みへ固定し、重点テーマ候補ボタンの横はみ出しをなくしました。保存済み集計と保存済み結果一覧では `今回 1 問` / `最新の 1 問` の表現をやめ、今の入力結果とは別の保存済みデータであることを明示しています。まとめて分析の状態表示は、元の `対象質問` と provider への `実送信` 件数を分けて表示します。DB schema、provider payload、scheduler dispatch、scoring、billing rules は変更していません。
 2026-04-20 の市場観測補正で、`market` mode は `query-only` に切り替えました。`自社URL / 名称 / 比較対象 / 重点テーマ` は LLM に送らず、返答後に citation URL と source URL へローカル照合して可視性を判定します。これにより、`自社URLを prompt に渡したことで LLM が追従する` 形を避けています。
 2026-04-14 の UI 削減実装で、hero の `TECHIE SUITE` box、`活かす材料`、`直近の観測サマリー`、`論点のつながり` を first view から外し、入力を最上段の主役へ戻しました。主入力は `質問 / 自社URL / 名称(任意) / 重点テーマ(任意)` へ更新し、first result summary は `今回の結論 / 主な参照元サイト / 頻出論点` の 3 カードに固定しています。
 同日の追加調整で、主結果 1 枚目は `今回の自社露出率` の母数を `元質問 / 拡張質問 / 合計回答数` まで含めて表示し、`自社が見つかった回答` と `実際に自社URLが引用された回答` を分けて説明する形へ更新しました。主結果 2 枚目の件数は `自社の引用URL` など URL 件数であることを明示し、`94%` と `自社引用9件` のような別母数が同種の数字に見えない current shape へ寄せています。
@@ -23,12 +39,13 @@
 2026-04-26 の初見 UX 補強で、実行カードは `まずは1回だけ確認` を見出しにし、`1回だけ分析` を主ボタンとして大きく表示する current state へ更新しました。`定期分析を実行` と `自動定期分析を設定` は `継続的に見るなら定期分析` の補助エリアへ下げ、初回行動と継続観測を視覚的に分けています。
 2026-04-29 の UI 修正で、hero のロゴ表示は `assets/logo_mark_icon.png` の顔マーク画像へ切り替え、横長SVGの中央文字だけが正方形枠に出て `EC` と見える状態を解消しました。
 同日の UX 修正で、手動分析完了後、定期分析の結果反映後、同条件の直近 run 復元後は、下段の `今回の結果 / 定期分析の推移 / 定期分析 / 設定を見る` を自動展開し、`今回の結果` タブを開く current state に更新しました。分析後は結果確認が主行動になるため、詳細を閉じたままにしません。
+2026-05-23 の UI 確認で、自動チェックの曜日指定は dropdown select から月〜日のチェックボックスへ変更しました。選択した曜日数に合わせて保存時の `週あたり回数` を揃え、複数曜日を選んでも先頭曜日だけに丸められる状態を避ける current state です。
 同日の billing 方針整理で、将来の実クレジット消費は **実行完了時** に固定しました。手動は成功結果保存後、定期リサーチは結果反映完了後に消費し、投入時点・開始前 validation error・provider submit failure・ユーザー停止では消費しない前提です。
 同日の表示安定化で、client 背景 task の periodic refresh は結果データに変化がある時だけ dashboard surface を再描画するよう更新しました。再描画が必要な場合もブラウザのスクロール位置を保存・復元するため、分析結果を読んでいる最中に初期位置へ戻りにくい current state です。
 2026-04-23 の追加調整で、`今回の結果` を表示中は periodic refresh が `今回の結果 / 結果詳細 / 根拠URL` を再描画しない current state に更新しました。分析後に読んでいる面は固定し、background refresh では hero status の軽更新だけを行います。
 同日の詳細整理で、結果詳細の `この画面で分かること`、`見つかったが根拠には使われなかったURL`、`まだ確認が必要なURL` は折りたたみをやめ、固定表示の整理済みセクションとして読む current state に更新しました。
 2026-04-23 の安全補強で、prompt injection 検知はゼロ幅文字除去と role-change / context-reset 系パターン追加を含む前処理へ更新しました。あわせて Batch JSONL 一時ファイルは `mkstemp` ベースに切り替え、書き込み失敗時は即削除する current state に更新しています。同日の表示調整で、security signal は internal の保守判定に留め、結果画面には warning 文言として常時表示しない current state に更新しました。検知対象も user query や model output 全文ではなく、検索由来の source title / URL 中心へ絞って false positive を減らしています。
-同日の実行方針変更で、単発確認は質問数や内部拡張で見積件数が増えても事前 warning toast を出さない current state に更新しました。現在は manual / batch / scheduled すべてで、query plan 展開後の実送信件数ベースと未import batch の予約コストを含めて guardrail を再評価します。`run_budget_guardrail_usd` を超える見込みの run は開始前に止めます。
+同日の実行方針変更で、単発確認は質問数や内部拡張で見積件数が増えても事前 warning toast を出さない current state に更新しました。現在は manual / batch / scheduled すべてで、query plan 展開後の実送信件数ベースと未import batch の予約コストを含めて guardrail を再評価します。`run_budget_guardrail_usd` を超える見込みの run は、既定の `budget_guardrail_mode=warn` では警告して続行し、`stop` のときだけ開始前に止めます。
 同日の起動安全補強はさらに更新され、`ui_host` は loopback 以外では起動しない current state です。認証未実装のため、非loopback は warning ではなく fail-closed で拒否します。
 2026-04-24 の競合価値可視化で、first view に `AIが先に見ている相手` の競合スナップショット、詳細に `負けている質問` のミニヒートマップと `回答に効いた根拠サイト` ランキング、頻出論点カードに次の改善 strip を追加しました。既存の citation / source evidence / topic signal / page gap 集計の再表示に留め、新しい LLM 呼び出し、prompt、query planner、スコアリング、DB schema は追加していません。共通ヘッダと TECHIE 共通ブランドシェルも変更していません。
 2026-04-25 の商用デモ向け調整で、first view は `AIの主要な参照先` を自社引用率より先に読み、`AI回答に使われた主要ソース` と `改善優先の質問` Top 3、`次に強化すべき論点` までを 3 カード内で判断できる構成へ更新しました。詳細冒頭も `改善判断サマリー` として同じ順序に寄せ、raw URL、生返答、今回の条件は下段へ置いています。コトミガキ側の制作・改善実行機能は追加せず、新しい LLM 呼び出し、prompt、scoring、DB schema も追加していません。共通ヘッダも変更していません。

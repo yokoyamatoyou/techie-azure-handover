@@ -22,6 +22,15 @@ class Config:
     MODEL_HIGH_REASONING: str = os.getenv("OPENAI_HIGH_REASONING_MODEL", "gpt-4.1-mini-2025-04-14")
     OPENAI_TIMEOUT: float = float(os.getenv("OPENAI_TIMEOUT", "60"))
 
+    # === 推論モデル設定 (Responses API / GPT-5系) ===
+    # core/application/accessibility_improvement_builder.py で先行実装済みの
+    # gpt-5.4-nano + reasoning_effort=low という組み合わせを全社共通デフォルトとして
+    # core/llm_responses_client.py 経由の呼び出しへ展開する。個別タスクで上書きしたい
+    # 場合は呼び出し側で OPENAI_<TASK>_MODEL / OPENAI_<TASK>_REASONING_EFFORT を定義する
+    # (accessibility 側の OPENAI_ACCESSIBILITY_ACTION_MODEL と同じ命名慣習)。
+    REASONING_MODEL_DEFAULT: str = os.getenv("OPENAI_REASONING_MODEL", "gpt-5.4-nano")
+    REASONING_EFFORT_DEFAULT: str = os.getenv("OPENAI_REASONING_EFFORT", "low")
+
     # === クロール設定 ===
     CRAWL_INTERVAL_SECONDS: float = float(os.getenv("CRAWL_INTERVAL_SECONDS", "1.0"))
     MAX_CRAWL_DEPTH: int = int(os.getenv("MAX_CRAWL_DEPTH", "2"))

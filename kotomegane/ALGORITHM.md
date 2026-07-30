@@ -16,9 +16,12 @@
 - 既定 model: `gpt-5.4-nano`
 - OpenAI は `Responses API + web_search`
 - UI の主導線は `市場観測`
+- UI 診断 / デモ時は `KOTOMEGANE_READONLY_DEMO=1` で read-only/demo mode にできる。この mode では startup scheduler / maintenance を開始せず、provider client creation を block して manual LLM/API send、provider batch submit、provider batch retrieve/import に進まない
 - `自社監査 (owned-only audit)` backend は残るが、現行 UI 主導線では前面に出さない
 - 主表示スコアは `deterministic_score`
 - LLM 返却の `visibility_score` は `raw_llm_score` として保持する
+- 既定市場は `介護保険 / 福祉用具レンタル` に寄せる。`config/llmo_poc_settings.json` と `AppConfig` は、`https://healthrent.duskin.jp/` を対象URLにし、ヤマシタコーポレーション、パナソニック エイジフリー、フランスベッド、フロンティアを比較対象プリセットとして持つ
+- パナソニック エイジフリー、フランスベッド、フロンティアのように福祉用具以外の事業も同一または近接ドメインにある会社は、全ドメインを競合評価対象にせず、`official_url_scopes` と `domain_scope_type` で path / business scope を明示する
 
 ## End-to-End Flow
 
@@ -31,11 +34,11 @@
 7. `prompt_catalog.py` が拡張質問を `prompt family` に対応づける
 8. `plan_catalog.py` が provider ごとの総質問数上限を適用する
 9. `manual` は元質問ごとに繰り返しを回し、その各回では拡張質問を並列送信する。`batch / scheduled batch` は shared execution plan を provider batch として扱う
-10. guardrail は事前見積だけで終わらせず、`manual / batch / scheduled batch` すべてで query planning 後の実送信件数でも再評価する。日次予算は未import batch の予約コストも含めて判定する
+10. guardrail は事前見積だけで終わらせず、`manual / batch / scheduled batch` すべてで query planning 後の実送信件数でも再評価する。日次予算は未import batch の予約コストも含めて判定し、`budget_guardrail_mode=warn` では警告して続行、`stop` では開始前に停止する
 11. `llmo_client.py` と `llmo_core/*` が provider ごとの live request または batch request を送る。`market` mode の LLM 入力は `user query only` とし、`自社URL / 名称 / 比較対象 / 重点テーマ` は渡さない。`owned-only audit` だけが target-aware prompt を使う
 12. 応答から `answer_text / citations / raw_llm_score / source URLs / security_signals` を抽出する
 13. `analysis_lib.py` と `analysis_core/*` が、保存済みの citation URL / source URL / answer text に対してローカル照合を行い、rule-based の指標へ変換する
-14. `ui/comparison_candidate_builders.py` が回答文や citation URL タイトルから `比較候補` を抽出し、手入力 `比較対象` がある場合はそちらを優先する
+14. `ui/comparison_candidate_builders.py` が回答文や citation URL タイトルから `比較候補` を抽出し、手入力 `比較対象` と `competitor_presets` がある場合はそちらを優先する
 15. `storage.py` が `run_session / query_plan / keyword_result / batch_job` などへ保存する
 16. `billing_rules.py` が内部 billing unit を計算し、UI は microcopy だけ参照する
 17. `app.py` が state / wiring を持ち、`ui/dashboard_views.py` が NiceGUI 描画を再構成する
@@ -65,6 +68,7 @@
 ### Ordering Rule
 
 - `manual` は `同じ元質問を連続で送る -> 次の質問へ進む` を基本にしつつ、各繰り返しでは同じ元質問に属する拡張質問を並列送信する
+- 標準の単発確認は `元質問 + 拡張質問 3 件` を `5` 回実行し、1元質問あたり合計 `20` 件の分析リクエストとする
 - `batch / scheduled batch` は shared execution plan の request 集合をそのまま provider batch 化する
 - 狙いは prompt caching 効率を保ちつつ、manual の体感待ち時間を拡張質問単位で短くすること
 
@@ -76,15 +80,18 @@
 - `manual` の live dispatch だけは、進捗表示と体感速度のため `元質問 x 繰り返し` ごとに拡張質問を並列グループとして送る
 - provider 差分は `llmo_core/*` と capability registry に閉じ込める
 - user-facing には provider 名を出し、内部 model 名は主導線に出さない
+- config で指定された provider 系の custom model 名は、registry の候補リスト完全一致でなくても維持する。provider を UI で切り替える場合は、切替先 provider の既定 model に戻す
 - app 単位の provider allowlist は `KOTOMEGANE_ENABLED_PROVIDERS` または config で制御する
 - `market` mode の provider request は query-only とし、owned context は送らない。owned visibility は response 後に local scoring で計算する
+- `competitor_presets` は provider request の制約として送らない。表示名・alias は post-hoc の競合名照合に使い、`official_url_scopes` / `domain_scope_evaluation_axes` は混在ドメインを評価するときの読み取り軸として保持する
+- `KOTOMEGANE_READONLY_DEMO=1` の場合、`llmo_core.factory.build_provider_client(...)` は provider adapter を返さず例外にする。これにより UI handler や scheduler から呼ばれても provider submit / retrieve / import / live LLM/API send に到達しない
 
 ### OpenAI
 
 - `Responses API + web_search`
 - explicit `prompt_cache_key`
 - `prompt_cache_retention=24h` を優先要求
-- 未対応条件では `in_memory` へ自動 fallback
+- 未対応または未確認の model では `in_memory` へ自動 fallback
 - `market` mode では query-only prompt を送り、`owned-only audit` だけが target-aware prompt を使う
 
 ### Gemini
@@ -194,8 +201,11 @@ user-facing の主要文言では `競合` を避け、`自社 / 比較対象 / 
 
 - `scheduled batch` は in-process scheduler 前提
 - `scheduler_runtime.py` が約 60 秒ごとに schedule を監視する
+- `KOTOMEGANE_READONLY_DEMO=1` の read-only/demo mode では `app.py` startup が scheduler を開始しない。`ScheduledMonitorService.start()` / `tick()` も同 mode では no-op とし、poll / import / provider batch submit に進まない
+- `schedule_plan` は 1つの保存済み `question_set` を参照する。`question_set.config_json` には `keywords` list が入るため、1 schedule は 1質問固定ではなく、選択した確認内容に含まれる複数質問を実行対象にできる
+- 自動チェックの曜日 UI は月〜日のチェックボックスを正本とする。保存時は選択された曜日数を `weekly_run_count` に反映してから `normalize_schedule_weekdays(...)` に渡し、複数曜日を選んでも先頭曜日だけに丸められないようにする
 - due な質問セットを provider batch として投入する
-- provider batch 投入前に、query planning 後の実送信件数でも run guardrail を再評価する。日次 guardrail は `batch_job` に残る未import 分の予約コストを含めて判定する
+- provider batch 投入前に、query planning 後の実送信件数でも run guardrail を再評価する。`budget_guardrail_mode=warn` では 1 回上限の超過見込みだけでは投入を止めず、`stop` のときだけ停止する。日次 guardrail は `batch_job` に残る未import 分の予約コストを含めて判定する
 - その後 poll / import を行い、`batch_job` と `batch_job_item` を正本として状態管理する
 - partial display policy は timeout 後に pending provider を灰色表示する
 
@@ -250,8 +260,8 @@ user-facing の主要文言では `競合` を避け、`自社 / 比較対象 / 
 - `設定`
 - `分析` では `質問ごとの結果` ヒートマップを置き、`判定 / 自社引用 / 比較対象引用 / 外部引用 / 自社候補` を質問行ごとに読む
 - ヒートマップのセル選択は `結果` タブの `詳細を見る質問` と連動し、必要時だけ同じ質問の詳細へ切り替える
-- `設定` では `定期リサーチ｜今すぐ実行（バッチ）` / `定期リサーチ｜自動で継続（スケジュール）` を開けるようにし、単発の `分析を実行` と継続観測の `定期リサーチ` を同じ画面語彙のまま切り替える
-- `detail expansion` には `今回の結果 / 定点計測 / 定期リサーチ / 設定` の 4 タブを置き、`定期リサーチ` タブは概要 + `設定` / `定点計測` へのショートカットのみ（実操作は `設定` タブの expansion で行う）
+- `設定` では `保存済み条件` / `今回だけまとめて分析` / `曜日を決めて自動チェック` を開けるようにし、単発の `1回だけ分析` と継続観測の `自動チェック` を画面語彙で分ける
+- `detail expansion` には `今回の結果 / 自動チェックの推移 / まとめて分析 / 設定` の 4 タブを置き、`まとめて分析` タブは概要 + `設定` / `自動チェックの推移` へのショートカットのみ（実操作は `設定` タブの expansion で行う）
 - `定点計測` の user-facing KPI は `自社露出率 / 自社引用率 / 外部先行率 / 前回比` に固定し、すべて `観測試行数` を分母にする
 - URL 件数ベースの割合や平均シェアは user-facing KPI から外し、必要時だけ URL 一覧を詳細で確認する
 
@@ -264,6 +274,7 @@ user-facing の主要文言では `競合` を避け、`自社 / 比較対象 / 
 - periodic refresh は payload の signature に変化がある場合だけ dashboard surface を再描画し、`今回の結果` を読んでいる間は hero status の軽更新に留める
 - `定期分析の推移` タブ内の詳細 Plotly は初期表示で作らず、タブ表示時に lazy mount / lazy refresh する。非表示中の Plotly update は行わない
 - 既存 row の enrichment 補完は `Storage()` 初期化時には走らせず、起動後 background maintenance として小分けに実行する。source URL は result_id 群で一括取得し、完了後は `PRAGMA user_version` marker で同じ補完を再実行しない
+- read-only/demo mode では startup background maintenance も開始しない。UI 表示は既存 DB の read-model を読むだけに留め、診断起動中に schema / enrichment write が起きないようにする
 
 ### Export Surface
 
@@ -309,6 +320,8 @@ user-facing の主要文言では `競合` を避け、`自社 / 比較対象 / 
   - 主結果 3 カードと `主な参照元サイト` セクションの NiceGUI 描画 owner
 - `config.py`
   - 設定、provider registry、guardrail
+- `runtime_mode.py`
+  - `KOTOMEGANE_READONLY_DEMO` 判定と read-only/demo block message
 - `plan_catalog.py`
   - provider ごとの総質問数上限
 - `billing_rules.py`

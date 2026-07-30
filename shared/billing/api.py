@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import uuid
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,6 +21,7 @@ from .stripe_client import (
     create_customer,
     create_customer_portal_session,
     create_transfer,
+    list_customer_subscriptions,
 )
 
 router = APIRouter(tags=["phase2-billing"])
@@ -50,6 +53,122 @@ def _require_any_role(user: Dict[str, Any], allowed_roles: List[str]) -> None:
         raise HTTPException(status_code=403, detail=f"Required role missing. Allowed: {', '.join(allowed_roles)}")
 
 
+def _allowed_return_hosts() -> set[str]:
+    values = [
+        os.environ.get("HUB_BASE_URL", ""),
+        os.environ.get("HUB_URL", ""),
+        os.environ.get("SERVICE_BASE_URL", ""),
+        os.environ.get("API_BASE_URL", ""),
+        os.environ.get("KOTOMAKE_URL", ""),
+        os.environ.get("KOTOMIGAKI_URL", ""),
+        os.environ.get("KOTOMEGANE_URL", ""),
+    ]
+    configured = os.environ.get("STRIPE_ALLOWED_RETURN_HOSTS", "")
+    values.extend([item.strip() for item in configured.split(",") if item.strip()])
+    hosts: set[str] = {"app.techie.jp", "api.techie.jp"}
+    for value in values:
+        parsed = urlparse(value)
+        host = parsed.netloc or parsed.path
+        if host:
+            hosts.add(host.split("@")[-1].split(":")[0].lower())
+    return hosts
+
+
+def _assert_allowed_return_url(value: str, field_name: str) -> None:
+    parsed = urlparse(value)
+    host = parsed.hostname.lower() if parsed.hostname else ""
+    if parsed.scheme != "https" or host not in _allowed_return_hosts():
+        raise HTTPException(status_code=400, detail=f"{field_name} must use an allowed HTTPS TECHIE domain")
+
+
+def _subscription_metadata(subscription: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = dict(subscription.get("metadata") or {})
+    for key in ("current_period_start", "current_period_end", "cancel_at", "cancel_at_period_end"):
+        if subscription.get(key) is not None:
+            metadata[key] = subscription.get(key)
+    return metadata
+
+
+def _subscription_plan_from_price(subscription: Dict[str, Any], metadata: Dict[str, Any]) -> tuple[str, str]:
+    first_item = ((subscription.get("items") or {}).get("data") or [{}])[0]
+    price = first_item.get("price") or {}
+    price_id = price.get("id") or ""
+    return metadata.get("plan_id") or _plan_key_from_price_id(price_id), price_id
+
+
+def _upsert_stripe_subscription_for_tenant(
+    *,
+    tenant_id: str,
+    stripe_customer_id: str,
+    subscription: Dict[str, Any],
+) -> Dict[str, Any]:
+    metadata = _subscription_metadata(subscription)
+    plan_id, price_id = _subscription_plan_from_price(subscription, metadata)
+    return repository.upsert_subscription_contract(
+        tenant_id=tenant_id,
+        plan_id=plan_id,
+        stripe_customer_id=stripe_customer_id,
+        stripe_subscription_id=subscription.get("id", ""),
+        stripe_checkout_session_id=metadata.get("checkout_session_id"),
+        contract_status=subscription.get("status", "canceled"),
+        metadata=metadata | {
+            "stripe_price_id": price_id,
+            "synced_from": "stripe_subscription_api",
+        },
+    )
+
+
+def _retire_unsynced_active_contracts(*, stripe_customer_id: str, active_subscription_ids: List[str]) -> None:
+    if active_subscription_ids:
+        repository._execute(
+            """
+            UPDATE subscription_contract
+            SET contract_status = 'cancelled',
+                cancelled_at = COALESCE(cancelled_at, now()),
+                updated_at = now()
+            WHERE stripe_customer_id = %s
+              AND contract_status IN ('active', 'trialing', 'checkout_completed')
+              AND (
+                  stripe_subscription_id IS NULL
+                  OR NOT (stripe_subscription_id = ANY(%s))
+              )
+            """,
+            (stripe_customer_id, active_subscription_ids),
+        )
+    else:
+        repository._execute(
+            """
+            UPDATE subscription_contract
+            SET contract_status = 'cancelled',
+                cancelled_at = COALESCE(cancelled_at, now()),
+                updated_at = now()
+            WHERE stripe_customer_id = %s
+              AND contract_status IN ('active', 'trialing', 'checkout_completed')
+            """,
+            (stripe_customer_id,),
+        )
+
+
+def _allowed_stripe_price_ids() -> set[str]:
+    env_names = [
+        "STRIPE_ENTRY_PRICE_ID",
+        "STRIPE_STANDARD_PRICE_ID",
+        "STRIPE_PRO_PRICE_ID",
+        "STRIPE_ADDON_10_CREDIT_PRICE_ID",
+        "STRIPE_ADDON_1_CREDIT_PRICE_ID",
+    ]
+    return {os.environ.get(name, "").strip() for name in env_names if os.environ.get(name, "").strip()}
+
+
+def _plan_key_from_price_id(price_id: str) -> str:
+    mapping = {
+        os.environ.get("STRIPE_ENTRY_PRICE_ID", "").strip(): "entry",
+        os.environ.get("STRIPE_STANDARD_PRICE_ID", "").strip(): "standard",
+        os.environ.get("STRIPE_PRO_PRICE_ID", "").strip(): "pro",
+    }
+    return mapping.get(str(price_id or "").strip(), "")
+
+
 class CheckoutSessionRequest(BaseModel):
     price_id: str
     success_url: str
@@ -60,10 +179,16 @@ class CheckoutSessionRequest(BaseModel):
     display_name: str = ""
     customer_email: Optional[str] = None
     plan_id: Optional[str] = None
+    checkout_mode: str = "subscription"
+    credit_grant_amount: int = 0
 
 
 class PortalRequest(BaseModel):
     return_url: str
+
+
+class BillingSyncRequest(BaseModel):
+    pass
 
 
 class ResellerRequest(BaseModel):
@@ -97,6 +222,15 @@ class CouponDecisionPayload(BaseModel):
 
 @router.post("/api/billing/checkout-session")
 async def billing_checkout_session(payload: CheckoutSessionRequest, user: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
+    _assert_allowed_return_url(payload.success_url, "success_url")
+    _assert_allowed_return_url(payload.cancel_url, "cancel_url")
+    if payload.checkout_mode not in {"subscription", "payment"}:
+        raise HTTPException(status_code=400, detail="checkout_mode must be subscription or payment")
+    if payload.checkout_mode == "subscription" and payload.credit_grant_amount:
+        raise HTTPException(status_code=400, detail="credit_grant_amount is only valid for payment checkout")
+    allowed_price_ids = _allowed_stripe_price_ids()
+    if allowed_price_ids and payload.price_id not in allowed_price_ids:
+        raise HTTPException(status_code=400, detail="Unknown Stripe Price ID")
     tenant_id = user["tenant_id"]
     email = payload.customer_email or user.get("email", "")
     display_name = payload.display_name or user.get("name", "") or payload.company_name or email or tenant_id
@@ -113,6 +247,8 @@ async def billing_checkout_session(payload: CheckoutSessionRequest, user: Dict[s
             name=display_name,
             tenant_id=tenant_id,
             metadata={
+                "user_id": user["user_id"],
+                "user_email": user.get("email", ""),
                 "service_code": payload.service_code,
                 "service_name": payload.service_name,
                 "plan_id": payload.plan_id or "",
@@ -133,23 +269,117 @@ async def billing_checkout_session(payload: CheckoutSessionRequest, user: Dict[s
         price_id=payload.price_id,
         success_url=payload.success_url,
         cancel_url=payload.cancel_url,
+        mode=payload.checkout_mode,
         metadata={
             "tenant_id": tenant_id,
+            "user_id": user["user_id"],
+            "user_email": user.get("email", ""),
             "service_code": payload.service_code,
             "service_name": payload.service_name,
             "plan_id": payload.plan_id or "",
+            "checkout_mode": payload.checkout_mode,
+            "credit_grant_amount": str(payload.credit_grant_amount or 0),
             "company_name": payload.company_name or display_name,
             "display_name": display_name,
         },
+        idempotency_key=f"checkout:{tenant_id}:{payload.checkout_mode}:{payload.price_id}:{uuid.uuid4()}",
     )
 
 
 @router.post("/api/billing/customer-portal")
 async def billing_customer_portal(payload: PortalRequest, user: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
+    _assert_allowed_return_url(payload.return_url, "return_url")
     account = repository.get_customer_account_by_tenant(user["tenant_id"])
     if not account or not account.get("stripe_customer_id"):
         raise HTTPException(status_code=404, detail="Stripe customer not found for this tenant")
     return create_customer_portal_session(customer_id=account["stripe_customer_id"], return_url=payload.return_url)
+
+
+@router.post("/api/billing/sync-subscription")
+async def billing_sync_subscription(payload: BillingSyncRequest, user: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
+    """Synchronize active Stripe subscription state into TECHIE DB.
+
+    Stripe webhooks remain the primary path. This endpoint is a safe fallback
+    for the account screen after Checkout/Portal redirects, so credits are not
+    blocked by delayed webhook delivery.
+    """
+    account = repository.get_customer_account_by_tenant(user["tenant_id"])
+    if not account or not account.get("stripe_customer_id"):
+        return {"synced": False, "reason": "customer_not_found"}
+
+    stripe_customer_id = account["stripe_customer_id"]
+    subscriptions = list_customer_subscriptions(stripe_customer_id)
+    all_subscriptions = list(subscriptions.get("data", []))
+    synced_contracts: Dict[str, Dict[str, Any]] = {}
+    for item in all_subscriptions:
+        subscription_id = item.get("id", "")
+        if not subscription_id:
+            continue
+        synced_contracts[subscription_id] = _upsert_stripe_subscription_for_tenant(
+            tenant_id=user["tenant_id"],
+            stripe_customer_id=stripe_customer_id,
+            subscription=item,
+        )
+
+    candidates = [
+        item for item in all_subscriptions
+        if item.get("status") in {"active", "trialing", "past_due"}
+    ]
+    active_subscription_ids = [
+        item.get("id", "")
+        for item in candidates
+        if item.get("id") and item.get("status") in {"active", "trialing"}
+    ]
+    _retire_unsynced_active_contracts(
+        stripe_customer_id=stripe_customer_id,
+        active_subscription_ids=active_subscription_ids,
+    )
+    if not candidates:
+        latest_subscription = sorted(
+            all_subscriptions,
+            key=lambda item: int(item.get("created") or 0),
+            reverse=True,
+        )
+        if not latest_subscription:
+            return {"synced": False, "reason": "subscription_not_found"}
+
+        subscription = latest_subscription[0]
+        from shared.usage import repository as usage_repository
+
+        usage_repository.ensure_usage_account(
+            tenant_id=user["tenant_id"],
+            service_key=usage_repository.GLOBAL_CREDIT_SERVICE_KEY,
+        )
+        return {
+            "synced": True,
+            "reason": "active_subscription_not_found",
+            "subscription_id": subscription.get("id"),
+            "status": subscription.get("status"),
+        }
+
+    subscription = sorted(candidates, key=lambda item: int(item.get("created") or 0), reverse=True)[0]
+    metadata = _subscription_metadata(subscription)
+    plan_id, _price_id = _subscription_plan_from_price(subscription, metadata)
+    contract = synced_contracts.get(subscription.get("id", ""))
+    if not contract:
+        contract = _upsert_stripe_subscription_for_tenant(
+            tenant_id=user["tenant_id"],
+            stripe_customer_id=stripe_customer_id,
+            subscription=subscription,
+        )
+    from shared.usage import repository as usage_repository
+
+    usage_repository.ensure_usage_account(
+        tenant_id=user["tenant_id"],
+        service_key=usage_repository.GLOBAL_CREDIT_SERVICE_KEY,
+        subscription_contract_id=contract["subscription_contract_id"],
+    )
+    return {
+        "synced": True,
+        "subscription_id": subscription.get("id"),
+        "status": subscription.get("status"),
+        "plan_id": plan_id,
+    }
 
 
 @router.post("/api/resellers")
@@ -313,6 +543,8 @@ async def admin_execute_payout(payout_ledger_id: str, user: Dict[str, Any] = Dep
     payout = repository.get_payout_ledger(payout_ledger_id)
     if not payout:
         raise HTTPException(status_code=404, detail="Payout ledger not found")
+    if payout.get("payout_status") in {"processing", "transferred"}:
+        raise HTTPException(status_code=409, detail=f"Payout is already {payout.get('payout_status')}")
     reseller = repository.get_reseller(payout["reseller_id"])
     if not reseller or not reseller.get("stripe_connect_account_id"):
         raise HTTPException(status_code=400, detail="Reseller Connect account is not configured")
@@ -322,12 +554,14 @@ async def admin_execute_payout(payout_ledger_id: str, user: Dict[str, Any] = Dep
         request_payload={"action": "execute", "payout_ledger_id": payout_ledger_id},
     )
     try:
+        repository.mark_payout_ledger_status(payout_ledger_id, "processing")
         transfer = create_transfer(
             connected_account_id=reseller["stripe_connect_account_id"],
             amount=float(payout["payout_amount"]),
             currency=payout["payout_currency"],
             transfer_group=payout.get("transfer_group") or f"techie-{payout_ledger_id}",
             metadata={"payout_ledger_id": payout_ledger_id, "reseller_id": payout["reseller_id"]},
+            idempotency_key=f"payout-transfer:{payout_ledger_id}",
         )
         repository.mark_payout_execution_result(
             execution["reseller_payout_execution_id"],

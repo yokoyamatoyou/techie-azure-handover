@@ -1,0 +1,6 @@
+# Development, test, and security-audit entrypoint.
+# Install with constraints.lock.txt for reproducible multi-developer rebuilds.
+-r requirements.txt
+
+pip-audit==2.10.0
+pytest==9.0.3

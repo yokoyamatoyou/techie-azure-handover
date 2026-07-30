@@ -1,0 +1,30 @@
+source_priority:
+  manual: 1
+  pdf: 2
+  word: 2
+  official_url: 3
+  external_url: 4
+  gpt_web_summary: 5
+url_policy:
+  allowed_schemes:
+    - "http"
+    - "https"
+  blocked_path_fragments:
+    - "/api/"
+    - "/login"
+    - "/search"
+    - "/archive"
+    - "/preview"
+    - "/admin"
+    - "/followers"
+    - "/following"
+    - "/likes"
+    - "/magazine"
+    - "/messages"
+confidence:
+  high_min_chars: 500
+  medium_min_chars: 120
+generation_preprocessing:
+  max_chars_per_source: 12000
+  max_chars_per_chunk: 4000
+  default_platform_style_target: "note_hatena_natural_blog"

@@ -8,6 +8,7 @@ from dotenv import dotenv_values, load_dotenv
 from pydantic import BaseModel, Field
 
 from analysis_core.common_constants import PROMPT_CACHE_24H_SUPPORTED_MODELS
+from env_keys import resolve_env_var
 from plan_catalog import DEFAULT_PLAN_KEY, SERVICE_KOTOMEGANE, resolve_plan_question_budget
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -21,6 +22,8 @@ CONFIG_PATH = CONFIG_DIR / "llmo_poc_settings.json"
 ENV_PATH = ROOT_DIR / ".env"
 
 load_dotenv(dotenv_path=ENV_PATH, override=False)
+for _provider_env_var in ("OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+    resolve_env_var(_provider_env_var)
 
 ALLOWED_DOMAINS_MODE_SOFT = "soft_preference"
 ALLOWED_DOMAINS_MODE_HARD = "hard_filter"
@@ -124,6 +127,17 @@ class ApiKeyStatus(BaseModel):
     message: str
 
 
+class CompetitorPreset(BaseModel):
+    key: str
+    display_name: str
+    aliases: list[str] = Field(default_factory=list)
+    official_url_scopes: list[str] = Field(default_factory=list)
+    domain_scope_type: str = "dedicated_domain"
+    category: str = "major_welfare_equipment_rental"
+    evaluation_axes: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
 class AppConfig(BaseModel):
     service_key: str = SERVICE_KOTOMEGANE
     plan_key: str = DEFAULT_PLAN_KEY
@@ -134,7 +148,7 @@ class AppConfig(BaseModel):
     query_planner_model: str = "gpt-5.4-nano"
     query_planner_reasoning_effort: str = "medium"
     query_planner_max_output_tokens: int = 1200
-    query_expansion_max_total_queries: int = 5
+    query_expansion_max_total_queries: int = 4
     query_expansion_shorten_threshold_chars: int = 50
     query_expansion_template_set: str = "business_ja"
     query_execution_order: str = "query_then_repeat"
@@ -143,18 +157,60 @@ class AppConfig(BaseModel):
     prompt_cache_retention: str = "24h"
     max_output_tokens: int = 1200
     repeat_count: int = 20
-    keywords: list[str] = Field(
-        default_factory=lambda: [
-            "B2B SaaS の AI検索可視性を改善する方法",
-            "生成AI向けFAQ設計のベストプラクティス",
-            "AI検索でブランド想起を高めるには",
-        ]
-    )
+    keywords: list[str] = Field(default_factory=list)
     target_domain: str = ""
     brand_terms: list[str] = Field(default_factory=list)
     market_context_terms: list[str] = Field(default_factory=list)
     competitor_terms: list[str] = Field(default_factory=list)
     allowed_domains: list[str] = Field(default_factory=list)
+    competitor_presets: list[CompetitorPreset] = Field(
+        default_factory=lambda: [
+            CompetitorPreset(
+                key="yamashita",
+                display_name="ヤマシタコーポレーション",
+                aliases=["ヤマシタ", "ヤマシタコーポレーション"],
+                official_url_scopes=["https://www.yco.co.jp/homecare/", "https://www.ycota.jp/"],
+                domain_scope_type="care_business_scope",
+                evaluation_axes=["福祉用具レンタル", "介護保険説明", "ケアマネ向け", "全国対応"],
+            ),
+            CompetitorPreset(
+                key="panasonic_agefree",
+                display_name="パナソニック エイジフリー",
+                aliases=["パナソニックエイジフリー", "パナソニック エイジフリー"],
+                official_url_scopes=["https://panasonic.co.jp/paf/", "https://sumai.panasonic.jp/agefree/"],
+                domain_scope_type="mixed_corporate_domain_path_scope",
+                evaluation_axes=["介護用品レンタル", "住宅改修", "介護サービス", "混在ドメインの福祉用具関連度"],
+                notes="Panasonic全体ではなく、Age-Free系のpath/scopeだけを競合評価対象にする。",
+            ),
+            CompetitorPreset(
+                key="francebed",
+                display_name="フランスベッド",
+                aliases=["フランスベッド", "介護レンタル.com"],
+                official_url_scopes=["https://www.kaigo-rental.com/", "https://medical.francebed.co.jp/"],
+                domain_scope_type="mixed_medical_corporate_domain_path_scope",
+                evaluation_axes=["介護ベッド", "福祉用具レンタル", "商品ページの直接引用", "医療・睡眠事業との分離"],
+                notes="kaigo-rental.comを主、medical.francebed.co.jpを介護・医療関連scopeとして扱う。",
+            ),
+            CompetitorPreset(
+                key="frontier",
+                display_name="フロンティア",
+                aliases=["フロンティア", "フロンティア 福祉用具"],
+                official_url_scopes=["https://www.frontier-ph.com/welfare_home/"],
+                domain_scope_type="mixed_corporate_domain_path_scope",
+                evaluation_axes=["福祉用具レンタル", "住宅改修", "薬局・医療周辺事業との分離"],
+                notes="frontier-ph.com全体ではなく、welfare_home配下を主な競合評価対象にする。",
+            ),
+        ]
+    )
+    domain_scope_evaluation_axes: list[str] = Field(
+        default_factory=lambda: [
+            "dedicated care domain or path scope",
+            "welfare-equipment relevance",
+            "care-insurance explanation quality",
+            "non-welfare business noise risk",
+            "official source confidence",
+        ]
+    )
     search_context_size: str = "medium"
     user_location_country: str = "JP"
     user_location_city: str = "Tokyo"
@@ -322,13 +378,23 @@ def get_provider_total_question_budget(
 def get_provider_effective_model(provider_key: str, requested_model: str) -> str:
     provider = get_provider_option(provider_key)
     requested = str(requested_model or "").strip()
-    if requested and requested in provider.models:
+    if requested and (requested in provider.models or _model_name_matches_provider(provider.key, requested)):
         return requested
     if provider.default_model:
         return provider.default_model
     if provider.models:
         return provider.models[0]
     return requested
+
+
+def _model_name_matches_provider(provider_key: str, model_name: str) -> bool:
+    normalized = str(model_name or "").strip().lower()
+    provider_prefixes = {
+        "openai": ("gpt", "o", "chatgpt-"),
+        "gemini": ("gemini-",),
+        "claude": ("claude-",),
+    }
+    return any(normalized.startswith(prefix) for prefix in provider_prefixes.get(provider_key, ()))
 
 
 def provider_supports_batch(provider_key: str) -> bool:
@@ -407,7 +473,7 @@ def get_provider_api_key(provider_key: str) -> str:
     provider = get_provider_option(provider_key)
     if not provider.env_var:
         return ""
-    return os.getenv(provider.env_var, "").strip()
+    return resolve_env_var(provider.env_var)
 
 
 def _normalize_provider_key_list(keys: list[str] | tuple[str, ...] | str | None) -> list[str]:
@@ -445,7 +511,7 @@ def get_api_key_status(provider_key: str) -> ApiKeyStatus:
     env_var = provider.env_var or ""
     env_values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
     env_file_value = str(env_values.get(env_var) or "").strip()
-    active_value = os.getenv(env_var, "").strip()
+    active_value = resolve_env_var(env_var)
 
     if env_file_value and active_value and env_file_value != active_value:
         return ApiKeyStatus(

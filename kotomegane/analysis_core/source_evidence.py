@@ -81,10 +81,16 @@ def _parse_source_rows(source_rows: list[dict[str, Any]] | None) -> list[dict[st
 
 def _build_competitor_terms(payload: dict[str, Any], config: AppConfig) -> list[str]:
     analysis_context = payload.get("analysis_context") or {}
+    preset_terms = [
+        term
+        for preset in config.competitor_presets or []
+        for term in [preset.display_name, *preset.aliases]
+    ]
     terms = [
         str(item or "")
         for item in [
             *(analysis_context.get("competitor_terms") or config.competitor_terms),
+            *preset_terms,
             *(payload.get("competitor_mentions") or []),
         ]
     ]

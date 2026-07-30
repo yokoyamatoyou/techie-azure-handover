@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, List
 from urllib.parse import urlparse
 
 from nicegui import app, run, ui
+from starlette.responses import JSONResponse
 from html_sanitizer import Sanitizer
 
 from seo_aio_engine import SEOAIOAnalyzer, ScrapeBlockedError
@@ -33,6 +34,8 @@ from core.application import (
     build_token_usage_text,
     execute_competitor_analysis,
     execute_primary_analysis,
+    export_detailed_docx_report,
+    export_detailed_markdown_report,
     export_history_csv,
     export_priority_actions_csv,
     load_saved_run_bundle,
@@ -46,13 +49,68 @@ from core.ui.dashboard import (
 )
 from shared.billing.api import router as phase2_billing_router
 from shared.billing.webhook_handler import router as stripe_webhook_router
+from shared.auth.nicegui_auth import NiceGUIAuthMiddleware
 from shared.usage.api import router as usage_router
+from shared.usage.nicegui import consume_usage_for_current_user, get_usage_summary_for_current_user
 
 app.include_router(phase2_billing_router)
 app.include_router(stripe_webhook_router)
 app.include_router(usage_router)
+app.add_middleware(NiceGUIAuthMiddleware)
 
 logger = logging.getLogger(__name__)
+
+
+@app.get("/healthz")
+@app.get("/health")
+async def healthcheck() -> Dict[str, str]:
+    return {"status": "ok", "service": "kotomigaki"}
+
+
+@app.get("/readyz")
+async def readiness() -> JSONResponse:
+    from core.site_health.vulnerability_db_bootstrap import vulnerability_database_status
+
+    status = vulnerability_database_status()
+    return JSONResponse(status, status_code=200 if status.get("ready") else 503)
+
+
+async def _ensure_usage_credit_available(service_key: str) -> bool:
+    try:
+        summary = await get_usage_summary_for_current_user(service_key=service_key)
+    except Exception:
+        logger.exception("Usage credit check failed for service_key=%s", service_key)
+        ui.notify("クレジット確認に失敗しました。時間をおいて再度お試しください。", color="negative")
+        return False
+    if int(summary.get("remaining_credits") or 0) <= 0:
+        ui.notify("クレジットが不足しています。契約管理画面で残高をご確認ください。", color="warning")
+        return False
+    return True
+
+
+async def _consume_usage_credit_after_success(*, service_key: str, action_key: str, attempt_id: str) -> bool:
+    try:
+        summary = await consume_usage_for_current_user(
+            service_key=service_key,
+            action_key=action_key,
+            units=1,
+            idempotency_key=f"{service_key}:{action_key}:{attempt_id}",
+            metadata={"trigger": "post_success"},
+        )
+        logger.info(
+            "Usage credit debited service_key=%s action_key=%s attempt_id=%s event_id=%s remaining=%s replay=%s",
+            service_key,
+            action_key,
+            attempt_id,
+            summary.get("usage_event_id"),
+            summary.get("remaining_credits"),
+            summary.get("idempotent_replay"),
+        )
+        return True
+    except Exception:
+        logger.exception("Usage credit debit failed for service_key=%s action_key=%s", service_key, action_key)
+        ui.notify("処理は完了しましたが、クレジット消費の記録に失敗しました。管理者へ連絡してください。", color="negative")
+        return False
 
 def _get_resource_dir() -> Path:
     """Directory for bundled read-only resources (onefile temp dir)."""
@@ -76,10 +134,10 @@ def _safe_url(val: str) -> str:
     """Remove characters that could break HTML attribute context."""
     return val.replace('"', '').replace("'", '').replace('<', '').replace('>', '').strip()
 
-HUB_URL = _safe_url(os.environ.get("HUB_URL", "/"))
-KOTOMAKE_URL = _safe_url(os.environ.get("KOTOMAKE_URL", "http://localhost:8080"))
-KOTOMIGAKI_URL = _safe_url(os.environ.get("KOTOMIGAKI_URL", "http://localhost:8081"))
-KOTOMEGANE_URL = _safe_url(os.environ.get("KOTOMEGANE_URL", "http://localhost:8083"))
+HUB_URL = _safe_url(os.environ.get("HUB_URL", "https://app.techie.jp"))
+KOTOMAKE_URL = _safe_url(os.environ.get("KOTOMAKE_URL", "https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
+KOTOMIGAKI_URL = _safe_url(os.environ.get("KOTOMIGAKI_URL", "https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
+KOTOMEGANE_URL = _safe_url(os.environ.get("KOTOMEGANE_URL", "https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io"))
 
 # Allow only the tags/attrs we use in ui.html
 def _sanitize_href_allow_file(href: str) -> str:
@@ -140,7 +198,7 @@ def _build_user_error_message(error_text: str) -> str:
     """Translate internal errors into user-facing Japanese messages."""
     lower_text = (error_text or "").lower()
 
-    if "max tokens" in lower_text or "maximum context" in lower_text:
+    if "max tokens" in lower_text or "max_output_tokens" in lower_text or "maximum context" in lower_text:
         return "トークン上限に達しました。入力URLか出力範囲を調整してください。"
     if "api" in lower_text and "key" in lower_text:
         return "APIキーの設定に問題があります。OpenAI APIキーの権限と残高を確認してください。"
@@ -2438,7 +2496,7 @@ def main_page() -> None:
                     saved_run_link = ui.link("", "#").classes("secondary-btn")
                     saved_run_link.visible = False
             progress_label = ui.label("").classes("card-sub text-sm mt-2")
-            progress_bar = ui.linear_progress(value=0, color="orange-8").classes("w-full mt-1")
+            progress_bar = ui.linear_progress(value=0, show_value=False, color="orange-8").classes("w-full mt-1")
             progress_bar.visible = False
 
         _render_dashboard_brand_header()
@@ -2631,6 +2689,8 @@ def main_page() -> None:
                 ui.download(output_path, filename=output_path.name, media_type="text/csv")
 
             async def run_analysis() -> None:
+                if not await _ensure_usage_credit_available("kotomigaki"):
+                    return
                 latest_url, latest_competitor_url = await _sync_latest_analysis_inputs_from_dom()
                 normalized_url, url_error = _validate_analysis_input_url(
                     latest_url,
@@ -2658,13 +2718,19 @@ def main_page() -> None:
 
                 state.busy = True
                 state.progress_started_at = datetime.now()
-                _push_progress_update("準備中", 0.0, "初期化")
+                _push_progress_update("分析中", 0.5, "完了までこのままお待ちください")
                 _refresh_analyze_button_state()
                 stay_on_page_button.visible = auto_open_state["value"]
                 loading.visible = True
                 token_usage_label.visible = False
                 saved_run_link.visible = False
                 status_label.text = "分析を開始しました。進捗を表示します。"
+                update_dashboard_progress_label()
+                progress_label.update()
+                progress_bar.update()
+                status_label.update()
+                loading.update()
+                await asyncio.sleep(0.05)
 
                 try:
                     analyzer = ensure_analyzer()
@@ -2675,7 +2741,10 @@ def main_page() -> None:
                     balance_value = int(balance_slider.value or 50)
 
                     def handle_progress(stage: str, percent: float, detail: Optional[str] = None) -> None:
-                        _push_progress_update(stage, percent, detail)
+                        # Keep the live dashboard simple: 50% while running, 100% after saved.
+                        # Detailed analyzer stages can arrive from blocking worker threads and
+                        # otherwise make the text/bar appear out of sync for users.
+                        return
 
                     state.results = await run.io_bound(
                         execute_primary_analysis,
@@ -2722,6 +2791,11 @@ def main_page() -> None:
                     )
                     state.last_run_id = run_id
                     _refresh_dashboard_views()
+                    credit_debited = await _consume_usage_credit_after_success(
+                        service_key="kotomigaki",
+                        action_key="analyze",
+                        attempt_id=str(run_id or f"analysis:{url}:{int(state.progress_started_at.timestamp())}"),
+                    )
                     _push_progress_update("完了", 1.0, "保存済みワークスペースへ移動")
 
                     try:
@@ -2738,13 +2812,17 @@ def main_page() -> None:
                         saved_run_link._props["href"] = run_path
                         saved_run_link.update()
                         saved_run_link.visible = True
-                        status_label.text = _build_saved_run_status_text(auto_open_state["value"])
+                        status_label.text = (
+                            _build_saved_run_status_text(auto_open_state["value"])
+                            if credit_debited
+                            else "分析は完了して保存しましたが、クレジット消費を確認できませんでした。管理者へ連絡してください。"
+                        )
                         logger.info(
                             "保存完了: run_id=%s socket_connected_before=%s",
                             run_id,
                             page_client.has_socket_connection,
                         )
-                        if auto_open_state["value"]:
+                        if auto_open_state["value"] and credit_debited:
                             try:
                                 await page_client.connected(timeout=8.0)
                                 logger.info(
@@ -2834,7 +2912,34 @@ def run_detail_page(run_id: str) -> None:
             output_path = export_priority_actions_csv(bundle.get("snapshot") or {}, run_row)
             ui.download(output_path, filename=output_path.name, media_type="text/csv")
 
-        with ui.row().classes("w-full justify-end gap-3 flex-wrap"):
+        def _export_detailed_markdown() -> None:
+            output_path = export_detailed_markdown_report(bundle)
+            ui.download(output_path, filename=output_path.name, media_type="text/markdown")
+
+        def _export_detailed_docx() -> None:
+            try:
+                output_path = export_detailed_docx_report(bundle)
+            except Exception as exc:
+                logger.error("DOCX report export failed: %s", exc, exc_info=True)
+                ui.notify("Wordレポートの出力に失敗しました。環境を確認してから再実行してください。", type="negative")
+                return
+            ui.download(
+                output_path,
+                filename=output_path.name,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+
+        with ui.row().classes("w-full justify-between items-center gap-3 flex-wrap"):
+            with ui.column().classes("gap-1"):
+                ui.label("レポート出力").classes("section-eyebrow")
+                ui.label("完成版レポートをMarkdownまたはWord形式で保存できます。").classes("card-hint")
+            with ui.row().classes("gap-3 flex-wrap justify-end"):
+                with ui.button("レポート出力", icon="download", color=None).props("unelevated no-caps").classes("primary-btn report-export-btn").style(
+                    "min-width: 178px; min-height: 48px; font-weight: 800;"
+                ):
+                    with ui.menu().props('anchor="bottom right" self="top right"'):
+                        ui.menu_item("Markdown（.md）", on_click=_export_detailed_markdown)
+                        ui.menu_item("Word（.docx）", on_click=_export_detailed_docx)
             ui.button("優先アクションCSV", on_click=_export_priority_actions, color=None).props("no-caps").classes("secondary-btn").style(
                 "background: rgba(255, 251, 246, 0.96); color: #7A3A16; border: 1px solid rgba(122, 98, 83, 0.18);"
             )
@@ -2862,6 +2967,9 @@ def run_app(host: str = "127.0.0.1", port: Optional[int] = None) -> None:
         port=final_port,
         title="コトミガキ | TECHIE",
         favicon=str(STATIC_DIR / "favicon_v2.png"),
+        storage_secret=os.environ.get("NICEGUI_STORAGE_SECRET")
+        or os.environ.get("SESSION_SECRET")
+        or "techie-nicegui-storage-secret",
         reload=False,
         show=False,
     )

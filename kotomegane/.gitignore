@@ -1,6 +1,4 @@
-data/*
-!data/stopwords_ja.txt
-!data/exclude_words_preset.json
+data/
 __pycache__/
 *.pyc
 .env

@@ -43,6 +43,18 @@ def get_current_nicegui_user() -> Dict[str, str]:
 
     client = getattr(ui.context, "client", None)
     request = getattr(client, "request", None)
+    request_state = getattr(request, "state", None)
+    state_tenant_id = getattr(request_state, "tenant_id", "") if request_state is not None else ""
+    state_user_id = getattr(request_state, "user_id", "") if request_state is not None else ""
+    if state_tenant_id and state_user_id:
+        return {
+            "user_id": str(state_user_id),
+            "email": str(getattr(request_state, "user_email", "") or ""),
+            "name": str(getattr(request_state, "user_name", "") or ""),
+            "tenant_id": str(state_tenant_id),
+            "roles": str(getattr(request_state, "user_roles", "user") or "user"),
+        }
+
     token = _extract_token_from_request(request)
 
     storage_user = getattr(app.storage, "user", None)

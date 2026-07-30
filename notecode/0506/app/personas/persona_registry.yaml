@@ -1,0 +1,31 @@
+personas:
+  in_house_explanatory_blog_editor:
+    writer_role_id: "in_house_explanatory_blog_editor"
+    viewpoint_profile_id: "self_perspective_watashitachi"
+    style_profile_id: "note_hatena_owned_media_soft"
+    editor_profile_id: "note_hatena_structural_editor"
+  in_house_brand_blog_editor:
+    writer_role_id: "in_house_brand_blog_editor"
+    viewpoint_profile_id: "self_perspective_watashitachi"
+    style_profile_id: "note_hatena_owned_media_soft"
+    editor_profile_id: "note_hatena_structural_editor"
+  in_house_announcement_editor:
+    writer_role_id: "in_house_announcement_editor"
+    viewpoint_profile_id: "formal_self_perspective_tousha"
+    style_profile_id: "formal_notice_compact"
+    editor_profile_id: "note_hatena_structural_editor"
+  in_house_case_study_editor:
+    writer_role_id: "in_house_case_study_editor"
+    viewpoint_profile_id: "self_perspective_watashitachi"
+    style_profile_id: "note_hatena_owned_media_soft"
+    editor_profile_id: "note_hatena_structural_editor"
+  in_house_comparison_guide_editor:
+    writer_role_id: "in_house_comparison_guide_editor"
+    viewpoint_profile_id: "self_perspective_watashitachi"
+    style_profile_id: "note_hatena_owned_media_soft"
+    editor_profile_id: "note_hatena_structural_editor"
+  in_house_daily_activity_blog_writer:
+    writer_role_id: "in_house_daily_activity_blog_writer"
+    viewpoint_profile_id: "self_perspective_watashitachi"
+    style_profile_id: "note_hatena_owned_media_soft"
+    editor_profile_id: "note_hatena_structural_editor"

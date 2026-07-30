@@ -7,6 +7,7 @@ from typing import Sequence
 import pytest
 
 import note.article_generator as ag
+import note.zero_base.semantic_dedupe as semantic_dedupe_mod
 from note.article_fetcher import FetchedContent
 from note.article_generator import ArticleGenerator
 from note.zero_base.semantic_dedupe import OpenAIEmbeddingProvider, semantic_dedupe_text
@@ -44,6 +45,11 @@ class CaptureEmbedder:
         return [[1.0, 0.0, 0.0] for _ in texts]
 
 
+class _ShouldNotBeCalledEmbedder:
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        raise AssertionError("embedder should not be called")
+
+
 def test_phase05_semantic_duplicate_detection_triggers() -> None:
     body = (
         "## 見出しA\n\n"
@@ -58,7 +64,8 @@ def test_phase05_semantic_duplicate_detection_triggers() -> None:
         embedder=RuleEmbedder([("導入初期", [1.0, 0.0, 0.0])]),
     )
     assert audit["duplicate_pairs"] >= 1
-    assert "前段と重なる説明は省略し" in deduped
+    assert "前段と重なる説明は省略し" not in deduped
+    assert "導入初期は小規模に試し、失敗コストを抑えます。" in deduped
 
 
 def test_phase05_non_duplicate_is_not_over_detected() -> None:
@@ -85,9 +92,10 @@ def test_phase05_non_duplicate_is_not_over_detected() -> None:
 
 def test_phase05_api_error_is_fail_open() -> None:
     body = (
-        "## 見出しA\n\n重複確認のテキストです。\n\n"
-        "## 見出しB\n\n重複確認のテキストです。"
+        "## 見出しA\n\nrollout starts small and validates each workflow milestone.\n\n"
+        "## 見出しB\n\nsmall rollout validates each milestone before broad deployment."
     )
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
     deduped, audit = semantic_dedupe_text(
         body,
         {"article_type": "ai", "must_cover": []},
@@ -95,6 +103,55 @@ def test_phase05_api_error_is_fail_open() -> None:
     )
     assert deduped == body
     assert audit["fail_open"] is True
+    assert audit["resolved_provider_mode"] == "local_only_after_remote_failure"
+
+
+def test_phase05_local_exact_duplicate_skips_remote_embedding() -> None:
+    body = (
+        "## 見出しA\n\n"
+        "導入初期は小規模に試し、失敗コストを抑えます。\n\n"
+        "## 見出しB\n\n"
+        "導入初期は小規模に試し、失敗コストを抑えます。"
+    )
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
+    deduped, audit = semantic_dedupe_text(
+        body,
+        {"article_type": "ai", "must_cover": []},
+        embedder=_ShouldNotBeCalledEmbedder(),
+    )
+    assert deduped == body
+    assert audit["duplicate_pairs"] >= 1
+    assert audit["embedding_attempted"] is False
+    assert audit["embedding_used"] is False
+    assert audit["embedding_skipped_reason"] == "no_remote_candidate_pairs"
+    assert audit["local_duplicate_pairs"] >= 1
+
+
+def test_phase05_circuit_open_skips_remote_after_failure() -> None:
+    body = (
+        "## 見出しA\n\nrollout starts small and validates each workflow milestone.\n\n"
+        "## 見出しB\n\nsmall rollout validates each milestone before broad deployment."
+    )
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
+    semantic_dedupe_text(
+        body,
+        {"article_type": "ai", "must_cover": []},
+        config={"network_fail_cooldown_seconds": 120},
+        embedder=FailingEmbedder(),
+    )
+    capture = CaptureEmbedder()
+    deduped, audit = semantic_dedupe_text(
+        body,
+        {"article_type": "ai", "must_cover": []},
+        config={"network_fail_cooldown_seconds": 120},
+        embedder=capture,
+    )
+    assert deduped == body
+    assert capture.captured == []
+    assert audit["embedding_attempted"] is False
+    assert audit["embedding_skipped_reason"] == "circuit_open"
+    assert audit["resolved_provider_mode"] == "local_only_circuit_open"
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
 
 
 def test_phase05_must_cover_is_not_removed() -> None:
@@ -126,10 +183,13 @@ def test_phase05_announcement_datetime_is_preserved() -> None:
 
 def test_phase05_embedding_input_masks_sensitive_text() -> None:
     body = (
-        "## 見出しA\n\napi_key=sk-AAAAAAAAAAAAAAAAAAAAAA を貼り付けないでください。\n\n"
-        "## 見出しB\n\nAuthorization: Bearer SECRET_TOKEN_123456789012"
+        "## 見出しA\n\n"
+        "api_key=sk-AAAAAAAAAAAAAAAAAAAAAA rollout validation should happen before production deployment.\n\n"
+        "## 見出しB\n\n"
+        "Authorization: Bearer SECRET_TOKEN_123456789012 rollout validation should happen before full deployment."
     )
     embedder = CaptureEmbedder()
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
     _deduped, audit = semantic_dedupe_text(
         body,
         {"article_type": "ai", "must_cover": []},
@@ -139,6 +199,27 @@ def test_phase05_embedding_input_masks_sensitive_text() -> None:
     assert "sk-AAAA" not in joined
     assert "SECRET_TOKEN" not in joined
     assert audit["redaction_applied_count"] >= 1
+
+
+def test_phase05_truncation_keeps_tail_lines_fail_open() -> None:
+    body = (
+        "## 見出しA\n\n最初の段落です。\n\n"
+        "## 見出しB\n\n二つ目の段落です。\n\n"
+        "## 見出しC\n\n三つ目の段落です。\n\n"
+        "## 見出しD\n\n四つ目の段落です。"
+    )
+
+    deduped, audit = semantic_dedupe_text(
+        body,
+        {"article_type": "ai", "must_cover": []},
+        config={"provider_mode": "local_only", "max_sentences": 2},
+        embedder=_ShouldNotBeCalledEmbedder(),
+    )
+
+    assert deduped == body
+    assert audit["sentence_count"] == 4
+    assert audit["duplicate_pairs"] == 0
+    assert audit["regenerated_paragraphs"] == 0
 
 
 def test_phase06_exact_text_match_is_always_deduped() -> None:
@@ -160,7 +241,8 @@ def test_phase06_exact_text_match_is_always_deduped() -> None:
     )
     assert audit["duplicate_pairs"] >= 1
     assert any(reason.get("reason") == "exact_text_match" for reason in audit["deletion_reasons"])
-    assert "前段と重なる説明は省略し" in deduped
+    assert "前段と重なる説明は省略し" not in deduped
+    assert "導入初期は小規模に試し、失敗コストを抑えます。" in deduped
 
 
 def test_phase06_required_sentence_priority_is_recorded() -> None:
@@ -183,6 +265,32 @@ def test_phase06_required_sentence_priority_is_recorded() -> None:
     assert "customer interview notes" in deduped
     assert any(reason.get("reason") == "required_sentence_priority" for reason in audit["deletion_reasons"])
     assert any(reason.get("reason") == "must_cover_protected" for reason in audit["protection_reasons"])
+
+
+def test_phase06_local_lexical_duplicate_does_not_concatenate_sentences() -> None:
+    body = (
+        "## 見出しA\n\n"
+        "移行時の注意点として、利用条件の適用時期、既存設定の引き継ぎ可否、手順変更の有無を確認事項として整理してください。\n\n"
+        "## 見出しB\n\n"
+        "移行時の注意点として、利用条件の適用時期、既存設定の引き継ぎ可否、手順変更の有無を確認してください。"
+    )
+    deduped, audit = semantic_dedupe_text(
+        body,
+        {"article_type": "announcement", "must_cover": []},
+        config={
+            "provider_mode": "local_only",
+            "high_overlap_shortcut_threshold": 0.62,
+            "min_shared_content_words": 3,
+        },
+        embedder=_ShouldNotBeCalledEmbedder(),
+    )
+
+    assert audit["duplicate_pairs"] == 1
+    assert audit["local_duplicate_pairs"] == 1
+    assert audit["merged_pairs"] == 0
+    assert audit["regenerated_paragraphs"] == 1
+    assert "確認事項として整理してください。移行時の注意点として" not in deduped
+    assert "確認事項として整理してください。" in deduped
 
 
 def test_phase06_audit_excerpt_masks_secret_text() -> None:
@@ -242,16 +350,33 @@ class _Phase05LLM:
 
 
 def test_phase05_generator_continues_when_embedding_fails(monkeypatch) -> None:
+    class _RemoteCandidateLLM(_Phase05LLM):
+        def generate_text(self, prompt: str, max_tokens: int = 0, task_type: str = "", **kwargs) -> str:
+            if task_type != "zero_base_section":
+                return super().generate_text(prompt, max_tokens=max_tokens, task_type=task_type, **kwargs)
+            if "見出しA" in prompt:
+                return "rollout starts small and validates each workflow milestone."
+            return "small rollout validates each milestone before broad deployment."
+
     monkeypatch.setattr(ag, "get_generation_mode", lambda: "zero_base_v2")
-    generator = ArticleGenerator(llm_client=_Phase05LLM())
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
+    generator = ArticleGenerator(llm_client=_RemoteCandidateLLM())
     generator._zero_base_embedding_provider = FailingEmbedder()
+    _deduped, audit = generator._zero_base_semantic_dedupe(
+        body=(
+            "## 見出しA\n\nrollout starts small and validates each workflow milestone.\n\n"
+            "## 見出しB\n\nsmall rollout validates each milestone before broad deployment."
+        ),
+        contract={"article_type": "ai", "must_cover": []},
+    )
     result = generator.generate(
         [FetchedContent(title="source", content="本文", source_type="url")],
         "phase05 fail-open test",
         "ai",
     )
     assert result["full_text"]
-    assert result["zero_base_dedupe_audit"]["fail_open"] is True
+    assert audit["fail_open"] is True
+    semantic_dedupe_mod._EMBEDDING_CIRCUIT_STATE.clear()
 
 
 def test_phase05_zero_base_prompt_invariants_include_rhythm_rules() -> None:

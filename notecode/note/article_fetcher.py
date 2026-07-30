@@ -15,12 +15,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
-import ipaddress
-import socket
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 from core.app_config import get_source_reading_config
+from note.safe_fetch import ContentTooLargeError, SafeFetchError, UnsafeURLError, safe_fetch_url, validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -89,21 +88,11 @@ class ArticleFetcher:
         return Path(__file__).resolve().parent / "uploads"
 
     def _is_safe_url(self, url: str) -> bool:
-        """Prevent SSRF by blocking private and loopback IPs."""
+        """Prevent SSRF by allowing only public http(s) targets."""
         try:
-            parsed = urlparse(url)
-            if parsed.scheme not in ("http", "https"):
-                return False
-            if not parsed.hostname:
-                return False
-            
-            # Resolve hostname to IP
-            ip_addr = socket.gethostbyname(parsed.hostname)
-            ip = ipaddress.ip_address(ip_addr)
-            
-            # Block internal, loopback, and reserved IP ranges
-            return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved)
-        except (ValueError, OSError, socket.gaierror, UnicodeError):
+            validate_public_url(url)
+            return True
+        except UnsafeURLError:
             return False
 
     def _is_safe_path(self, path: str) -> bool:
@@ -116,31 +105,42 @@ class ArticleFetcher:
         except (OSError, RuntimeError, TypeError, ValueError):
             return False
 
+    def _redact_source_for_log(self, source: str) -> str:
+        parsed = urlparse(str(source or ""))
+        if parsed.scheme not in ("http", "https"):
+            return str(source or "")
+        host = parsed.hostname or ""
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        redacted = parsed._replace(
+            netloc=host,
+            query="[redacted]" if parsed.query else "",
+            fragment="",
+        )
+        return redacted.geturl()
+
     def _robots_allows(self, url: str) -> Tuple[bool, str]:
         parsed = urlparse(url)
         robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
         try:
-            resp = requests.get(
+            resp = safe_fetch_url(
                 robots_url,
                 headers=self.HEADERS,
                 timeout=self.ROBOTS_TIMEOUT,
-                allow_redirects=False,
+                max_bytes=512 * 1024,
+                max_redirects=2,
             )
-        except requests.RequestException:
+        except UnsafeURLError as exc:
+            return False, f"安全でないrobots.txtのためブロックされました: {exc.reason}"
+        except (SafeFetchError, requests.RequestException):
             return True, ""
 
-        if 300 <= resp.status_code < 400:
-            logger.debug("robots.txt redirected (%s). Continuing without robots policy.", resp.status_code)
-            return True, ""
         if resp.status_code in (401, 403):
             return False, f"robots.txt へのアクセスが拒否されました ({resp.status_code})"
         if resp.status_code >= 400:
             return True, ""
 
-        robots_text = getattr(resp, "text", None)
-        if not isinstance(robots_text, str):
-            logger.debug("robots.txt response body unavailable. Continuing without robots policy.")
-            return True, ""
+        robots_text = bytes(resp.content or b"").decode(resp.encoding or "utf-8", errors="replace")
 
         parser = RobotFileParser()
         parser.parse(robots_text.splitlines())
@@ -152,7 +152,7 @@ class ArticleFetcher:
     def fetch_url(self, url: str) -> FetchedContent:
         """Fetch content from a URL (HTML or PDF)."""
         if not self._is_safe_url(url):
-            raise ValueError(f"CRITICAL: Access to internal or unsafe URL blocked: {url}")
+            raise ValueError("CRITICAL: Access to internal or unsafe URL blocked")
         allowed, reason = self._robots_allows(url)
         if not allowed:
             raise ValueError(f"CRITICAL: robots.txt disallows crawling: {reason}")
@@ -213,9 +213,9 @@ class ArticleFetcher:
                 return False, f"アクセス拒否のため取得できません ({status})"
             if status is not None:
                 return False, f"URLにアクセスできません ({status})"
-            return False, f"URL接続に失敗しました: {exc}"
+            return False, f"URL接続に失敗しました: {type(exc).__name__}"
         except requests.RequestException as exc:
-            return False, f"URL接続に失敗しました: {exc}"
+            return False, f"URL接続に失敗しました: {type(exc).__name__}"
         except (ValueError, RuntimeError, OSError) as exc:
             return False, f"URL本文の検証に失敗しました: {exc}"
         return True, ""
@@ -224,31 +224,26 @@ class ArticleFetcher:
         self,
         url: str,
     ) -> Tuple[bytes, str, Optional[str], Optional[str]]:
-        with requests.get(
-            url,
-            headers=self.HEADERS,
-            timeout=self.TIMEOUT,
-            allow_redirects=False,
-            stream=True,
-        ) as resp:
-            if 300 <= resp.status_code < 400:
-                raise ValueError(f"CRITICAL: Redirects are not allowed: {url}")
-            resp.raise_for_status()
-
-            content_length = resp.headers.get("content-length")
-            if content_length:
-                try:
-                    length = int(content_length)
-                except ValueError:
-                    length = None
-                if length is not None and length > self.MAX_URL_BYTES:
-                    raise ValueError(f"CRITICAL: URL content too large (>10MB): {url}")
-
-            content_type = (resp.headers.get("content-type") or "").lower()
-            data = self._read_response_bytes(resp, self.MAX_URL_BYTES)
-            header_encoding = self._extract_charset_from_content_type(content_type)
-            apparent_encoding = self._detect_apparent_encoding(data)
-            return data, content_type, header_encoding, apparent_encoding
+        try:
+            resp = safe_fetch_url(
+                url,
+                headers=self.HEADERS,
+                timeout=self.TIMEOUT,
+                max_bytes=self.MAX_URL_BYTES,
+                max_redirects=5,
+            )
+        except ContentTooLargeError as exc:
+            raise ValueError("CRITICAL: URL content too large (>10MB)") from exc
+        except UnsafeURLError as exc:
+            raise ValueError(f"CRITICAL: unsafe URL blocked: {exc.reason}") from exc
+        except SafeFetchError as exc:
+            raise ValueError(f"CRITICAL: URL fetch blocked: {exc}") from exc
+        resp.raise_for_status()
+        content_type = (resp.headers.get("content-type") or "").lower()
+        data = bytes(resp.content or b"")
+        header_encoding = self._extract_charset_from_content_type(content_type)
+        apparent_encoding = self._detect_apparent_encoding(data)
+        return data, content_type, header_encoding, apparent_encoding
 
     def _parse_url_payload(
         self,
@@ -374,11 +369,18 @@ class ArticleFetcher:
 
     def _classify_fetch_error(self, source: str, exc: Exception) -> FetchFailure:
         detail = str(exc)
+        if isinstance(exc, requests.HTTPError):
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            detail = f"http_status:{status or 'unknown'}"
+        elif isinstance(exc, requests.RequestException):
+            detail = type(exc).__name__
         if "robots.txt" in detail:
             return FetchFailure(source=source, reason="robots_blocked", detail=detail)
         if "CRITICAL: Access to internal or unsafe URL blocked" in detail:
             return FetchFailure(source=source, reason="invalid_or_unsafe_url", detail=detail)
-        if "CRITICAL: Redirects are not allowed" in detail:
+        if "UNSAFE_URL:" in detail or "CRITICAL: unsafe URL blocked" in detail:
+            return FetchFailure(source=source, reason="invalid_or_unsafe_url", detail=detail)
+        if "TOO_MANY_REDIRECTS:" in detail:
             return FetchFailure(source=source, reason="redirect_not_supported", detail=detail)
         if "CRITICAL: Unauthorized file access blocked" in detail:
             return FetchFailure(source=source, reason="unauthorized_file_path", detail=detail)
@@ -423,7 +425,7 @@ class ArticleFetcher:
                 logger.info(
                     "Fetched source: request_id=%s source=%s source_type=%s content_type=%s chars=%s notices=%s elapsed_ms=%s",
                     request_id,
-                    fetched.url or fetched.source_path or normalized,
+                    self._redact_source_for_log(fetched.url or fetched.source_path or normalized),
                     fetched.source_type,
                     fetched.content_type or "",
                     len(fetched.content or ""),
@@ -443,7 +445,7 @@ class ArticleFetcher:
                 logger.warning(
                     "Failed to fetch source: request_id=%s source=%s reason=%s elapsed_ms=%s detail=%s",
                     request_id,
-                    normalized,
+                    self._redact_source_for_log(normalized),
                     failure.reason,
                     elapsed_ms,
                     failure.detail,

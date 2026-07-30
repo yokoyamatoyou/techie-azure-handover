@@ -277,10 +277,16 @@ def _build_source_grounding_status_text(
     if source_grounding_status == "pending_documents":
         return "記事に必要な根拠は、材料を読み込んだあとに確認します。"
     if source_grounding_status == "insufficient":
-        if input_decision_action == "accept":
-            return "不足はありますが、今のルールではこのまま生成できます。"
         return "根拠が足りないため、補足資料を追加してください。"
     return "必要な根拠の状況を確認してください。"
+
+
+def _has_readable_source_content(contract: Dict[str, Any]) -> bool:
+    for item in _to_plain_list(contract.get("source_documents")):
+        document = _to_plain_dict(item)
+        if len(str(document.get("content") or "").strip()) >= 120:
+            return True
+    return False
 
 
 def build_journey_confirm_preview_view(
@@ -302,6 +308,39 @@ def build_journey_confirm_preview_view(
     action = str(input_decision.get("action") or "accept")
     source_grounding_status = str(contract.get("source_grounding_status") or "")
     source_grounding_required = bool(contract.get("source_grounding_required"))
+    source_fit_status = str(source_fit.get("status") or "").strip().lower()
+    has_readable_source_content = _has_readable_source_content(contract)
+    source_grounding_blocked = bool(
+        source_grounding_required
+        and source_grounding_status not in {"resolved", "not_required"}
+        and (
+            source_grounding_status in {"pending_documents", "pending_sources"}
+            or source_fit_status == "block"
+            or not has_readable_source_content
+        )
+    )
+    allow_confirm = action == "accept" and not source_grounding_blocked
+    status_text = (
+        "材料を追加してから、もう一度内容を確認してください。"
+        if source_grounding_blocked
+        else (
+            "内容を確認しました。このまま生成できます。"
+            if action == "accept"
+            else "足りない材料があります。補ってからもう一度確認してください。"
+        )
+    )
+    reason_code = (
+        "INP_SOURCE_CONTEXT_INSUFFICIENT"
+        if source_grounding_blocked
+        else str(input_decision.get("reason_code") or "OK")
+    )
+    grounding_status_text = _build_source_grounding_status_text(
+        source_grounding_required=source_grounding_required,
+        source_grounding_status=source_grounding_status,
+        input_decision_action=action,
+    )
+    if allow_confirm and source_grounding_status == "insufficient":
+        grounding_status_text = "資料は読み取れています。補足資料があると精度は上がりますが、この内容で生成できます。"
     return {
         "summary_content": build_journey_confirm_summary(
             purpose_label=purpose_label,
@@ -313,21 +352,13 @@ def build_journey_confirm_preview_view(
             candidate_target_labels=candidate_target_labels,
         ),
         "source_fit_text": str(source_fit.get("summary") or "材料の状況を確認できませんでした。"),
-        "grounding_status_text": _build_source_grounding_status_text(
-            source_grounding_required=source_grounding_required,
-            source_grounding_status=source_grounding_status,
-            input_decision_action=action,
-        ),
+        "grounding_status_text": grounding_status_text,
         "missing_content": missing_content,
-        "status_text": (
-            "内容を確認しました。このまま生成できます。"
-            if action == "accept"
-            else "足りない材料があります。補ってからもう一度確認してください。"
-        ),
-        "reason_code": str(input_decision.get("reason_code") or "OK"),
-        "error_class": "success" if action == "accept" else "user_input",
+        "status_text": status_text,
+        "reason_code": reason_code,
+        "error_class": "success" if allow_confirm else "user_input",
         "needs_input_items": needs_input_items,
-        "allow_confirm": action == "accept",
+        "allow_confirm": allow_confirm,
         "event_extra": _build_confirm_event_extra(
             semantic_article_key=str(preview.get("semantic_article_key") or ""),
             decision_origin="resolved_input_contract",
@@ -336,7 +367,7 @@ def build_journey_confirm_preview_view(
             source_grounding_status=source_grounding_status,
             source_grounding_required=source_grounding_required,
             input_decision_action=action,
-            allow_generate=action == "accept",
+            allow_generate=allow_confirm,
         ),
     }
 

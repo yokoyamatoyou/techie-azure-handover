@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
+from env_keys import resolve_env_var
 
 from analysis_lib import (
     build_prompt_injection_signal,
@@ -39,6 +40,7 @@ class LLMOClient:
 
     def _get_client(self) -> OpenAI:
         if self.client is None:
+            resolve_env_var("OPENAI_API_KEY")
             self.client = OpenAI()
         return self.client
 

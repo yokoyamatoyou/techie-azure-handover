@@ -1,0 +1,43 @@
+sentence:
+  long_sentence_chars: 90
+  very_short_sentence_chars: 8
+paragraph:
+  repeated_shape_window: 3
+connectors:
+  - "また"
+  - "さらに"
+  - "一方で"
+  - "そのため"
+  - "このように"
+first_person_variants:
+  - "私たち"
+  - "当社"
+  - "弊社"
+  - "当店"
+third_party_terms:
+  - "同社"
+  - "同サービス"
+  - "同店"
+  - "同院"
+model_frequent_words:
+  - "効く"
+  - "第一歩"
+  - "寄り添う"
+  - "見える化"
+  - "大切"
+  - "魅力"
+  - "さまざま"
+  - "多くの方"
+  - "しっかり"
+  - "丁寧に"
+  - "安心"
+  - "つながる"
+  - "きっかけ"
+  - "広がる"
+  - "支える"
+  - "判断軸"
+  - "判断材料"
+  - "判断の軸"
+  - "整理"
+  - "観点"
+  - "見方"

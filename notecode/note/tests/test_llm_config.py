@@ -1,11 +1,16 @@
 """Config parsing tests."""
+import json
+
 from core.app_config import (
     get_cognitive_drift_config,
     get_llm_config,
     get_postprocess_config,
     get_quality_pipeline_config,
+    get_security_config,
     get_section_generation_config,
+    get_semantic_dedupe_config,
     get_source_reading_config,
+    get_vnext_overlap_runtime_config,
 )
 
 
@@ -13,7 +18,20 @@ def test_llm_config_model_capability_lists_loaded() -> None:
     config = get_llm_config()
     assert "gpt-5" in config.disable_temperature_model_prefixes
     assert "gpt-5" in config.disable_top_p_model_prefixes
+    assert "gpt-5" in config.disable_penalty_model_prefixes
     assert isinstance(config.task_models, dict)
+    assert isinstance(config.article_type_params, dict)
+    assert -2.0 <= config.presence_penalty <= 2.0
+    assert -2.0 <= config.frequency_penalty <= 2.0
+    assert config.allow_model_fallback is False
+    assert config.max_same_model_retries == 2
+    assert "upstream_5xx" in config.retryable_error_classes
+
+
+def test_security_config_loaded() -> None:
+    config = get_security_config()
+    assert config.prompt_injection_mode == "block"
+    assert "topic" in config.blocked_input_fields
 
 
 def test_quality_pipeline_config_loaded() -> None:
@@ -49,6 +67,27 @@ def test_generation_mode_loaded() -> None:
 def test_candidate_b_config_removed() -> None:
     config = get_llm_config()
     assert "section_candidate_b" not in config.task_models
+
+
+def test_llm_config_honors_TECHIE_CONFIG_PATH(monkeypatch, tmp_path) -> None:
+    temp_config = {
+        "llm": {
+            "model_name": "gpt-4.1-mini-custom",
+            "fallback_model": "gpt-5-nano",
+            "reasoning_effort": "low",
+            "timeout": 45,
+            "task_models": {"section": "gpt-5.4-mini"},
+        }
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(temp_config, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("TECHIE_CONFIG_PATH", str(config_path))
+
+    config = get_llm_config()
+
+    assert config.model_name == "gpt-4.1-mini-custom"
+    assert config.timeout == 45.0
+    assert config.task_models["section"] == "gpt-5.4-mini"
 
 
 def test_cognitive_drift_config_loaded() -> None:
@@ -122,3 +161,16 @@ def test_source_reading_config_loaded() -> None:
     assert 2000 <= cfg.get("max_chars_per_source", 0) <= 20000
     assert 2000 <= cfg.get("quality_context_source_text_max_chars", 0) <= 20000
     assert 2000 <= cfg.get("style_drift_source_text_max_chars", 0) <= 20000
+
+
+def test_vnext_overlap_runtime_seed_is_promoted_without_changing_mainline_semantic_dedupe() -> None:
+    semantic_dedupe = get_semantic_dedupe_config()
+    vnext_overlap = get_vnext_overlap_runtime_config()
+
+    assert semantic_dedupe["similarity_threshold"] == 0.84
+    assert semantic_dedupe["content_overlap_threshold"] == 0.42
+    assert semantic_dedupe["high_overlap_shortcut_threshold"] == 0.62
+
+    assert vnext_overlap["similarity_threshold"] == 0.62
+    assert vnext_overlap["content_overlap_threshold"] == 0.77
+    assert vnext_overlap["high_overlap_shortcut_threshold"] == 0.83

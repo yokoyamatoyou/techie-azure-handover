@@ -7,7 +7,9 @@
 - `gpt-5.4-nano` を既定モデルとして Responses API を利用
 - `web_search` を強制実行してキーワードごとの可視性を評価
 - `市場観測` ではユーザークエリだけを LLM へ送り、`自社URL / 名称 / 比較対象 / 重点テーマ` は返答後のローカル照合にだけ使う
+- 2026-06-08 時点の既定入力は `介護保険 / 福祉用具レンタル` 市場向けで、対象URLは `https://healthrent.duskin.jp/`、比較対象プリセットはヤマシタコーポレーション、パナソニック エイジフリー、フランスベッド、フロンティア
 - 現行 UI は市場観測 backend を使いつつ、first view を `質問入力 -> 実行 -> 今回の結論 / 主な参照元サイト / 頻出論点` の 3 カードへ絞っている
+- 2026-07-11 の横断UX監査対応で、390px幅の共通ナビを1行へ圧縮し、desktopは入力1/2の2列を保ったまま `結果を見る` だけを次行全幅へ移した。設定の対象AI / 保存済み条件も縦の読み順へ変更し、read-onlyでも他製品への文脈リンクは通常リンクとして見える。provider/API、DB、scoringは変更していない
 - first view の主指標は `自社引用率` に絞り、`自社露出率` は混同を避けるため first view から外している
 - current result と詳細の件数は raw row 数ではなく保存済みの `trial_count` を優先し、同じ質問を `n=10` 回と `n=100` 回で回した差がそのまま母数に出る
 - first view の `AI回答に使われた主要ソース` は raw URL を並べず、`順位 / ページ名 / サイト名 / 自社・比較対象・外部サイト / 採用回数` の Top 3 だけを先に見せる
@@ -18,7 +20,10 @@
 - 2026-04-26 の商用デモ向け判断 UI 追加で、first view の `AI回答に使われた主要ソース` カード内に `根拠の安定度` を追加し、自社 / 比較対象 / 外部サイトの比率、依存リスク、上位ソース集中度を短く表示する
 - 同日の追加で、詳細の `改善判断サマリー` 冒頭に `根拠の安定度 / 見え方の安定度 / 弱い質問タイプ` の 3 panel を置き、既存データだけで次に見るべき箇所を判断しやすくした
 - 2026-04-26 の初見 UX 補強で、未実行時や入力変更後の `今回の結果` は `今の入力では未分析` と明示し、`保存済みの累積傾向` は `過去データ` ラベルと別背景で今回面から分けている
-- 同日の補強で、first view の主CTAは `1回だけ分析` に集中させ、`定期分析を実行` と `自動定期分析を設定` は `継続的に見るなら定期分析` の補助エリアへ下げた
+- 2026-05-24 の UI/UX refactor O-03..O-09 で、`今の入力` と `保存済み条件`、今回結果と `全実行履歴` / `保存済みの結果`、外部送信ボタン helper、曜日ベース自動チェック表示、複数質問詳細ラベルを分離した。DB schema / provider payload / scheduler dispatch / scoring は変更していない
+- 2026-05-24 の UX-ADD-01 で、`KOTOMEGANE_READONLY_DEMO=1` の read-only/demo 起動モードを追加した。この mode では startup scheduler と background maintenance を開始せず、manual LLM/API send、provider batch submit、provider batch retrieve/import は provider client creation 前に block する
+- 2026-05-24 の最終 UI/UX 実機改善で、mobile の入力カラムと重点テーマ候補ボタンを縦積み/全幅化し、保存済み集計の `今回 1 問` 表現を `今の入力で実行した結果ではない` 表現へ更新した。まとめて分析の状態表示は `対象質問` と `実送信` を分けて表示する。DB schema / provider payload / scheduler dispatch / scoring は変更していない
+- 同日の補強で、first view の主CTAは `1回だけ分析` に集中させ、複数質問は `まとめて分析の画面を開く`、継続観測は `曜日を決めて自動チェック` の補助エリアへ下げた
 - 同日の補強で、詳細の `改善判断サマリー` 冒頭に `外部サイト依存 -> 見え方の揺れ -> 弱い質問タイプ` の優先度ストリップを追加し、危ない順番と次に見る場所を先に示す
 - 2026-04-26 の調整でも、新しい LLM 呼び出し、prompt、query planner、scoring algorithm、DB schema、保存項目は追加していない
 - 2026-04-29 の UI 修正で、hero のロゴは `assets/logo_mark_icon.png` の顔マーク画像へ切り替え、ロゴ枠に `EC` だけが見える状態を解消した
@@ -36,27 +41,32 @@
 - 通常実行は、複数質問がある場合も同一質問を連続送信する順序にして prompt caching 効率を優先
 - 手動実行では、各繰り返しの中で拡張質問を並列送信し、進捗表示もその並列グループ完了数に合わせて更新する
 - prompt cache は 24時間保持を優先要求し、使えない条件では `in_memory` へ自動 fallback する
-- 定点計測は内部で `20` 回、単発確認はその半分の `10` 回を既定にし、UI には回数を出さない
+- 定点計測は内部で `20` 回、単発確認は `5` 回を既定にし、UI には回数を出さない
 - 単発確認は、質問数や内部拡張で見積件数が増えても事前の warning toast は出さない
 - 手動 / 定期リサーチ（今すぐ） / 定期リサーチ（自動）の guardrail は、未import batch の予約コストも含めて再評価する
-- `run_budget_guardrail_usd` を超える見込みの実行は、手動 / 一括 / 自動ともに開始前に止める
+- `run_budget_guardrail_usd` を超える見込みの実行は、`budget_guardrail_mode=warn` では警告して続行し、`stop` のときだけ手動 / 一括 / 自動ともに開始前に止める
 - 通常実行とは別に、provider ごとの Batch API へ投入する `Batchモード` を追加
 - Batch モードでは `Batch投入` / `Batch状態確認` / `Batch結果取り込み` を UI から実行可能
 - Batch 取り込み後の結果は通常実行と同じ SQLite 保存経路に入り、既存の一覧・カード・履歴に反映される
-- 質問セットを保存し、手動実行 / 定期リサーチ（今すぐ） / 定期リサーチ（自動）の各実行で再利用できる
-- `確認内容` は `アーカイブ` でき、履歴を残したまま新規の定期リサーチ候補から外せる
+- 質問セットを `保存済み条件` として保存し、手動実行 / まとめて分析 / 自動チェックの各実行で再利用できる
+- `保存済み条件` は `アーカイブ` でき、履歴を残したまま新規の自動チェック候補から外せる
 - 検索結果内の命令文は system prompt で無視する前提にし、注入らしい文言は `security_signals` として内部保存する
 - prompt injection 検知はゼロ幅文字除去と role-change / context-reset 系パターンを追加して補強している
 - security signal は internal 判定にだけ使い、結果画面には warning 文言として常時表示しない
 - 同じ元質問は前回の expansion を優先再利用し、比較条件を安定させる
 - 日本語 50 文字超の長文質問は内部で短文化し、UI には元質問を残したまま計測する
-- `拡張検索` として、元質問ごとに最大 5 件の関連質問へ広げて実行できる
+- `拡張検索` として、元質問ごとに最大 4 件（元質問 + 関連質問 3 件）へ広げて実行できる
 - 拡張質問は `managed prompt taxonomy` で `比較 / 料金 / 事例 / FAQ / サポート / 評判 / 導入不安 / 手順` の意図へ寄せて保存できる
 - `前回比サマリ` では、同じ expansion signature の直近 2 run に限って `自社露出率 / 平均 visibility スコア / 外部サイト優勢率` を比較できる
 - user-facing の割合と件数は `試行数` を唯一の母数にそろえ、`自社露出率 / 自社引用率 / 外部先行率` を同じ観測試行数ベースで読む
-- `定期リサーチ（自動）` を追加し、曜日 + 時刻 + 週あたり回数で自動実行できる
+- `自動チェック` を追加し、曜日 + 時刻 + 週あたり回数で自動実行できる
+- 2026-05-23 のUI確認で、自動チェックの曜日指定は dropdown ではなく月〜日のチェックボックスへ変更した。選択した曜日数に合わせて `週あたり回数` を保存時に揃えるため、複数曜日を選んだのに先頭曜日だけで保存される状態を避けている
+- この変更の詳細は `docs/SCHEDULE_UI_CHANGE_2026-05-23.md` を参照する。1つの自動チェックは1つの保存済み条件を参照し、その保存済み条件に複数質問が入っていれば複数質問を実行対象にできる
+- 同日の追加修正で、3質問など内部拡張後の送信件数が `run_budget_guardrail_usd` を超える見込みでも、既定の `budget_guardrail_mode=warn` では単発 / 今すぐ一括 / 自動定期を止めず、警告だけで実行へ進む
 - scheduled batch はバックグラウンドで状態確認と結果 import まで自動で行う
+- UI 診断やデモで provider/API/LLM を動かしたくない場合は、起動前に `KOTOMEGANE_READONLY_DEMO=1` を設定する。この mode では UI 上部に `read-only/demo mode` banner が出て、scheduler / provider submit / retrieve / import / LLM/API send は開始されない。通常起動では従来どおり scheduler と provider 経路を使う
 - provider capability registry で `default model / 総質問数上限 / batch timeout / partial display policy / cache policy / expansion mode` を保持する
+- config で provider 系の custom model 名を指定した場合は、registry の候補リスト完全一致でなくても維持する。UI の provider 切替では切替先 provider の既定 model に戻す
 - `KOTOMEGANE_ENABLED_PROVIDERS` または config の `enabled_provider_keys` で app 単位の provider allowlist をかけられる
 - `plan_catalog / billing_rules / run_policy` を module 化し、provider ごとの総質問数上限、手動と batch の内部課金単位、partial display 方針を分離している
 - 手動 / 定期リサーチ（今すぐ） / 定期リサーチ（自動）の microcopy と内部課金説明は mode 別に出し分ける
@@ -193,7 +203,7 @@
 - ロゴとファビコンは `aio2-main` / `notecode` と同じ共通ブランド資産へ揃えている
 - 上部ナビの `TECHIE HUB` 文字はロゴへ置き換え、最終的に 3 サービス共通H1へ寄せやすい形にしている
 - 詳細設定では `比較対象` を任意入力でき、推論やキャッシュ設定は内部既定値を使う
-- 金額は UI に出さず、内部の guardrail とログだけに残す
+- 金額は UI に出さず、内部の guardrail とログだけに残す。既定の警告モードでは上限超過見込みを理由に実行を止めず、明示的な停止モードだけが hard stop になる
 - 実行履歴、出力、根拠URL、対象AIの切り替えは主画面から下げ、必要なときだけ `分析 / 設定` 側で確認する
 - 接続AIは `ChatGPT / Gemini / Claude` の provider 名だけを表示し、内部モデル名や検索回数は表に出さない
 - 今後 `aio2-main` と `notecode` を含めて同一 SaaS として見えるよう、暖色系の共有トークンへ寄せる前提で整理している
@@ -290,7 +300,8 @@ C:\tetie\techie-hub\start.bat
 - 定期リサーチ（自動）の日時は `この時刻から処理を開始する` 意味です。結果反映は provider により最大 24 時間かかる場合があります。
 - schedule 管理UIでは `フォーム読込 / 複製 / 削除 / 差分比較` を扱います。複製直後は停止状態で保存します。
 - `実行結果比較` は 2 run 比較の初期版で、系列は `定期実行` と `質問セット` から選びます。
-- `週あたり回数` は、選択した曜日のうち先頭から指定回数ぶんを有効曜日として扱います。
+- `週あたり回数` は、選択した曜日数に保存時点で揃えます。曜日は月〜日のチェックボックスで指定し、複数曜日を選んだ場合はその曜日数が保存されます。
+- `budget_guardrail_mode=warn` のままなら、3質問などで query planning 後の送信件数が増えても `run_budget_guardrail_usd` 超過見込みだけでは単発 / 今すぐ一括 / 自動定期を停止しません。`stop` に変更した場合だけ開始前に止めます。
 - raw answer retention のために `answer_text` と `citations` を保存します。返答全文は一覧に出さず、結果詳細カードで確認します。
 - raw answer の構造化項目は `mentioned_brands_json`, `citation_domains_json`, `owned_mention_hit`, `competitor_mention_hit`, `answer_type_label` を使います。
 - timezone DB がない Windows でも schedule 保存が止まらないよう、`Asia/Tokyo` など主要 timezone には固定オフセット fallback を入れています。
@@ -299,6 +310,7 @@ C:\tetie\techie-hub\start.bat
 - `query_plan` の詳細項目は `raw_results.csv` / `raw_results.json` に露出し、`weekly_summary.csv` には週次集約に加えて `median / min / max / stddev / variance_label` を出します。detail UI では内部質問列挙を前面に出しません。
 - detail の `内部で使った質問` には `prompt family / prompt label / purpose` を出し、generic expansion だけでなく管理された prompt 群として読めるようにしています。
 - OpenAI の prompt caching は `prompt_cache_key` を使う explicit cache です。`prompt_cache_retention=24h` は全モデルで使えるわけではなく、`gpt-5.4-nano` では `in_memory` に補正して実行します。
+- OpenAI の未登録 custom model 名も config から維持しますが、24時間 cache 対応は断定せず、未対応または未確認の場合は `in_memory` に補正します。
 - provider ごとの既定モデルは registry から解決し、user-facing UI にはモデル名を出しません。
 - `OpenAI 30 / Gemini 30 / Claude 15` の総質問数上限は `plan_catalog` で保持します。
 - `Gemini` は `Google Search grounding` を使う manual/live と Batch に対応します。`Gemini 2.5+` は implicit caching が既定で、explicit cache の既定 TTL は `1時間` です。Batch でも context caching が有効です。
@@ -339,6 +351,7 @@ C:\tetie\techie-hub\start.bat
 ## Verification
 
 - `run.ps1` で `http://127.0.0.1:8083/` の起動を確認済み
+- read-only/demo 起動は PowerShell で `.\run.ps1 -ReadOnlyDemo` とする。この mode では API key check を skip でき、画面表示確認だけを行える。環境変数を直接設定する場合も `KOTOMEGANE_READONLY_DEMO=1` を引き継ぐ
 - runtime health は `http://127.0.0.1:8083/healthz` で確認できる。HUB と `start.bat` はこの lightweight endpoint を使い、full UI `/` を health check に使わない
 - 2026-04-26 の起動改善後も HUB と `start.bat` は `/healthz` を使う。`/` はユーザーが開いた時だけ NiceGUI UI を描画し、定期 health check には戻さない
 - `ui_host` は loopback (`127.0.0.1` / `::1` / `localhost`) のみで起動する。loopback 以外は認証未実装のため fail-closed で起動拒否する

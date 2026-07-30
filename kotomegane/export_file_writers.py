@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import hmac
 import json
+import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -17,6 +21,65 @@ _LEGACY_EXPORT_FILENAMES = (
     "report_summary.md",
     "raw_results.json",
 )
+_EXPORT_FILENAME_SET = frozenset(_LEGACY_EXPORT_FILENAMES)
+_EXPORT_BUNDLE_RE = re.compile(r"^[A-Za-z0-9_-]{12,80}$")
+_EXPORT_URL_TTL_SECONDS = int(os.getenv("KOTOMEGANE_EXPORT_URL_TTL_SECONDS", "900"))
+_EXPORT_SIGNING_SECRET = (
+    os.getenv("KOTOMEGANE_EXPORT_SIGNING_SECRET", "").strip()
+    or secrets.token_urlsafe(32)
+)
+
+
+def _signature_payload(bundle_id: str, filename: str, expires_at: int) -> bytes:
+    return f"{bundle_id}/{filename}:{expires_at}".encode("utf-8")
+
+
+def _sign_export_path(bundle_id: str, filename: str, expires_at: int) -> str:
+    return hmac.new(
+        _EXPORT_SIGNING_SECRET.encode("utf-8"),
+        _signature_payload(bundle_id, filename, expires_at),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def build_signed_export_path(bundle_id: str, filename: str, *, now: float | None = None) -> str:
+    expires_at = int((time.time() if now is None else now) + _EXPORT_URL_TTL_SECONDS)
+    token = _sign_export_path(bundle_id, filename, expires_at)
+    return f"/exports/{bundle_id}/{filename}?expires={expires_at}&token={token}"
+
+
+def validate_signed_export_path(
+    exports_dir: Path,
+    bundle_id: str,
+    filename: str,
+    *,
+    expires: str,
+    token: str,
+    now: float | None = None,
+) -> Path | None:
+    if not _EXPORT_BUNDLE_RE.fullmatch(str(bundle_id or "")):
+        return None
+    if filename not in _EXPORT_FILENAME_SET:
+        return None
+    try:
+        expires_at = int(str(expires or "").strip())
+    except ValueError:
+        return None
+    if expires_at < int(time.time() if now is None else now):
+        return None
+    expected = _sign_export_path(bundle_id, filename, expires_at)
+    if not token or not hmac.compare_digest(str(token), expected):
+        return None
+    try:
+        root = exports_dir.resolve(strict=False)
+        candidate = (root / bundle_id / filename).resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if candidate != root and root not in candidate.parents:
+        return None
+    if not candidate.exists() or not candidate.is_file():
+        return None
+    return candidate
 
 
 def archive_legacy_export_files(
@@ -84,7 +147,7 @@ def write_export_files(
         metadata.append(
             {
                 "label": filename,
-                "path": f"/exports/{export_bundle_id}/{filename}",
+                "path": build_signed_export_path(export_bundle_id, filename),
                 "generated_at": generated_at,
             }
         )

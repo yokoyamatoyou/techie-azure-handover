@@ -1,0 +1,35 @@
+cases:
+  - case_id: "company_intro_basic"
+    genre_id: "company_service_intro"
+    narrator: "私たち"
+    target_reader: "初めてサービスを知る読者"
+    article_goal: "会社の姿勢と相談の流れを自然に伝える"
+    sources:
+      - title: "会社紹介メモ"
+        text: "私たちは2018年に創業しました。地域の相談を受けています。初回相談では、現在の状況、困っていること、希望する進め方を確認します。確認した内容を整理し、次に取れる選択肢を説明します。"
+    expected:
+      required_narrator: "私たち"
+      forbidden_terms:
+        - "同社"
+      required_artifacts:
+        - "draft.md"
+        - "edited_draft.md"
+        - "latest_generation_output.md"
+        - "latest_generation_quality_report.json"
+  - case_id: "announcement_basic"
+    genre_id: "announcement"
+    narrator: "当社"
+    target_reader: "既存の利用者"
+    article_goal: "営業日変更のお知らせを正確に伝える"
+    sources:
+      - title: "営業日変更メモ"
+        text: "当社は2026年6月1日から受付時間を変更します。平日の受付時間は9時から17時までです。土曜日の受付は事前予約制です。対象は既存の利用者と新規相談者です。"
+    expected:
+      required_narrator: "当社"
+      forbidden_terms:
+        - "同社"
+      required_artifacts:
+        - "draft.md"
+        - "edited_draft.md"
+        - "latest_generation_output.md"
+        - "latest_generation_quality_report.json"

@@ -1,0 +1,143 @@
+{
+  "article_brief": {
+    "brief_id": "brief_local_001",
+    "genre_id": "company_service_intro",
+    "persona_id": "in_house_brand_blog_editor",
+    "writer_role": "in_house_brand_blog_editor",
+    "viewpoint_mode": "self_perspective",
+    "target_reader": "初めてサービスを知る読者",
+    "article_goal": "ソースに基づいて自然なブログ記事を作る",
+    "narrator": "???",
+    "self_viewpoint_owner": "Example Co",
+    "qa_policy_id": "self_perspective_blog_default",
+    "style_profile_id": "note_hatena_owned_media_soft",
+    "style_edit_policy": {
+      "preferred_sentences_per_paragraph": 2,
+      "max_sentences_per_paragraph": 3,
+      "line_break_policy": "topic_shift_or_two_sentences",
+      "subject_omission_policy": "clear_context_only",
+      "ending_bucket_policy": "structural_variation",
+      "protected_subject_terms": [
+        "年",
+        "月",
+        "日",
+        "時",
+        "円",
+        "価格",
+        "料金",
+        "責任",
+        "約束",
+        "予約",
+        "申込",
+        "対象",
+        "変更",
+        "依頼",
+        "担当"
+      ]
+    },
+    "editor_profile_id": "note_hatena_structural_editor",
+    "editor_pass_policy": {
+      "focus_late_half": true,
+      "split_late_paragraph_over_sentences": 2,
+      "align_first_person_to_narrator": true,
+      "preserve_facts": true,
+      "preserve_numbers_dates_names": true,
+      "do_not_add_claims": true
+    },
+    "target_length_chars": 1400,
+    "section_count": 1,
+    "source_thickness": "medium",
+    "editorial_bridge_policy": {
+      "enabled": false,
+      "max_items": 0,
+      "max_sentences_each": 1,
+      "max_article_ratio_percent": 1,
+      "required_grounding": "source_claim_ids",
+      "factual_status": "not_a_fact_claim",
+      "allowed_kinds": [],
+      "forbidden_claims": [
+        "unsupported_numbers",
+        "prices",
+        "outcomes",
+        "superiority_claims",
+        "market_trends",
+        "customer_cases",
+        "legal_medical_financial_advice"
+      ]
+    },
+    "editorial_bridge_candidates": [],
+    "claim_allocation": [
+      {
+        "section_id": "s1",
+        "claim_ids": [
+          "C001"
+        ],
+        "reuse_allowed": false
+      }
+    ],
+    "sections": [
+      {
+        "section_id": "s1",
+        "heading": "私たちについて",
+        "purpose": "概要を伝える",
+        "assigned_claim_ids": [
+          "C001"
+        ],
+        "main_subject": "???",
+        "discourse_rules": [
+          "同社を使わない",
+          "根拠のない効果を足さない"
+        ]
+      }
+    ],
+    "style_rules": [
+      "note/はてなブログ向けに段落を詰めすぎない",
+      "???はExample Co本人の声として扱う",
+      "公式サイトを読んで紹介する第三者視点にしない",
+      "改行、読点、文頭の主語省略、文末バケットを記事ブリーフで明示する。",
+      "後半中心に改行、一人称、見出しから本文への流れ、CTAの急な強まりを確認する。",
+      "未使用claimは根拠確認用に保持し、本文へ全項目として詰め込まない。"
+    ],
+    "forbidden_viewpoint_terms": [
+      "同社",
+      "同サービス",
+      "同店",
+      "同院",
+      "第三者として"
+    ],
+    "allowed_external_voice": "attributed_quotes_only",
+    "config_refs": [
+      "app/config/article_genres.yaml",
+      "app/config/platform_style_targets.yaml"
+    ],
+    "persona_refs": [
+      "app/personas/writer_roles.yaml",
+      "app/personas/viewpoint_profiles.yaml",
+      "app/personas/style_profiles.yaml",
+      "app/personas/editor_profiles.yaml"
+    ],
+    "source_shape": "narrative",
+    "source_use_mode": "selective",
+    "unassigned_claim_ids": [],
+    "voice_mode": "self_authored_blogger",
+    "reader_arrival_context": "テーマに少し関心があり、読みながら必要な情報かを判断している。",
+    "interest_hook": "sourceの要約ではなく、読者が続きを読む理由になる具体から始める。",
+    "reading_reward": "ソースに基づいて自然なブログ記事を作るについて、本文を読む理由が具体的に分かる。",
+    "self_authored_angle": "私たちは、sourceにある事実だけを使い、読者が読み進めやすい順番で伝える。",
+    "paragraph_function_plan": [
+      "導入: 見に来ただけの読者が読み続ける理由を、source-backedな具体から作る。",
+      "引き込み: sourceを一覧として消化せず、読者が見ればよい観点へ並べ替える。",
+      "具体: assigned claimsを代表例として扱い、数字・名称・条件は正確に書く。",
+      "背景: source外の体験や感想を足さず、私たち側の説明として自然につなぐ。",
+      "締め: 一般論や強いCTAではなく、読者が次に確認する点へ静かに戻す。"
+    ],
+    "body_length_floor_chars": 1200,
+    "source_derived_aside_policy": "濃い事実ブロック後に、source内の事実の見方だけを一文で受ける。余談は最大2文、体験談・感想・顧客事例・成果・優位性は足さない。",
+    "rhythm_break_plan": [
+      "事実説明が続いた後に、読者が次の段落へ進みやすい一文をsource内の情報だけで置く。"
+    ],
+    "aside_allowed_claim_ids": [
+      "C001"
+    ]
+  }
+}

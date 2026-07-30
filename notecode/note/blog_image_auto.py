@@ -27,7 +27,7 @@ from note.image_config import (
     DEFAULT_IMAGE_SIZE,
     DEFAULT_TEXT_IMAGE_QUALITY,
 )
-from note.image_prompt_helpers import _build_image_pattern_suffix, _normalize_image_pattern_key
+from note.image_prompt_helpers import IMAGE_PATTERN_OPTIONS, _build_image_pattern_suffix, _normalize_image_pattern_key
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,15 @@ def infer_image_display_text(
 
 def _visual_direction(pattern_key: str) -> str:
     return _build_image_pattern_suffix(_normalize_image_pattern_key(pattern_key), language="en")
+
+
+def _touch_profile_for_log(pattern_key: str) -> Dict[str, str]:
+    touch_profile_key = _normalize_image_pattern_key(pattern_key)
+    option = IMAGE_PATTERN_OPTIONS[touch_profile_key]
+    return {
+        "touch_profile_key": touch_profile_key,
+        "touch_profile_label": str(option["label"]),
+    }
 
 
 def build_blog_image_prompt(
@@ -259,6 +268,8 @@ def generate_blog_images_for_article(
 ) -> Dict[str, Any]:
     started = time.monotonic()
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]
+    touch_profile = _touch_profile_for_log(pattern_key)
+    touch_profile_key = touch_profile["touch_profile_key"]
     display_text = infer_image_display_text(
         llm,
         title=title,
@@ -278,7 +289,7 @@ def generate_blog_images_for_article(
             article_type=article_type,
             display_text=display_text,
             variant_key=key,
-            pattern_key=pattern_key,
+            pattern_key=touch_profile_key,
         )
         result = BlogImageVariantResult(
             key=key,
@@ -298,7 +309,7 @@ def generate_blog_images_for_article(
                 size=size,
                 quality=quality,
                 model=model,
-                pattern_key=pattern_key,
+                pattern_key=touch_profile_key,
                 output_format=output_format,
                 background=background,
                 moderation=moderation,
@@ -323,7 +334,7 @@ def generate_blog_images_for_article(
                 display_text=display_text,
                 variant_key=key,
                 article_type=article_type,
-                pattern_key=pattern_key,
+                pattern_key=touch_profile_key,
             )
             try:
                 paths = llm.generate_images(
@@ -332,7 +343,7 @@ def generate_blog_images_for_article(
                     size=size,
                     quality=quality,
                     model=model,
-                    pattern_key=pattern_key,
+                    pattern_key=touch_profile_key,
                     output_format=output_format,
                     background=background,
                     moderation=moderation,
@@ -372,6 +383,8 @@ def generate_blog_images_for_article(
         "article_type": article_type,
         "title": title,
         "display_text": display_text,
+        "touch_profile_key": touch_profile["touch_profile_key"],
+        "touch_profile_label": touch_profile["touch_profile_label"],
         "variants": [item.to_dict() for item in results],
     }
     try:

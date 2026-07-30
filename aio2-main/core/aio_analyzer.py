@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from collections import Counter
 from typing import Dict, Any, List, Optional
@@ -28,8 +29,16 @@ from core.safe_fetch import safe_fetch_url
 
 logger = logging.getLogger(__name__)
 
-PROVIDER_STATUS_ORDER = {"pass": 0, "warn": 1, "fail": 2}
-PROVIDER_STATUS_LABELS = {"pass": "通過", "warn": "注意", "fail": "要対応"}
+# Provider readiness is an evidence contract, not a score.  Do not collapse a
+# missing observation into pass: callers need to distinguish a confirmed gate
+# from a gate that could not be read.
+PROVIDER_STATUS_ORDER = {"not_applicable": 0, "pass": 1, "unverified": 2, "fail": 3}
+PROVIDER_STATUS_LABELS = {
+    "pass": "通過",
+    "fail": "要対応",
+    "unverified": "未確認",
+    "not_applicable": "対象外",
+}
 PROVIDER_LABELS = {
     "google": "Google",
     "openai_search": "OpenAI Search",
@@ -138,42 +147,24 @@ class AIOContentAnalyzer:
     def _merge_status(self, current: str, candidate: str) -> str:
         return candidate if PROVIDER_STATUS_ORDER.get(candidate, 0) > PROVIDER_STATUS_ORDER.get(current, 0) else current
 
-    def _parse_robots_agent_access(self, robots_text: str, agents: List[str]) -> Dict[str, Optional[bool]]:
+    def _parse_robots_agent_access(
+        self, robots_text: str, agents: List[str], target_url: str
+    ) -> Dict[str, Optional[bool]]:
+        """Evaluate robots directives for the analysed URL path.
+
+        The most-specific matching user-agent group wins over ``*``; within a
+        group the longest matching Allow/Disallow rule wins, with Allow winning
+        a tie.  ``None`` means the robots document did not establish access.
+        """
         access_map: Dict[str, Optional[bool]] = {agent: None for agent in agents}
         if not robots_text:
             return access_map
 
-        def _init_rule() -> Dict[str, bool]:
-            return {"allow_root": False, "disallow_root": False}
-
-        def _merge_rule(rule: Dict[str, bool], directive: str, value: str) -> None:
-            val = (value or "").strip()
-            if directive == "disallow" and val == "":
-                rule["allow_root"] = True
-                return
-            is_root = val in ("/", "/*")
-            if directive == "allow" and is_root:
-                rule["allow_root"] = True
-            elif directive == "disallow" and is_root:
-                rule["disallow_root"] = True
-
-        def _resolve_agent(agent: str, rules: Dict[str, Dict[str, bool]], wildcard_rule: Optional[Dict[str, bool]]) -> Optional[bool]:
-            rule = rules.get(agent)
-            if rule:
-                if rule["allow_root"]:
-                    return True
-                if rule["disallow_root"]:
-                    return False
-                return None
-            if wildcard_rule:
-                if wildcard_rule["allow_root"]:
-                    return True
-                if wildcard_rule["disallow_root"]:
-                    return False
-            return True
-
-        rules: Dict[str, Dict[str, bool]] = {}
-        wildcard_rule: Optional[Dict[str, bool]] = None
+        target = urlsplit(target_url)
+        target_path = target.path or "/"
+        if target.query:
+            target_path = f"{target_path}?{target.query}"
+        rules: Dict[str, List[tuple[str, str]]] = {}
         current_agents: List[str] = []
         previous_was_user_agent = False
 
@@ -189,8 +180,8 @@ class AIOContentAnalyzer:
                     current_agents.append(agent)
                 else:
                     current_agents = [agent] if agent else []
-                if agent and agent != "*" and agent not in rules:
-                    rules[agent] = _init_rule()
+                if agent and agent not in rules:
+                    rules[agent] = []
                 previous_was_user_agent = True
                 continue
 
@@ -200,25 +191,52 @@ class AIOContentAnalyzer:
 
             directive, value = line.split(":", 1)
             for agent in current_agents:
-                if agent == "*":
-                    if wildcard_rule is None:
-                        wildcard_rule = _init_rule()
-                    _merge_rule(wildcard_rule, directive, value)
-                else:
-                    if agent not in rules:
-                        rules[agent] = _init_rule()
-                    _merge_rule(rules[agent], directive, value)
+                if agent not in rules:
+                    rules[agent] = []
+                rules[agent].append((directive, value.strip()))
             previous_was_user_agent = False
 
         for agent in agents:
-            access_map[agent] = _resolve_agent(agent, rules, wildcard_rule)
+            agent_key = agent.lower()
+            matching_groups = [
+                group for group in rules
+                if group == "*" or agent_key.startswith(group)
+            ]
+            if not matching_groups:
+                access_map[agent] = True
+                continue
+            longest_agent_match = max(len(group) for group in matching_groups)
+            applicable_groups = [group for group in matching_groups if len(group) == longest_agent_match]
+            matched_rules: List[tuple[int, str]] = []
+            for group in applicable_groups:
+                for directive, raw_pattern in rules[group]:
+                    # Empty Disallow explicitly permits all paths.
+                    if directive == "disallow" and raw_pattern == "":
+                        continue
+                    anchored = raw_pattern.endswith("$")
+                    literal_pattern = raw_pattern[:-1] if anchored else raw_pattern
+                    pattern = re.escape(literal_pattern).replace(r"\*", ".*")
+                    if anchored:
+                        pattern += "$"
+                    else:
+                        pattern += ".*"
+                    if re.match(pattern, target_path):
+                        matched_rules.append((len(raw_pattern.rstrip("$")), directive))
+            if not matched_rules:
+                access_map[agent] = True
+                continue
+            longest_rule = max(length for length, _ in matched_rules)
+            strongest = [directive for length, directive in matched_rules if length == longest_rule]
+            access_map[agent] = "allow" in strongest
         return access_map
 
-    def _extract_google_meta_controls(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        robots_tokens: set[str] = set()
-        googlebot_tokens: set[str] = set()
-        robots_max_snippet: Optional[int] = None
-        googlebot_max_snippet: Optional[int] = None
+    def _extract_provider_controls(self, soup: BeautifulSoup, response_headers: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Collect meta and X-Robots-Tag controls into one provider evidence shape."""
+        controls: Dict[str, Dict[str, Any]] = {
+            provider: {"meta_tokens": set(), "header_tokens": set(), "max_snippet": None}
+            for provider in PROVIDER_LABELS
+        }
+        bot_to_provider = {agent: provider for provider, agent in OFFICIAL_SEARCH_BOTS.items()}
 
         def _parse_meta_content(content: str) -> tuple[set[str], Optional[int]]:
             tokens: set[str] = set()
@@ -239,34 +257,38 @@ class AIOContentAnalyzer:
                     tokens.add(part)
             return tokens, max_snippet
 
+        def _apply(raw_name: str, content: Any, source: str) -> None:
+            name = raw_name.strip().lower()
+            tokens, max_snippet = _parse_meta_content(str(content or ""))
+            targets = list(PROVIDER_LABELS) if name == "robots" else [bot_to_provider[name]] if name in bot_to_provider else []
+            for provider in targets:
+                controls[provider][f"{source}_tokens"].update(tokens)
+                if max_snippet is not None:
+                    controls[provider]["max_snippet"] = max_snippet
+
         for meta in soup.find_all("meta"):
             name = str(meta.get("name") or meta.get("property") or "").strip().lower()
-            if name not in {"robots", "googlebot"}:
+            _apply(name, meta.get("content", ""), "meta")
+        for header_name, header_value in (response_headers or {}).items():
+            if str(header_name).lower() != "x-robots-tag":
                 continue
-            tokens, max_snippet = _parse_meta_content(meta.get("content", ""))
-            if name == "robots":
-                robots_tokens.update(tokens)
-                if max_snippet is not None:
-                    robots_max_snippet = max_snippet
-            else:
-                googlebot_tokens.update(tokens)
-                if max_snippet is not None:
-                    googlebot_max_snippet = max_snippet
-
-        effective_tokens = set(robots_tokens) | set(googlebot_tokens)
-        max_snippet = googlebot_max_snippet if googlebot_max_snippet is not None else robots_max_snippet
-        noindex = "noindex" in effective_tokens or "none" in effective_tokens
-        nosnippet = "nosnippet" in effective_tokens or "none" in effective_tokens
-
-        return {
-            "robots_tokens": sorted(robots_tokens),
-            "googlebot_tokens": sorted(googlebot_tokens),
-            "effective_tokens": sorted(effective_tokens),
-            "noindex": noindex,
-            "nosnippet": nosnippet,
-            "max_snippet": max_snippet,
-            "data_nosnippet_count": len(soup.select("[data-nosnippet]")),
-        }
+            values = header_value if isinstance(header_value, (list, tuple)) else [header_value]
+            for value in values:
+                for directive in str(value or "").split(";"):
+                    target_name, separator, content = directive.partition(":")
+                    if separator and target_name.strip().lower() in bot_to_provider:
+                        _apply(target_name, content, "header")
+                    else:
+                        _apply("robots", directive, "header")
+        for provider, evidence in controls.items():
+            effective_tokens = evidence["meta_tokens"] | evidence["header_tokens"]
+            evidence["meta_tokens"] = sorted(evidence["meta_tokens"])
+            evidence["header_tokens"] = sorted(evidence["header_tokens"])
+            evidence["effective_tokens"] = sorted(effective_tokens)
+            evidence["noindex"] = "noindex" in effective_tokens or "none" in effective_tokens
+            evidence["nosnippet"] = "nosnippet" in effective_tokens or "none" in effective_tokens
+            evidence["data_nosnippet_count"] = len(soup.select("[data-nosnippet]")) if provider == "google" else 0
+        return controls
 
     def assess_provider_readiness(
         self,
@@ -274,10 +296,11 @@ class AIOContentAnalyzer:
         tech_results: Dict[str, Any],
         structure_results: Dict[str, Any],
         inline_eeat: Dict[str, Any],
+        response_headers: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         provider_readiness: Dict[str, Any] = {"informational_notes": []}
         bot_access = tech_results.get("bot_access", {}) or {}
-        google_controls = self._extract_google_meta_controls(soup)
+        provider_controls = self._extract_provider_controls(soup, response_headers)
         weak_eeat = float(inline_eeat.get("combined_score", 0.0) or 0.0) < 4.0
 
         def _make_provider_entry(key: str, checks: List[Dict[str, str]], heuristic_notes: List[str]) -> Dict[str, Any]:
@@ -285,9 +308,10 @@ class AIOContentAnalyzer:
             for check in checks:
                 status = self._merge_status(status, str(check.get("status") or "pass"))
             summary_map = {
-                "pass": "公式公開条件の大きな阻害は見当たりません。",
-                "warn": "致命的な遮断はありませんが、公開条件または補助シグナルに注意点があります。",
+                "pass": "確認できた公開条件に阻害はありません。",
                 "fail": "公式公開条件で到達性または抜粋可否を阻害する要素があります。",
+                "unverified": "robots.txt の取得または評価が完了していないため、公開条件を確認できません。",
+                "not_applicable": "この公開条件は対象外です。",
             }
             return {
                 "label": PROVIDER_LABELS[key],
@@ -298,28 +322,31 @@ class AIOContentAnalyzer:
                 "heuristic_notes": heuristic_notes,
             }
 
+        def _robots_status(agent: str) -> str:
+            if tech_results.get("robots_status") != "pass":
+                return "unverified"
+            return "fail" if bot_access.get(agent) is False else "pass"
+
+        def _control_checks(provider: str) -> List[Dict[str, str]]:
+            controls = provider_controls[provider]
+            checks = [
+                {"label": "noindex が無効", "status": "fail" if controls["noindex"] else "pass"},
+                {"label": "nosnippet が無効", "status": "fail" if controls["nosnippet"] else "pass"},
+            ]
+            if controls["max_snippet"] == 0:
+                checks.append({"label": "max-snippet 制御", "status": "fail"})
+            else:
+                checks.append({"label": "max-snippet 制御", "status": "pass"})
+            if controls["data_nosnippet_count"] > 0:
+                checks.append({"label": "data-nosnippet 利用", "status": "fail"})
+            return checks
+
         google_checks = [
             {
                 "label": "Googlebot のクロール許可",
-                "status": "fail" if bot_access.get("googlebot") is False else "pass",
+                "status": _robots_status("googlebot"),
             },
-            {
-                "label": "noindex が無効",
-                "status": "fail" if google_controls["noindex"] else "pass",
-            },
-            {
-                "label": "nosnippet が無効",
-                "status": "fail" if google_controls["nosnippet"] else "pass",
-            },
-        ]
-        if google_controls["max_snippet"] == 0:
-            google_checks.append({"label": "max-snippet 制御", "status": "fail"})
-        elif google_controls["max_snippet"] not in (None, -1):
-            google_checks.append({"label": "max-snippet 制御", "status": "warn"})
-        else:
-            google_checks.append({"label": "max-snippet 制御", "status": "pass"})
-        if google_controls["data_nosnippet_count"] > 0:
-            google_checks.append({"label": "data-nosnippet 利用", "status": "warn"})
+        ] + _control_checks("google")
 
         google_heuristics: List[str] = []
         if not structure_results.get("has_json_ld"):
@@ -335,8 +362,8 @@ class AIOContentAnalyzer:
         ):
             checks = [{
                 "label": f"{PROVIDER_LABELS[provider_key]} 用クローラーの許可",
-                "status": "fail" if bot_access.get(agent) is False else "pass",
-            }]
+                "status": _robots_status(agent),
+            }] + _control_checks(provider_key)
             heuristics: List[str] = []
             if weak_eeat:
                 heuristics.append("著者・運営者・一次情報の明示が弱く、引用判断で不利になりえます。")
@@ -376,10 +403,13 @@ class AIOContentAnalyzer:
                 })
 
         provider_readiness["informational_notes"] = informational_notes
-        provider_readiness["google_controls"] = google_controls
+        provider_readiness["provider_controls"] = provider_controls
         return provider_readiness
 
-    def analyze(self, url: str, html: str, response_time_ms: float = None) -> Dict[str, Any]:
+    def analyze(
+        self, url: str, html: str, response_time_ms: float = None,
+        response_headers: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Main entry point for AIO analysis with stricter calibration.
         Target: Average site = 50-70, Note.com/Wikipedia level = 80-90
@@ -446,6 +476,7 @@ class AIOContentAnalyzer:
             tech_results=tech_results,
             structure_results=structure_results,
             inline_eeat=inline_eeat,
+            response_headers=response_headers,
         )
 
         content_schema_gap = {}
@@ -1092,6 +1123,7 @@ class AIOContentAnalyzer:
             "errors": [],
             "https": False,
             "bot_access": {},
+            "robots_status": "unverified",
         }
         
         try:
@@ -1135,14 +1167,17 @@ class AIOContentAnalyzer:
             if robots_resp is not None and robots_resp.status_code == 200:
                 content = robots_resp.text
                 tracked_agents = list(OFFICIAL_SEARCH_BOTS.values()) + ["google-extended"] + list(INFORMATIONAL_BOTS.keys())
-                bot_access = self._parse_robots_agent_access(content, tracked_agents)
+                bot_access = self._parse_robots_agent_access(content, tracked_agents, base_url)
                 results["bot_access"] = bot_access
+                results["robots_status"] = "pass"
                 blocked = [agent for agent in OFFICIAL_SEARCH_BOTS.values() if bot_access.get(agent) is False]
                 if blocked:
                     results["ai_bots_blocked"] = True
                     results["blocked_bots"] = blocked
                 results["google_extended_disallowed"] = bot_access.get("google-extended") is False
-            elif robots_resp is not None and robots_resp.status_code >= 400:
+            elif robots_resp is not None:
+                # Redirects and every other non-200 response are not evidence
+                # that the analysed path is crawlable.
                 results["errors"].append(f"robots.txt HTTP {robots_resp.status_code}")
 
             # 3. HTTPS (0.25)

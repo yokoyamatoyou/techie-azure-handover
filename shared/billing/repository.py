@@ -174,6 +174,72 @@ def ensure_default_plan() -> str:
     return plan["plan_id"]
 
 
+def _plan_definitions() -> Dict[str, Dict[str, Any]]:
+    return {
+        "entry": {
+            "plan_name": "TECHIE Entry",
+            "stripe_price_id": os.environ.get("STRIPE_ENTRY_PRICE_ID", ""),
+            "list_price_amount": 9000,
+            "included_credits": int(os.environ.get("TECHIE_ENTRY_INCLUDED_CREDITS", "15")),
+        },
+        "standard": {
+            "plan_name": "TECHIE Standard",
+            "stripe_price_id": os.environ.get("STRIPE_STANDARD_PRICE_ID", ""),
+            "list_price_amount": 18000,
+            "included_credits": int(os.environ.get("TECHIE_STANDARD_INCLUDED_CREDITS", "30")),
+        },
+        "pro": {
+            "plan_name": "TECHIE Pro",
+            "stripe_price_id": os.environ.get("STRIPE_PRO_PRICE_ID", ""),
+            "list_price_amount": 49800,
+            "included_credits": int(os.environ.get("TECHIE_PRO_INCLUDED_CREDITS", "100")),
+        },
+    }
+
+
+def resolve_plan_id(plan_identifier: Optional[str]) -> str:
+    """Accept either a DB UUID or the public Hub plan key."""
+    if not plan_identifier:
+        return ensure_default_plan()
+
+    try:
+        uuid.UUID(str(plan_identifier))
+        return str(plan_identifier)
+    except (TypeError, ValueError):
+        pass
+
+    plan_code = str(plan_identifier).strip().lower()
+    definitions = _plan_definitions()
+    definition = definitions.get(plan_code)
+    if not definition:
+        return ensure_default_plan()
+
+    return _execute_returning(
+        """
+        INSERT INTO plan_master (
+            plan_code, plan_name, stripe_price_id, billing_interval,
+            currency, list_price_amount, status, metadata, updated_at
+        )
+        VALUES (%s, %s, NULLIF(%s, ''), 'month', 'jpy', %s, 'active', %s::jsonb, now())
+        ON CONFLICT (plan_code) DO UPDATE
+            SET plan_name = EXCLUDED.plan_name,
+                stripe_price_id = COALESCE(EXCLUDED.stripe_price_id, plan_master.stripe_price_id),
+                list_price_amount = EXCLUDED.list_price_amount,
+                status = 'active',
+                metadata = EXCLUDED.metadata,
+                updated_at = now()
+        RETURNING plan_id
+        """,
+        (
+            plan_code,
+            definition["plan_name"],
+            definition["stripe_price_id"],
+            definition["list_price_amount"],
+            psycopg2.extras.Json({"included_credits": definition["included_credits"], "plan_key": plan_code}),
+        ),
+    )["plan_id"]
+
+
 def upsert_subscription_contract(
     *,
     tenant_id: str,
@@ -187,8 +253,7 @@ def upsert_subscription_contract(
     account = get_customer_account_by_tenant(tenant_id)
     if not account:
         raise RuntimeError(f"Customer account not found for tenant {tenant_id}")
-    if not plan_id:
-        plan_id = ensure_default_plan()
+    plan_id = resolve_plan_id(plan_id)
     return _execute_returning(
         """
         INSERT INTO subscription_contract (
@@ -242,7 +307,7 @@ def log_webhook_event(
             receive_status, processing_status, queue_name, payload, received_at, created_at
         )
         VALUES ('stripe', %s, %s, %s, 'received', 'processing', %s, %s::jsonb, now(), now())
-        ON CONFLICT (provider, stripe_event_id) DO UPDATE
+        ON CONFLICT (provider, stripe_event_id) WHERE stripe_event_id IS NOT NULL DO UPDATE
             SET processing_attempts = webhook_event_log.processing_attempts + 1,
                 processing_status = 'processing',
                 queue_name = EXCLUDED.queue_name

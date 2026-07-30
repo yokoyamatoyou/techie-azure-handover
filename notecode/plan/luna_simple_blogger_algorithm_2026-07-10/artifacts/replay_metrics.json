@@ -1,0 +1,735 @@
+{
+  "decision": "conditionally_possible",
+  "api_send_count": 0,
+  "route_v_product_code_changed": false,
+  "contract": {
+    "role_id": "company_side_blogger_v1",
+    "arm_a_fixed_calls": 1,
+    "arm_b_fixed_calls": 2,
+    "raw_full_source_handoff": false,
+    "stage_1": {
+      "prompt": "role_id: company_side_blogger_v1\nこの会社の仕事に日々触れているブロガーとして、検索やサムネイルから偶然来た、まだ関心の薄い読者へ書く。会社を外から評さず、sourceにある具体的な場面・名詞・動作から興味を立ち上げ、事実を足さない。\n\ncompact source ledgerだけを根拠に、H1を1つと自然なH2を持つ全文を書く。導入はsourceにある場面・物・動作・違和感から始める。自社本人の声を保ち、私たち/当社を機械的に反復せず、抽象的な読者誘導よりsource固有の名詞と動詞を優先する。",
+      "chars": 268,
+      "sha256": "2731cc0843f427baf18c9552e79ce7d6e48d64e3c06617d96c41c0514febd1c5"
+    },
+    "stage_2": {
+      "prompt": "role_id: company_side_blogger_v1\nこの会社の仕事に日々触れているブロガーとして、検索やサムネイルから偶然来た、まだ関心の薄い読者へ書く。会社を外から評さず、sourceにある具体的な場面・名詞・動作から興味を立ち上げ、事実を足さない。\n\n同じ書き手として全文を読み直す。低関心の読者の興味、自社本人の声、省略主語の一意性、source固有の場面・名詞・動作が定型的なメタ文に置き換わっていないかだけを見る。失敗した段落と隣接1文までを直し、他は保つ。事実・H1/H2順・本文floorを変えず、問題がなければ変更しない全文を返す。",
+      "chars": 281,
+      "sha256": "05174df8da62664359984441614b04eec15a94be7a2808143faf8f87c660c8de"
+    }
+  },
+  "cases": [
+    {
+      "id": "accepted_comparison_guide",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/01_comparison_guide.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/comparison_guide/r/a1/source_packets.json",
+      "article_sha256": "72c56265f9257a7e9ddbae77f81577969cd331ec06a583bf69727214f1f58449",
+      "source_sha256": "c56dd20538943d8fe45ffa9583ff38dd46d6fd9043e41709792f446b32cffdbf",
+      "metrics": {
+        "body_chars": 863,
+        "body_floor": 1200,
+        "body_floor_reached": false,
+        "h1_count": 1,
+        "h2_count": 3,
+        "paragraph_count": 10,
+        "sentence_count": 22,
+        "sentence_chars": {
+          "mean": 39.23,
+          "median": 39.5,
+          "maximum": 68,
+          "population_stdev": 11.33
+        },
+        "paragraph_chars": {
+          "mean": 86.3,
+          "median": 91.0,
+          "maximum": 120,
+          "population_stdev": 27.71
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 2,
+          "整理": 2,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 4,
+        "meta_sentence_ratio": 0.1818,
+        "narrator_counts": {
+          "私たち": 1,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 1,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0421,
+          "opening_ratio": 0.0606,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "sanrei_route_v_input",
+      "group": "historical_control",
+      "article": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/latest_generation_output.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "article_sha256": "50ce9906dfd8dd2588403fde722edc60a806a4f6c2631d48f3cd3715a5ea18cd",
+      "source_sha256": "39b13e9b3c040df93ba1d44055d9cc624f444e119c34a0f57794c6e1af752187",
+      "metrics": {
+        "body_chars": 1153,
+        "body_floor": 1400,
+        "body_floor_reached": false,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 12,
+        "sentence_count": 27,
+        "sentence_chars": {
+          "mean": 42.7,
+          "median": 39,
+          "maximum": 91,
+          "population_stdev": 18.51
+        },
+        "paragraph_chars": {
+          "mean": 96.08,
+          "median": 87.0,
+          "maximum": 185,
+          "population_stdev": 36.92
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 1,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 1,
+        "meta_sentence_ratio": 0.037,
+        "narrator_counts": {
+          "私たち": 8,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 8,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.5227,
+          "opening_ratio": 0.4894,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "sanrei_editor_two_pass_proxy",
+      "group": "historical_editor_proxy_not_candidate",
+      "article": "notecode/logs/0624/route_v_company_intro_front_back_editor_persona_two_api_trial_after_encoding_guard_20260624_213222/call_2_final_article.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "article_sha256": "8112655d702b8ecbfe4a927793c649c53320b4848383830b5ef9f035bd3fe92d",
+      "source_sha256": "39b13e9b3c040df93ba1d44055d9cc624f444e119c34a0f57794c6e1af752187",
+      "metrics": {
+        "body_chars": 1386,
+        "body_floor": 1400,
+        "body_floor_reached": false,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 14,
+        "sentence_count": 29,
+        "sentence_chars": {
+          "mean": 47.79,
+          "median": 50,
+          "maximum": 99,
+          "population_stdev": 18.38
+        },
+        "paragraph_chars": {
+          "mean": 99,
+          "median": 88.0,
+          "maximum": 180,
+          "population_stdev": 29.88
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 0,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 0,
+        "meta_sentence_ratio": 0.0,
+        "narrator_counts": {
+          "私たち": 9,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 9,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.5174,
+          "opening_ratio": 0.3333,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "sanrei_editor_three_call_proxy",
+      "group": "historical_editor_proxy_not_candidate",
+      "article": "notecode/logs/0624/route_v_company_intro_front_back_editor_persona_one_api_refinement_trial_after_two_pass_20260624_214820/final_article.md",
+      "source": "notecode/logs/0624/route_v_company_intro_reader_inference_contract_sanrei_one_article_api_validation_after_diagnosis_20260624_204407/route_b_artifacts/01_sanrei_foods/source_packets.json",
+      "article_sha256": "5856687b4a925a8cbac718e962c4516275da6317e9cc0d4e26ef480d6a0bb4aa",
+      "source_sha256": "39b13e9b3c040df93ba1d44055d9cc624f444e119c34a0f57794c6e1af752187",
+      "metrics": {
+        "body_chars": 1436,
+        "body_floor": 1400,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 15,
+        "sentence_count": 31,
+        "sentence_chars": {
+          "mean": 46.32,
+          "median": 41,
+          "maximum": 99,
+          "population_stdev": 19.36
+        },
+        "paragraph_chars": {
+          "mean": 95.73,
+          "median": 88,
+          "maximum": 167,
+          "population_stdev": 27.59
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 0,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 0,
+        "meta_sentence_ratio": 0.0,
+        "narrator_counts": {
+          "私たち": 10,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 10,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.4956,
+          "opening_ratio": 0.2931,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "accepted_company_service_intro",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/02_company_service_intro.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/company_service_intro/r3/c1/source_packets.json",
+      "article_sha256": "8726279f0764d10e1abea8b7012aeeda39e8285ef7d39ae81c0df4776898d372",
+      "source_sha256": "fca087178e726cbaefb3abdc83388090f9da83ffcb31bccd02e50fdb2bcfb3f4",
+      "metrics": {
+        "body_chars": 1514,
+        "body_floor": 1400,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 3,
+        "paragraph_count": 15,
+        "sentence_count": 34,
+        "sentence_chars": {
+          "mean": 44.53,
+          "median": 44.5,
+          "maximum": 77,
+          "population_stdev": 14.15
+        },
+        "paragraph_chars": {
+          "mean": 100.93,
+          "median": 101,
+          "maximum": 180,
+          "population_stdev": 27.7
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 3,
+          "整理": 2,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 4,
+        "meta_sentence_ratio": 0.1176,
+        "narrator_counts": {
+          "私たち": 3,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 3,
+        "zero_anaphora_candidates": [
+          {
+            "sentence_index": 10,
+            "text": "プロジェクト・タスク管理、ファイル管理、売上管理、採用管理、社内ポータルなど、幅広い業務に対応します。",
+            "competing_entity_in_previous_sentence": true,
+            "status": "manual_review_candidate"
+          }
+        ],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0453,
+          "opening_ratio": 0.1382,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "accepted_market_explanation",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/03_market_explanation.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/market_explanation/r3/c2/source_packets.json",
+      "article_sha256": "de7501171065b2fdc3f4c4fa055c86b3a6f683f85f03638da0a708ad23fab8da",
+      "source_sha256": "8461795db0cd57f14881c232c4a4edf60102123dc57a6f2eb12f376dc75e1493",
+      "metrics": {
+        "body_chars": 1393,
+        "body_floor": 1200,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 3,
+        "paragraph_count": 12,
+        "sentence_count": 31,
+        "sentence_chars": {
+          "mean": 44.94,
+          "median": 51,
+          "maximum": 81,
+          "population_stdev": 20.16
+        },
+        "paragraph_chars": {
+          "mean": 116.08,
+          "median": 127.5,
+          "maximum": 180,
+          "population_stdev": 46.12
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 2,
+          "整理": 1,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 3,
+        "meta_sentence_ratio": 0.0968,
+        "narrator_counts": {
+          "私たち": 3,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 3,
+        "zero_anaphora_candidates": [
+          {
+            "sentence_index": 1,
+            "text": "アイデアそのものだけでなく、価値の届け方と市場の見立て方まで分けて扱います。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          }
+        ],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0343,
+          "opening_ratio": 0.125,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "accepted_announcement",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/04_announcement.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/announcement/r2/b1/source_packets.json",
+      "article_sha256": "a216d91aade8273479bc38f09b75d9958dc43fb7922aacf28e18fa784440f393",
+      "source_sha256": "5ba86fcc962fec3dcd9377e57ac932dff9bb8751abc3f781ffe7a7d188f29615",
+      "metrics": {
+        "body_chars": 977,
+        "body_floor": 900,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 1,
+        "sentence_count": 21,
+        "sentence_chars": {
+          "mean": 46.52,
+          "median": 46,
+          "maximum": 87,
+          "population_stdev": 19.82
+        },
+        "paragraph_chars": {
+          "mean": 977,
+          "median": 977,
+          "maximum": 977,
+          "population_stdev": 0
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 1,
+          "効く": 0,
+          "確認": 4,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 5,
+        "meta_sentence_ratio": 0.2381,
+        "narrator_counts": {
+          "私たち": 0,
+          "当社": 4,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 4,
+        "zero_anaphora_candidates": [
+          {
+            "sentence_index": 8,
+            "text": "5月29日時点で約10万人の政府職員が利用可能な状況となり、全府省庁の約18万人が利用できるよう環境整備を進めます。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          },
+          {
+            "sentence_index": 14,
+            "text": "源内は、政府職員が安全・安心にAIを活用できる基盤として扱います。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          },
+          {
+            "sentence_index": 15,
+            "text": "開始日と対象人数は、読者がまず確認したい要点として扱います。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          },
+          {
+            "sentence_index": 17,
+            "text": "本文では、5月29日時点の利用状況と、順次対象府省庁・職員数を拡大する予定をあわせて確認します。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          },
+          {
+            "sentence_index": 18,
+            "text": "源内は、政府職員のAI活用を安全に進めるための基盤として位置づけ、利用開始日、対象人数、今後の拡大予定を確認する軸として扱います。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          },
+          {
+            "sentence_index": 19,
+            "text": "源内は、政府職員のAI活用を安全に進めるための基盤として位置づけ、利用開始日、対象人数、5月29日時点の利用状況、今後の対象府省庁・職員数拡大予定を確認する軸として扱います。",
+            "competing_entity_in_previous_sentence": false,
+            "status": "manual_review_candidate"
+          }
+        ],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0583,
+          "opening_ratio": 0.0667,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "accepted_daily_activity",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/05_daily_activity.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/daily_activity/r2/b1/source_packets.json",
+      "article_sha256": "aaf8e089eb659fdbb3ab8554b4f8f953f91b4a54bfba39577d8d3e0869a388c0",
+      "source_sha256": "33903b80a5b66fa0ef83db208a212d8f202208d98640da4a986f643bd5420a50",
+      "metrics": {
+        "body_chars": 1234,
+        "body_floor": 1200,
+        "body_floor_reached": true,
+        "h1_count": 1,
+        "h2_count": 2,
+        "paragraph_count": 11,
+        "sentence_count": 25,
+        "sentence_chars": {
+          "mean": 49.36,
+          "median": 48,
+          "maximum": 72,
+          "population_stdev": 13.94
+        },
+        "paragraph_chars": {
+          "mean": 112.18,
+          "median": 112,
+          "maximum": 177,
+          "population_stdev": 34.0
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 2,
+          "整理": 0,
+          "説明": 1,
+          "判断": 0
+        },
+        "meta_sentence_count": 3,
+        "meta_sentence_ratio": 0.12,
+        "narrator_counts": {
+          "私たち": 0,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 0,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0235,
+          "opening_ratio": 0.0144,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    },
+    {
+      "id": "accepted_case_study",
+      "group": "saved_human_review_baseline",
+      "article": "notecode/logs/0628/route_v_guarded_user_evaluation_artifact_no_api_20260628_134325/human_review_articles/06_case_study.md",
+      "source": "notecode/logs/0628/rv_ui_img_20260628_180205/case_study/r/a1/source_packets.json",
+      "article_sha256": "7fa7d3ca41f5739f375f0ac29f11ec4f9f74d460b20fdda227f8ad410f872dd3",
+      "source_sha256": "f600673b996da32d1497be4cc595b7e685088482bf0f16f684f446057c9f4309",
+      "metrics": {
+        "body_chars": 718,
+        "body_floor": 1200,
+        "body_floor_reached": false,
+        "h1_count": 1,
+        "h2_count": 3,
+        "paragraph_count": 7,
+        "sentence_count": 17,
+        "sentence_chars": {
+          "mean": 42.24,
+          "median": 36,
+          "maximum": 77,
+          "population_stdev": 19.57
+        },
+        "paragraph_chars": {
+          "mean": 102.57,
+          "median": 109,
+          "maximum": 130,
+          "population_stdev": 21.55
+        },
+        "phrase_counts": {
+          "判断軸": 0,
+          "判断材料": 0,
+          "はじめの一歩": 0,
+          "第一歩": 0,
+          "効く": 0,
+          "確認": 1,
+          "整理": 0,
+          "説明": 0,
+          "判断": 0
+        },
+        "meta_sentence_count": 1,
+        "meta_sentence_ratio": 0.0588,
+        "narrator_counts": {
+          "私たち": 3,
+          "当社": 0,
+          "弊社": 0,
+          "わたしたち": 0
+        },
+        "narrator_total": 3,
+        "zero_anaphora_candidates": [],
+        "source_overlap": {
+          "label": "character_trigram_proxy_not_semantic_grounding",
+          "body_ratio": 0.0332,
+          "opening_ratio": 0.0595,
+          "unsupported_claim_status": "not_evaluable_statically"
+        }
+      }
+    }
+  ],
+  "cross_article_repeated_5grams": [
+    {
+      "ngram": "しています",
+      "article_count": 7,
+      "total_count": 27
+    },
+    {
+      "ngram": "されていま",
+      "article_count": 7,
+      "total_count": 12
+    },
+    {
+      "ngram": "れています",
+      "article_count": 7,
+      "total_count": 12
+    },
+    {
+      "ngram": "だけでなく",
+      "article_count": 6,
+      "total_count": 11
+    },
+    {
+      "ngram": "ます私たち",
+      "article_count": 5,
+      "total_count": 13
+    },
+    {
+      "ngram": "っています",
+      "article_count": 5,
+      "total_count": 6
+    },
+    {
+      "ngram": "した202",
+      "article_count": 5,
+      "total_count": 5
+    },
+    {
+      "ngram": "ました20",
+      "article_count": 5,
+      "total_count": 5
+    },
+    {
+      "ngram": "す私たちは",
+      "article_count": 4,
+      "total_count": 10
+    },
+    {
+      "ngram": "2026年",
+      "article_count": 4,
+      "total_count": 9
+    },
+    {
+      "ngram": "けています",
+      "article_count": 4,
+      "total_count": 9
+    },
+    {
+      "ngram": "になります",
+      "article_count": 4,
+      "total_count": 6
+    },
+    {
+      "ngram": "を開始しま",
+      "article_count": 4,
+      "total_count": 6
+    },
+    {
+      "ngram": "始しました",
+      "article_count": 4,
+      "total_count": 6
+    },
+    {
+      "ngram": "開始しまし",
+      "article_count": 4,
+      "total_count": 6
+    },
+    {
+      "ngram": "2024年",
+      "article_count": 4,
+      "total_count": 5
+    },
+    {
+      "ngram": "ています全",
+      "article_count": 4,
+      "total_count": 5
+    },
+    {
+      "ngram": "パートナー",
+      "article_count": 4,
+      "total_count": 5
+    },
+    {
+      "ngram": "掲載されて",
+      "article_count": 4,
+      "total_count": 5
+    },
+    {
+      "ngram": "載されてい",
+      "article_count": 4,
+      "total_count": 5
+    },
+    {
+      "ngram": "います20",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "います全国",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "が欠かせな",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "ています2",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "ます202",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "ます全国の",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "扱っていま",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "欠かせない",
+      "article_count": 4,
+      "total_count": 4
+    },
+    {
+      "ngram": "水産加工品",
+      "article_count": 3,
+      "total_count": 9
+    },
+    {
+      "ngram": "食材を届け",
+      "article_count": 3,
+      "total_count": 8
+    }
+  ],
+  "limits": {
+    "same_blogger_luna_output_present": false,
+    "semantic_grounding_proven": false,
+    "actual_latency_cost_known": false
+  }
+}

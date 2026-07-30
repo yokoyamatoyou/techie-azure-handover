@@ -18,7 +18,7 @@ from analysis_lib import (
     split_url_evidence_sections,
 )
 from config import ANALYSIS_MODE_MARKET, AppConfig
-from ui.evidence_presenters import build_evidence_table_rows, extract_cited_sources, find_group_rows
+from ui.evidence_presenters import build_evidence_table_rows, extract_cited_sources, find_group_rows, localize_url_action_label
 from ui.result_story_builders import (
     build_evidence_stability_summary,
     build_losing_prompt_heatmap_rows,
@@ -95,10 +95,10 @@ def build_trial_basis_counts(selected_row: dict[str, Any], group_rows: list[dict
 def localize_run_mode(run_mode: Any) -> str:
     mode = str(run_mode or "").strip().lower()
     if mode == "scheduled":
-        return "自動定期分析"
+        return "自動チェック"
     if mode == "batch":
-        return "定期分析"
-    return "手動スポット確認"
+        return "まとめて分析"
+    return "1回だけ確認"
 
 
 def build_verdict_chip_class(verdict: str) -> str:
@@ -379,6 +379,9 @@ def _render_url_bucket(
                     ui.label(str(item.get("title") or item.get("url") or "-")).classes("evidence-link text-[14px]")
                 meta = str(item.get("host") or item.get("url") or "-")
                 detail = meta
+                status = str(item.get("status") or "")
+                if status:
+                    detail += f" / {localize_url_action_label(status)}"
                 if not item.get("is_confident"):
                     detail += " / 確認が必要"
                 if not safe_url:
@@ -395,6 +398,50 @@ def render_topic_chip_row(title: str, items: list[str], chip_class: str) -> None
     with ui.row().classes("w-full gap-2 mt-2 flex-wrap"):
         for item in chips[:5]:
             ui.label(item).classes(f"signal-chip {chip_class}")
+
+
+def build_next_action_copy(
+    selected_row: dict[str, Any],
+    topic_signals: dict[str, Any],
+    evidence_stability: dict[str, Any],
+    weak_question_summary: dict[str, Any],
+) -> dict[str, str]:
+    action_topics = [str(item).strip() for item in topic_signals.get("action_topics") or [] if str(item).strip()]
+    missing_topics = [str(item).strip() for item in topic_signals.get("missing_topics") or [] if str(item).strip()]
+    weak_headline = str(weak_question_summary.get("headline") or "").strip()
+    evidence_headline = str(evidence_stability.get("headline") or "").strip()
+    query = str(selected_row.get("keyword_raw") or selected_row.get("keyword_norm") or "選択中の質問").strip()
+    if action_topics:
+        action = f"{action_topics[0]} を説明できるページや見出しを先に確認する"
+        reason = "今回の回答と根拠URLで、次に強化すべき論点として目立っています。"
+    elif missing_topics:
+        action = f"{missing_topics[0]} について、自社ページ側の説明不足を確認する"
+        reason = "外部サイト側で目立つ話題が、自社根拠として拾われていない可能性があります。"
+    elif weak_headline and "まだ" not in weak_headline:
+        action = "弱い質問タイプの上位から、回答に必要な情報を補う"
+        reason = weak_headline
+    elif evidence_headline:
+        action = "AI回答に使われた主要ソースを確認する"
+        reason = evidence_headline
+    else:
+        action = "自社URLが根拠に入ったかを確認する"
+        reason = "まだ次の改善対象を絞るには材料が少ないため、引用有無から確認します。"
+    return {
+        "action": action,
+        "reason": reason,
+        "scope": f"対象質問: {query}",
+        "next": "下の主要ソース、弱い質問タイプ、根拠URLを順に確認します。",
+    }
+
+
+def render_next_action_card(copy: dict[str, str]) -> None:
+    with ui.column().classes("detail-result-block w-full gap-2 mt-4"):
+        ui.label("次にやること").classes("detail-tone-chip")
+        ui.label(str(copy.get("action") or "-")).classes("section-font section-title text-[22px] font-bold text-main")
+        ui.label(str(copy.get("reason") or "-")).classes("text-[14px] leading-6 text-support")
+        with ui.row().classes("w-full gap-2 flex-wrap"):
+            ui.label(str(copy.get("scope") or "-")).classes("signal-chip signal-neutral")
+            ui.label(str(copy.get("next") or "-")).classes("signal-chip signal-positive")
 
 
 def format_list_or_dash(items: list[str] | None) -> str:
@@ -451,6 +498,20 @@ def refresh_result_detail_views(
         if not selected_row:
             ui.label("結果詳細はまだありません").classes("text-[15px] soft-label")
             return
+        unique_questions = len({str(row.get("keyword_raw") or row.get("keyword_norm") or "") for row in rollup_rows if row.get("result_id")})
+        result_count = len(rollup_rows)
+        ui.label(
+            f"対象質問 {unique_questions}件 / 保存済み結果 {result_count}件"
+        ).classes("text-[13px] leading-6 text-helper")
+        ui.label(str(selected_row.get("keyword_raw") or "-")).classes("text-[16px] font-bold text-main mt-2 text-wrap-anywhere")
+        if not show_current_result:
+            ui.label(
+                "この詳細は保存済み結果です: "
+                f"{format_timestamp(selected_row.get('analyzed_at'))} / "
+                f"{selected_row.get('keyword_raw') or '-'} / "
+                f"{selected_row.get('target_domain') or config.target_domain or '-'} / "
+                f"{localize_run_mode(selected_row.get('run_mode'))}"
+            ).classes("text-[13px] leading-6 text-helper mt-1 text-wrap-anywhere")
         payload = parse_json_object(selected_row.get("output_json"))
         selected_group_rows = find_group_rows(selected_row, raw_rows)
         answer_text = str(selected_row.get("answer_text") or payload.get("answer_text") or "").strip()
@@ -476,6 +537,12 @@ def refresh_result_detail_views(
         citation_trial_count = int(trial_basis_counts["citation_trial_count"])
         external_lead_trial_count = int(trial_basis_counts["external_lead_trial_count"])
         self_candidate_trial_count = int(trial_basis_counts["self_candidate_trial_count"])
+        next_action_copy = build_next_action_copy(
+            selected_row,
+            topic_signals,
+            evidence_stability,
+            weak_question_summary,
+        )
         verdict = build_visibility_state_label(
             int(selected_row.get("visibility_score") or 0),
             bool(selected_row.get("target_domain_hit")),
@@ -483,6 +550,7 @@ def refresh_result_detail_views(
         )
         with ui.card().classes("card-detail p-5 w-full"):
             ui.label("今回の結果" if show_current_result else "保存済み結果").classes("result-tone-chip")
+            render_next_action_card(next_action_copy)
             ui.label("改善判断サマリー").classes("section-font section-title text-[24px] font-bold mt-4")
             ui.label(f"{selected_row.get('keyword_raw')}").classes("text-[18px] font-bold text-main mt-2")
             with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):

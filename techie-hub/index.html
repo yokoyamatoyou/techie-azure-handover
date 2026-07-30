@@ -7,10 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>TECHIE</title>
-<link rel="icon" href="assets/logo.svg?v=20260207b" type="image/svg+xml">
+<link rel="icon" href="/assets/logo.svg?v=20260207b" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260414c">
-<script src="config.js?v=20260430a"></script>
+<link rel="stylesheet" href="/style.css?v=20260517a">
+<script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
+<script src="/config.js?v=20260521b"></script>
 </head>
 <body>
 <div class="glow glow-a"></div>
@@ -18,121 +19,657 @@
 
 <div class="suite-shell">
   <header class="suite-nav">
-    <a href="/" class="suite-nav-home" data-service-link="home">HOME</a>
-    <a href="https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomake">発信作成</a>
-    <a href="https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomegane">見え方観測</a>
-    <a href="https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" class="suite-nav-link" data-service-link="kotomigaki">サイト改善</a>
+    <a href="/" class="suite-nav-home">ホーム</a>
+    <a href="/signup" class="suite-nav-link">新規登録</a>
+    <a href="/login" class="suite-nav-link">ログイン</a>
+    <a href="/onboarding" class="suite-nav-link">初期登録</a>
+    <a href="/plans" class="suite-nav-link">プラン選択</a>
+    <a href="/account" class="suite-nav-link">契約管理</a>
+    <button class="suite-nav-button" id="logout-button" type="button" hidden>ログアウト</button>
   </header>
-
-  <main class="suite-home">
-    <section class="hero-card">
-      <div class="hero-brand">
-        <img src="assets/logo.svg?v=20260207b" alt="TECHIE" class="hero-logo">
-        <p class="hero-tagline">作る、測る、改善する。</p>
-      </div>
-    </section>
-
-    <section class="section-block">
-      <div class="core-grid">
-        <article class="suite-card suite-card-kotomake" data-service="kotomake">
-          <h3>コトメイク</h3>
-          <p class="card-purpose">ブログ生成で流入導線を作る</p>
-          <a href="https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomake" class="button button-primary" target="_blank" rel="noopener">開く</a>
-        </article>
-
-        <article class="suite-card suite-card-kotomegane" data-service="kotomegane">
-          <h3>コトメガネ</h3>
-          <p class="card-purpose">AI検索での見え方を測る</p>
-          <a href="https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomegane" class="button button-primary" target="_blank" rel="noopener">開く</a>
-        </article>
-
-        <article class="suite-card suite-card-kotomigaki" data-service="kotomigaki">
-          <h3>コトミガキ</h3>
-          <p class="card-purpose">自社サイトの改善点を判断する</p>
-          <a href="https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io" data-service-link="kotomigaki" class="button button-primary" target="_blank" rel="noopener">開く</a>
-        </article>
-      </div>
-    </section>
-  </main>
+  <main id="app" class="suite-home" aria-live="polite"></main>
 </div>
 
 <script>
 (function () {
-  var config = window.TECHIE_CONFIG || {};
-  var fallback = {
-    home: window.location.origin + '/',
-    kotomake: 'https://kotomake.ashymushroom-021a53c5.japanwest.azurecontainerapps.io',
-    kotomigaki: 'https://kotomigaki.ashymushroom-021a53c5.japanwest.azurecontainerapps.io',
-    kotomegane: 'https://kotomegane.ashymushroom-021a53c5.japanwest.azurecontainerapps.io'
+  const config = window.TECHIE_CONFIG || {};
+  const app = document.getElementById('app');
+  const logoutButton = document.getElementById('logout-button');
+  const placeholderPattern = /^%%.+%%$/;
+  const serviceUrls = {
+    kotomake: config.KOTOMAKE_URL,
+    kotomigaki: config.KOTOMIGAKI_URL,
+    kotomegane: config.KOTOMEGANE_URL
   };
-  var urls = {
-    home: config.HUB_URL || fallback.home,
-    kotomake: config.KOTOMAKE_URL || fallback.kotomake,
-    kotomigaki: config.KOTOMIGAKI_URL || fallback.kotomigaki,
-    kotomegane: config.KOTOMEGANE_URL || fallback.kotomegane
-  };
-  var services = [
-    { key: 'kotomake', mode: 'no-cors' },
-    { key: 'kotomigaki', mode: 'no-cors' },
-    { key: 'kotomegane', healthPath: '/healthz', mode: 'cors' }
-  ];
+  const SAFE_COUPON_ERROR = 'クーポンコードが無効、または期限切れです。コードを確認して再入力してください。';
 
-  function applyLinks() {
-    document.querySelectorAll('[data-service-link]').forEach(function (link) {
-      var key = link.getAttribute('data-service-link');
-      var url = urls[key] || '#';
-      link.setAttribute('href', url);
-      link.dataset.href = url;
-    });
+  function isConfigured(value) {
+    return Boolean(value && !placeholderPattern.test(String(value)));
   }
 
-  function ping(svc) {
-    var controller = new AbortController();
-    var id = setTimeout(function () { controller.abort(); }, 6000);
-    var path = svc.healthPath || '/';
-    return fetch((urls[svc.key] || '').replace(/\/$/, '') + path, {
-      cache: 'no-store',
-      mode: svc.mode || 'no-cors',
-      signal: controller.signal
-    }).then(function (response) {
-      clearTimeout(id);
-      return svc.mode === 'cors' ? response.ok : true;
-    }).catch(function () {
-      clearTimeout(id);
-      return false;
-    });
-  }
+  const authReady = isConfigured(config.ENTRA_AUTHORITY) && isConfigured(config.ENTRA_CLIENT_ID);
+  const msalClient = authReady && window.msal ? new msal.PublicClientApplication({
+    auth: {
+      clientId: config.ENTRA_CLIENT_ID,
+      authority: config.ENTRA_AUTHORITY,
+      redirectUri: config.ENTRA_REDIRECT_URI || `${window.location.origin}/auth/callback`,
+      postLogoutRedirectUri: config.ENTRA_POST_LOGOUT_REDIRECT_URI || `${window.location.origin}/signed-out`
+    },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  }) : null;
+  let redirectResultPromise = null;
+  let interactiveAuthInProgress = false;
+  let signupAutoStartTimer = null;
 
-  function setStatus(svc, up) {
-    var card = document.querySelector('.suite-card[data-service="' + svc.key + '"]');
-    if (!card) return;
-    card.dataset.serviceState = up ? 'up' : 'down';
-    var btn = card.querySelector('.button');
-    if (!btn) return;
-    btn.setAttribute('href', btn.dataset.href || urls[svc.key] || '#');
-    btn.setAttribute('tabindex', '0');
-    if (up) {
-      btn.classList.remove('button-disabled');
-      btn.setAttribute('aria-disabled', 'false');
-      btn.removeAttribute('title');
-    } else {
-      btn.classList.add('button-disabled');
-      btn.setAttribute('aria-disabled', 'true');
-      btn.setAttribute('title', '起動確認に失敗しました。押すとそのまま開けます');
+  function decodeJwtPayload(token) {
+    try {
+      const part = String(token || '').split('.')[1];
+      if (!part) return {};
+      const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      return JSON.parse(decodeURIComponent(escape(window.atob(padded))));
+    } catch (_) {
+      return {};
     }
   }
 
-  async function tick() {
-    for (var i = 0; i < services.length; i++) {
-      var svc = services[i];
-      var up = await ping(svc);
-      setStatus(svc, up);
+  function setStoredAuthToken(token) {
+    if (!token) return;
+    const claims = decodeJwtPayload(token);
+    const expiresAt = Number(claims.exp || 0) * 1000;
+    if (!expiresAt || expiresAt <= Date.now()) return;
+    localStorage.setItem('TECHIE_AUTH_TOKEN', token);
+    localStorage.setItem('TECHIE_AUTH_TOKEN_EXPIRES_AT', String(expiresAt));
+  }
+
+  function getStoredAuthToken() {
+    const token = localStorage.getItem('TECHIE_AUTH_TOKEN') || '';
+    const expiresAt = Number(localStorage.getItem('TECHIE_AUTH_TOKEN_EXPIRES_AT') || '0');
+    if (!token || !expiresAt || expiresAt <= Date.now() + 60000) {
+      localStorage.removeItem('TECHIE_AUTH_TOKEN');
+      localStorage.removeItem('TECHIE_AUTH_TOKEN_EXPIRES_AT');
+      return '';
+    }
+    return token;
+  }
+
+  function hasAuthResponseInUrl() {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    return /[#&](code|error|state)=/.test(hash) || /[?&](code|error|state)=/.test(search);
+  }
+
+  function removeMsalInteractionState() {
+    const stores = [window.localStorage, window.sessionStorage];
+    for (const store of stores) {
+      if (!store) continue;
+      for (let i = store.length - 1; i >= 0; i -= 1) {
+        const key = store.key(i) || '';
+        if (key.includes('interaction.status')) {
+          store.removeItem(key);
+        }
+      }
     }
   }
 
-  applyLinks();
-  tick();
-  setInterval(tick, 30000);
+  function msalInteractionStateExists() {
+    const stores = [window.localStorage, window.sessionStorage];
+    for (const store of stores) {
+      if (!store) continue;
+      for (let i = 0; i < store.length; i += 1) {
+        const key = store.key(i) || '';
+        if (key.includes('interaction.status')) return true;
+      }
+    }
+    return false;
+  }
+
+  async function ensureRedirectHandled() {
+    if (!msalClient) return null;
+    if (!redirectResultPromise) {
+      redirectResultPromise = msalClient.handleRedirectPromise()
+        .then(result => {
+          if (result && result.account) msalClient.setActiveAccount(result.account);
+          if (result) setStoredAuthToken(result.idToken || result.accessToken);
+          interactiveAuthInProgress = false;
+          if (!hasAuthResponseInUrl()) removeMsalInteractionState();
+          return result;
+        })
+        .catch(error => {
+          interactiveAuthInProgress = false;
+          removeMsalInteractionState();
+          throw error;
+        });
+    }
+    return redirectResultPromise;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
+  function userMessage(error) {
+    const message = String(error && error.message ? error.message : error || '');
+    if (/authentication failed/i.test(message)) {
+      return '認証に失敗しました。再度ログインしてからお試しください。';
+    }
+    if (/failed to fetch/i.test(message)) {
+      return 'APIに接続できませんでした。通信状態またはログイン状態を確認してください。';
+    }
+    if (/stripe price id/i.test(message)) {
+      return 'Stripe 価格 ID が未設定です。';
+    }
+    return message || '処理に失敗しました。時間をおいて再度お試しください。';
+  }
+
+  function currentPath() {
+    return window.location.pathname.replace(/\/$/, '') || '/';
+  }
+
+  function setView(markup) {
+    app.innerHTML = markup;
+    bindView();
+  }
+
+  function account() {
+    if (!msalClient) return null;
+    return msalClient.getActiveAccount() || msalClient.getAllAccounts()[0] || null;
+  }
+
+  function syncAccount() {
+    if (!msalClient) return null;
+    const current = account();
+    if (current) msalClient.setActiveAccount(current);
+    logoutButton.hidden = !current;
+    return current;
+  }
+
+  async function getToken() {
+    if (!msalClient) throw new Error('認証設定が未完了です。');
+    const current = syncAccount();
+    if (!current) throw new Error('ログインが必要です。');
+    const request = { account: current, scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'] };
+    try {
+      const result = await msalClient.acquireTokenSilent(request);
+      const token = result.idToken || result.accessToken;
+      setStoredAuthToken(token);
+      return token;
+    } catch (_) {
+      const storedToken = getStoredAuthToken();
+      if (storedToken) return storedToken;
+      await msalClient.acquireTokenRedirect({
+        ...request,
+        extraQueryParameters: { ui_locales: 'ja' }
+      });
+      throw new Error('認証画面へ移動しています。');
+    }
+  }
+
+  async function apiFetch(endpoint, options = {}) {
+    const token = await getToken();
+    let response;
+    try {
+      response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...(options.headers || {})
+        }
+      });
+    } catch (error) {
+      throw new Error('APIに接続できませんでした。通信状態またはログイン状態を確認してください。');
+    }
+    const text = await response.text();
+    let body = {};
+    try { body = text ? JSON.parse(text) : {}; } catch (_) { body = {}; }
+    if (!response.ok) {
+      const detail = typeof body.detail === 'string' ? body.detail : '';
+      const safeDetail = detail && detail.length < 200 && !/[<>]/.test(detail)
+        ? detail
+        : `API リクエストに失敗しました: ${response.status}`;
+      const error = new Error(safeDetail);
+      error.status = response.status;
+      error.code = body.code || '';
+      throw error;
+    }
+    return body;
+  }
+
+  function authNotice() {
+    if (authReady) return '';
+    return `
+      <div class="notice notice-danger">
+        <strong>認証設定が未完了です。</strong>
+        <span>顧客のログイン・決済テスト前に ENTRA_AUTHORITY と ENTRA_CLIENT_ID を設定してください。</span>
+      </div>
+    `;
+  }
+
+  function renderHome() {
+    const current = syncAccount();
+    setView(`
+      <section class="hero-card">
+        <div class="hero-brand">
+          <img src="/assets/logo.svg?v=20260207b" alt="TECHIE" class="hero-logo">
+          <p class="hero-tagline">作る、測る、改善する。</p>
+        </div>
+      </section>
+      ${authNotice()}
+      <section class="page-panel">
+        <p class="eyebrow">ご利用開始</p>
+        <h1>${current ? `ようこそ、${escapeHtml(current.name || current.username || 'ユーザー')}さん` : 'TECHIE を開始する'}</h1>
+        <p class="hero-summary">WIX から遷移したユーザーは、この Azure Hub で新規登録、ログイン、プラン選択、Stripe 決済、契約管理、各サービスへの遷移を行います。</p>
+        <div class="button-row">
+          ${current
+            ? '<a class="button button-primary" href="/plans">プランを選択</a><a class="button button-secondary" href="/account">契約を管理</a>'
+            : '<a class="button button-primary" href="/signup">新規登録</a><a class="button button-secondary" href="/login">ログイン</a>'}
+        </div>
+      </section>
+      <section class="section-block">
+        <div class="core-grid">
+          ${serviceCard('kotomake', 'コトメイク', 'ブログ生成でオウンドメディアの流入導線を作ります。')}
+          ${serviceCard('kotomegane', 'コトメガネ', 'AI 検索上での自社の見え方を観測します。')}
+          ${serviceCard('kotomigaki', 'コトミガキ', 'Web サイトを分析し、改善点を明確にします。')}
+        </div>
+      </section>
+    `);
+  }
+
+  function serviceCard(key, title, purpose) {
+    return `
+      <article class="suite-card suite-card-${key}">
+        <h3>${title}</h3>
+        <p class="card-purpose">${purpose}</p>
+        <button class="button button-primary service-open" data-service="${key}" type="button">サービスを開く</button>
+      </article>
+    `;
+  }
+
+  function renderLogin(mode) {
+    if (mode !== 'signup' && syncAccount()) {
+      window.history.replaceState({}, document.title, '/');
+      return renderHome();
+    }
+    const label = mode === 'signup' ? '新規登録' : 'ログイン';
+    const summary = mode === 'signup'
+      ? '新規ユーザー登録画面に移動します。メール確認後、TECHIE の初期登録画面へ戻ります。'
+      : '既存ユーザー向けのログイン画面に移動します。認証完了後に契約管理画面へ戻ります。';
+    setView(`
+      ${authNotice()}
+      <section class="page-panel">
+        <p class="eyebrow">認証</p>
+        <h1>${label}</h1>
+        <p class="hero-summary">${summary}</p>
+        <div class="button-row">
+          <button class="button button-primary" id="login-start" data-auth-mode="${mode}" type="button">${label}</button>
+          <a class="button button-secondary" href="/plans">プランを見る</a>
+        </div>
+      </section>
+    `);
+  }
+
+  function renderSignupRedirect() {
+    const current = syncAccount();
+    if (current) return renderOnboarding();
+    if (signupAutoStartTimer) {
+      clearTimeout(signupAutoStartTimer);
+      signupAutoStartTimer = null;
+    }
+    setView(`
+      ${authNotice()}
+      <section class="page-panel">
+        <p class="eyebrow">認証</p>
+        <h1>新規登録へ移動しています</h1>
+        <p class="hero-summary">Microsoft Entra External ID の新規登録画面を開いています。画面が切り替わらない場合は下のボタンを押してください。</p>
+        <div class="button-row">
+          <button class="button button-primary" id="login-start" data-auth-mode="signup" type="button">新規登録を開始</button>
+        </div>
+      </section>
+    `);
+    signupAutoStartTimer = setTimeout(() => {
+      signupAutoStartTimer = null;
+      startLogin('signup');
+    }, 250);
+  }
+
+  function renderOnboarding() {
+    const current = syncAccount();
+    if (!current) return renderLogin('signup');
+    const plans = (config.PLANS || []).filter(plan => (plan.checkoutMode || 'subscription') === 'subscription');
+    setView(`
+      <section class="page-panel">
+        <p class="eyebrow">初期登録</p>
+        <h1>TECHIE 利用情報の登録</h1>
+        <p class="hero-summary">会社情報と利用目的を入力し、契約プランを選択して Stripe 決済へ進んでください。</p>
+        <form id="onboarding-form" class="onboarding-form">
+          <label>会社名<input name="company_name" required autocomplete="organization" placeholder="例: 京都工業株式会社"></label>
+          <label>担当者名<input name="contact_name" required autocomplete="name" value="${escapeHtml(current.name || '')}" placeholder="例: 山田 太郎"></label>
+          <label>電話番号<input name="phone" autocomplete="tel" placeholder="例: 075-000-0000"></label>
+          <label>利用目的<textarea name="purpose" rows="3" placeholder="例: オウンドメディア運用、SEO/AIO改善、AI検索での見え方確認"></textarea></label>
+          <label>契約プラン
+            <select name="plan_key" required>
+              ${plans.map(plan => `<option value="${escapeHtml(plan.key)}">${escapeHtml(plan.name)} / ${escapeHtml(plan.priceLabel)}</option>`).join('')}
+            </select>
+          </label>
+          <button class="button button-primary" type="submit">Stripe 決済へ進む</button>
+        </form>
+      </section>
+    `);
+  }
+
+  function renderPlans() {
+    const current = syncAccount();
+    const plans = config.PLANS || [];
+    setView(`
+      ${authNotice()}
+      <section class="page-panel">
+        <p class="eyebrow">プラン</p>
+        <h1>プラン選択</h1>
+        <p class="hero-summary">設定済みのプランを選択すると、安全な決済画面へ移動します。</p>
+        ${!current ? '<div class="notice">決済へ進むには先にログインしてください。</div>' : ''}
+      </section>
+      <section class="core-grid">
+        ${plans.map(plan => planCard(plan, Boolean(current))).join('')}
+      </section>
+    `);
+  }
+
+  function planCard(plan, loggedIn) {
+    const configured = isConfigured(plan.stripePriceId);
+    return `
+      <article class="suite-card">
+        <h3>${escapeHtml(plan.name)}</h3>
+        <p class="card-purpose">${escapeHtml(plan.priceLabel)}</p>
+        <p>${escapeHtml(plan.creditLabel)}</p>
+        <p class="card-next">${escapeHtml(plan.description)}</p>
+        ${configured ? '' : '<div class="notice notice-warn">Stripe 価格 ID 未設定</div>'}
+        <button class="button button-primary checkout-button" data-plan="${escapeHtml(plan.key)}" type="button" ${(!loggedIn || !configured) ? 'disabled' : ''}>決済へ進む</button>
+      </article>
+    `;
+  }
+
+  async function renderAccount() {
+    const current = syncAccount();
+    if (!current) return renderLogin('login');
+    setView(`
+      <section class="page-panel">
+        <p class="eyebrow">アカウント</p>
+        <h1>契約・クレジット管理</h1>
+        <p class="hero-summary">契約確認、支払い方法の変更、解約手続きを行います。</p>
+        <dl class="account-list">
+          <dt>ユーザー</dt><dd>${escapeHtml(current.name || '-')}</dd>
+          <dt>メール</dt><dd>${escapeHtml(current.username || '-')}</dd>
+        </dl>
+        <div class="button-row">
+          <button class="button button-primary" id="portal-button" type="button">契約管理を開く</button>
+          <button class="button button-secondary" id="refresh-credits" type="button">クレジット残高を更新</button>
+        </div>
+        <form id="coupon-form" class="coupon-form">
+          <label>無料クレジットクーポン
+            <span class="field-note">購入前に配布されたクーポンコードを入力できます。</span>
+            <div class="coupon-row">
+              <input name="coupon_code" autocomplete="off">
+              <button class="button button-secondary" type="submit">クレジットを付与</button>
+            </div>
+          </label>
+          <div id="coupon-result" class="coupon-result" aria-live="polite"></div>
+        </form>
+        <div id="credit-summary" class="credit-grid"></div>
+      </section>
+    `);
+  }
+
+  function renderAdminUsers() {
+    const current = syncAccount();
+    setView(`
+      <section class="page-panel">
+        <p class="eyebrow">管理</p>
+        <h1>ユーザー管理</h1>
+        <p class="hero-summary">ユーザー認証情報は認証基盤側で管理します。テナント、ロール、リセラー、割当情報はデータベースと管理 API で管理します。</p>
+        ${current ? `<p>現在のユーザー: ${escapeHtml(current.username || current.name || '-')}</p>` : '<div class="notice">ログインが必要です。</div>'}
+      </section>
+    `);
+  }
+
+  function renderSignedOut() {
+    setView(`
+      <section class="page-panel">
+        <p class="eyebrow">ログアウト</p>
+        <h1>ログアウトしました</h1>
+        <a class="button button-primary" href="/login">再度ログイン</a>
+      </section>
+    `);
+  }
+
+  async function renderCallback() {
+    setView('<section class="page-panel"><h1>ログイン処理中です...</h1></section>');
+    if (!msalClient) return renderLogin('login');
+    await ensureRedirectHandled();
+    const intent = sessionStorage.getItem('TECHIE_AUTH_INTENT') || 'login';
+    sessionStorage.removeItem('TECHIE_AUTH_INTENT');
+    window.history.replaceState({}, document.title, intent === 'signup' ? '/onboarding' : '/');
+    return intent === 'signup' ? renderOnboarding() : renderHome();
+  }
+
+  async function startLogin(mode = 'login') {
+    if (signupAutoStartTimer) {
+      clearTimeout(signupAutoStartTimer);
+      signupAutoStartTimer = null;
+    }
+    if (!authReady) {
+      alert('認証設定が未完了です。');
+      return;
+    }
+    if (!msalClient) {
+      alert('Microsoft ログインライブラリの読み込みに失敗しました。再読み込みして再度お試しください。');
+      return;
+    }
+    await ensureRedirectHandled();
+    if (interactiveAuthInProgress || msalInteractionStateExists()) {
+      console.info('MSAL interaction is already in progress; duplicate login request skipped.');
+      return;
+    }
+    interactiveAuthInProgress = true;
+    sessionStorage.setItem('TECHIE_AUTH_INTENT', mode);
+    try {
+      await msalClient.loginRedirect({
+        scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
+        prompt: mode === 'signup' ? 'create' : 'select_account',
+        extraQueryParameters: { ui_locales: 'ja' }
+      });
+    } catch (error) {
+      interactiveAuthInProgress = false;
+      if (String(error && error.errorCode || '').includes('interaction_in_progress')) {
+        removeMsalInteractionState();
+        console.warn('Stale MSAL interaction state was cleared. Please try the login action again.');
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function openCheckout(planKey, profile = {}) {
+    const plan = (config.PLANS || []).find(item => item.key === planKey);
+    if (!plan || !isConfigured(plan.stripePriceId)) {
+      alert('このプランの Stripe 価格 ID が未設定です。');
+      return;
+    }
+    const result = await apiFetch('/api/billing/checkout-session', {
+      method: 'POST',
+      body: JSON.stringify({
+        price_id: plan.stripePriceId,
+        success_url: `${window.location.origin}/account?checkout=success`,
+        cancel_url: `${window.location.origin}/plans?checkout=cancel`,
+        service_code: plan.serviceCode,
+        service_name: plan.serviceName,
+        plan_id: plan.key,
+        checkout_mode: plan.checkoutMode || 'subscription',
+        credit_grant_amount: plan.creditGrantAmount || 0,
+        company_name: profile.company_name || '',
+        display_name: profile.contact_name || profile.company_name || '',
+        customer_email: profile.customer_email || ''
+      })
+    });
+    window.location.href = result.url;
+  }
+
+  function collectOnboardingProfile(form) {
+    const data = new FormData(form);
+    return {
+      company_name: String(data.get('company_name') || '').trim(),
+      contact_name: String(data.get('contact_name') || '').trim(),
+      phone: String(data.get('phone') || '').trim(),
+      purpose: String(data.get('purpose') || '').trim(),
+      plan_key: String(data.get('plan_key') || '').trim(),
+      customer_email: account()?.username || ''
+    };
+  }
+
+  async function openPortal() {
+    const result = await apiFetch('/api/billing/customer-portal', {
+      method: 'POST',
+      body: JSON.stringify({ return_url: `${window.location.origin}/account` })
+    });
+    window.location.href = result.url;
+  }
+
+  async function syncBillingFromStripe() {
+    await apiFetch('/api/billing/sync-subscription', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+  }
+
+  async function redeemCoupon(form) {
+    const resultTarget = document.getElementById('coupon-result');
+    const data = new FormData(form);
+    const code = String(data.get('coupon_code') || '').trim();
+    if (!code) {
+      if (resultTarget) resultTarget.innerHTML = '<span class="text-danger">クーポンコードを入力してください。</span>';
+      return;
+    }
+    if (resultTarget) resultTarget.textContent = 'クーポンを確認しています...';
+    const result = await apiFetch('/api/usage/redeem-coupon', {
+      method: 'POST',
+      body: JSON.stringify({ code })
+    }).catch(error => {
+      if (resultTarget) resultTarget.innerHTML = `<span class="text-danger">${escapeHtml(SAFE_COUPON_ERROR)}</span>`;
+      throw error;
+    });
+    if (resultTarget) {
+      resultTarget.innerHTML = result.idempotent_replay
+        ? '<span class="text-danger">このクーポンは既に利用済みです。</span>'
+        : `<span class="text-success">${escapeHtml(result.coupon_units || 1)} クレジットを付与しました。</span>`;
+    }
+    await refreshCredits();
+  }
+
+  async function refreshCredits() {
+    const target = document.getElementById('credit-summary');
+    if (!target) return;
+    target.innerHTML = '<div class="notice">クレジット残高を取得中です。</div>';
+    const keys = ['kotomake', 'kotomigaki', 'kotomegane'];
+    const serviceLabels = {
+      kotomake: 'コトメイク',
+      kotomigaki: 'コトミガキ',
+      kotomegane: 'コトメガネ'
+    };
+    const rows = [];
+    for (const key of keys) {
+      try {
+        const summary = await apiFetch(`/api/usage/summary?service_key=${encodeURIComponent(key)}`);
+        rows.push(`<article class="mini-card"><strong>${serviceLabels[key]}</strong><span>合計残高: ${escapeHtml(summary.remaining_credits ?? summary.total_remaining ?? '-')}</span><span>月間: ${escapeHtml(summary.included_credits_remaining ?? '-')}</span><span>買い切り: ${escapeHtml(summary.purchased_credits_remaining ?? '-')}</span></article>`);
+      } catch (error) {
+        rows.push(`<article class="mini-card"><strong>${serviceLabels[key]}</strong><span class="text-danger">${escapeHtml(userMessage(error))}</span></article>`);
+      }
+    }
+    target.innerHTML = rows.join('');
+  }
+
+  async function syncAndRefreshCredits() {
+    const target = document.getElementById('credit-summary');
+    try {
+      await syncBillingFromStripe();
+    } catch (error) {
+      console.warn('Stripe subscription sync failed before credit refresh:', error);
+      if (target) target.innerHTML = `<div class="notice notice-warn">${escapeHtml(userMessage(error))}</div>`;
+    }
+    await refreshCredits();
+  }
+
+  async function openService(key) {
+    const baseUrl = serviceUrls[key];
+    if (!baseUrl) return;
+    try {
+      await syncBillingFromStripe().catch(error => console.warn('Stripe subscription sync failed before service open:', error));
+      const token = await getToken();
+      const url = new URL(baseUrl);
+      url.searchParams.set('access_token', token);
+      url.searchParams.set('return_to', window.location.origin + '/account');
+      window.location.href = url.toString();
+    } catch (_) {
+      window.location.href = `/login?next=${encodeURIComponent(`/service/${key}`)}`;
+    }
+  }
+
+  function bindView() {
+    document.getElementById('login-start')?.addEventListener('click', event => {
+      startLogin(event.currentTarget.dataset.authMode || 'login');
+    });
+    document.getElementById('onboarding-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      const profile = collectOnboardingProfile(event.currentTarget);
+      localStorage.setItem('TECHIE_ONBOARDING_PROFILE', JSON.stringify(profile));
+      openCheckout(profile.plan_key, profile).catch(err => alert(userMessage(err)));
+    });
+    document.getElementById('portal-button')?.addEventListener('click', () => openPortal().catch(err => alert(userMessage(err))));
+    document.getElementById('refresh-credits')?.addEventListener('click', () => syncAndRefreshCredits().catch(err => alert(userMessage(err))));
+    document.getElementById('coupon-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      redeemCoupon(event.currentTarget).catch(err => {
+        const resultTarget = document.getElementById('coupon-result');
+        if (resultTarget) resultTarget.innerHTML = `<span class="text-danger">${escapeHtml(SAFE_COUPON_ERROR)}</span>`;
+      });
+    });
+    document.querySelectorAll('.checkout-button').forEach(button => {
+      button.addEventListener('click', () => openCheckout(button.dataset.plan).catch(err => alert(userMessage(err))));
+    });
+    document.querySelectorAll('.service-open').forEach(button => {
+      button.addEventListener('click', () => openService(button.dataset.service));
+    });
+    if (document.getElementById('credit-summary')) {
+      setTimeout(() => syncAndRefreshCredits().catch(error => console.warn('Initial credit refresh failed:', error)), 250);
+    }
+  }
+
+  logoutButton.addEventListener('click', async () => {
+    if (!msalClient) return;
+    await msalClient.logoutRedirect({ account: account() || undefined });
+  });
+
+  async function route() {
+    await ensureRedirectHandled();
+    syncAccount();
+    const routePath = currentPath();
+    if (routePath === '/auth/callback' || routePath === '/callback') return renderCallback();
+    if (routePath === '/signup') return renderSignupRedirect();
+    if (routePath === '/login') return renderLogin('login');
+    if (routePath === '/onboarding') return renderOnboarding();
+    if (routePath === '/plans') return renderPlans();
+    if (routePath === '/account' || routePath === '/billing') return renderAccount();
+    if (routePath === '/admin/users') return renderAdminUsers();
+    if (routePath === '/signed-out') return renderSignedOut();
+    if (routePath.startsWith('/service/')) return openService(routePath.split('/').pop());
+    return renderHome();
+  }
+
+  route().catch(error => {
+    console.error(error);
+    setView(`<section class="page-panel"><h1>エラー</h1><p>${escapeHtml(userMessage(error))}</p></section>`);
+  });
 })();
 </script>
 </body>
