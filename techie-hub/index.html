@@ -9,7 +9,7 @@
 <title>TECHIE</title>
 <link rel="icon" href="/assets/logo.svg?v=20260207b" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=20260517a">
+<link rel="stylesheet" href="/style.css?v=20260803a">
 <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
 <script src="/config.js?v=20260521b"></script>
 </head>
@@ -296,17 +296,59 @@
     const label = mode === 'signup' ? '新規登録' : 'ログイン';
     const summary = mode === 'signup'
       ? '新規ユーザー登録画面に移動します。メール確認後、TECHIE の初期登録画面へ戻ります。'
-      : '既存ユーザー向けのログイン画面に移動します。認証完了後に契約管理画面へ戻ります。';
+      : 'ご登録時に使用した方法を選択してください。認証完了後、TECHIE に戻ります。';
+    const actions = mode === 'signup'
+      ? `
+        <div class="button-row">
+          <button class="button button-primary" id="login-start" data-auth-mode="signup" type="button">新規登録</button>
+          <a class="button button-secondary" href="/plans">プランを見る</a>
+        </div>
+      `
+      : `
+        <div class="auth-methods" aria-label="ログイン方法">
+          <article class="auth-method-card auth-method-card-current">
+            <div class="auth-method-heading">
+              <span class="auth-method-name">メールアドレス</span>
+              <span class="auth-method-badge">これまでの方法</span>
+            </div>
+            <p class="auth-method-copy">これまでにご登録いただいた方はこちら</p>
+            <p class="auth-method-detail">次の画面でメールアドレスを入力し、確認コードを受け取ります。</p>
+            <button class="button button-primary auth-start" data-auth-mode="login" data-auth-provider="email" type="button">メールアドレスで続ける</button>
+          </article>
+          <article class="auth-method-card">
+            <div class="auth-method-heading">
+              <span class="auth-method-name">Google</span>
+              <span class="auth-method-badge auth-method-badge-test">テスト提供中</span>
+            </div>
+            <p class="auth-method-copy">Google アカウントでログイン</p>
+            <p class="auth-method-detail">次の画面で「Google でサインイン」を選択します。現在は登録済みのテストユーザーのみ利用できます。</p>
+            <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="google" type="button">Googleで続ける</button>
+          </article>
+          <article class="auth-method-card auth-method-card-disabled" aria-labelledby="microsoft-auth-title">
+            <div class="auth-method-heading">
+              <span class="auth-method-name" id="microsoft-auth-title">Microsoft</span>
+              <span class="auth-method-badge auth-method-badge-construction">工事中</span>
+            </div>
+            <p class="auth-method-copy">Microsoft アカウントでログイン</p>
+            <p class="auth-method-detail">準備が整い次第、この画面からご利用いただけます。</p>
+            <button class="button button-secondary" type="button" disabled aria-disabled="true">Microsoftで続ける</button>
+          </article>
+        </div>
+        <aside class="auth-guidance" aria-label="これまでにご登録いただいた方へのご案内">
+          <strong>これまでにご登録いただいた方へ</strong>
+          <p>Outlook、Hotmail、会社の Microsoft 系メールアドレスを登録していても、確認コードを受け取ってログインしていた方は「メールアドレスで続ける」を選択してください。</p>
+        </aside>
+        <div class="button-row auth-secondary-actions">
+          <a class="button button-secondary" href="/plans">プランを見る</a>
+        </div>
+      `;
     setView(`
       ${authNotice()}
-      <section class="page-panel">
+      <section class="page-panel login-panel">
         <p class="eyebrow">認証</p>
         <h1>${label}</h1>
         <p class="hero-summary">${summary}</p>
-        <div class="button-row">
-          <button class="button button-primary" id="login-start" data-auth-mode="${mode}" type="button">${label}</button>
-          <a class="button button-secondary" href="/plans">プランを見る</a>
-        </div>
+        ${actions}
       </section>
     `);
   }
@@ -454,7 +496,7 @@
     return intent === 'signup' ? renderOnboarding() : renderHome();
   }
 
-  async function startLogin(mode = 'login') {
+  async function startLogin(mode = 'login', provider = '') {
     if (signupAutoStartTimer) {
       clearTimeout(signupAutoStartTimer);
       signupAutoStartTimer = null;
@@ -477,7 +519,7 @@
     try {
       await msalClient.loginRedirect({
         scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
-        prompt: mode === 'signup' ? 'create' : 'select_account',
+        prompt: mode === 'signup' ? 'create' : provider === 'google' ? 'login' : 'select_account',
         extraQueryParameters: { ui_locales: 'ja' }
       });
     } catch (error) {
@@ -618,6 +660,14 @@
   function bindView() {
     document.getElementById('login-start')?.addEventListener('click', event => {
       startLogin(event.currentTarget.dataset.authMode || 'login');
+    });
+    document.querySelectorAll('.auth-start').forEach(button => {
+      button.addEventListener('click', event => {
+        startLogin(
+          event.currentTarget.dataset.authMode || 'login',
+          event.currentTarget.dataset.authProvider || ''
+        );
+      });
     });
     document.getElementById('onboarding-form')?.addEventListener('submit', event => {
       event.preventDefault();
