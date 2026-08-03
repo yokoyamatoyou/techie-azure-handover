@@ -216,6 +216,20 @@ Assert-Condition -Condition ($runnerSource -match "'webapp', 'config', 'appsetti
 Assert-Condition -Condition ($runnerSource -match "'postgres', 'flexible-server', 'show'") -Code 'POSTGRES_SHOW_COMMAND_MISSING'
 Assert-Condition -Condition ($runnerSource -match 'ExpectedContextSha256') -Code 'EXPECTED_CONTEXT_HASH_GATE_MISSING'
 Assert-Condition -Condition ($runnerSource -match 'READ_ONLY_TECHIE_IDENTITY_HARDENING_TARGET_PREFLIGHT_20260804') -Code 'OPERATION_CONFIRMATION_GATE_MISSING'
+foreach ($stage in @(
+    'MODULE_VERIFY',
+    'INPUT_CONTEXT_VALIDATE',
+    'AZURE_CLI_RESOLVE',
+    'ACCOUNT_READ',
+    'WEB_APP_READ',
+    'DATABASE_SETTING_READ',
+    'POSTGRES_RESOURCE_READ',
+    'EVIDENCE_VALIDATE',
+    'SAFE_OUTPUT'
+)) {
+    Assert-Condition -Condition ($runnerSource -match [regex]::Escape("TargetPreflightStage = '$stage'")) -Code "SAFE_STAGE_MARKER_MISSING_$stage"
+}
+Assert-Condition -Condition ($runnerSource -match 'UNEXPECTED_TARGET_PREFLIGHT_FAILURE_\$Stage') -Code 'SAFE_STAGE_ERROR_MAPPING_MISSING'
 Assert-Condition -Condition ($runnerSource -notmatch 'Write-Output[^\r\n]*(?:databaseSettings|DATABASE_URL|fullyQualifiedDomainName)') -Code 'SENSITIVE_OUTPUT_PATH_PRESENT'
 
 Write-Output 'IDENTITY_BINDING_HARDENING_CLOUDSHELL_PREFLIGHT_TEST_PASS scenarios=13 parser_files=3 mutation_or_connection_commands=0 sensitive_output_paths=0'
