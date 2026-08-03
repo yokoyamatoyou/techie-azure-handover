@@ -214,6 +214,10 @@ Assert-Condition -Condition ($runnerSource -match "'account', 'show'") -Code 'AC
 Assert-Condition -Condition ($runnerSource -match "'webapp', 'show'") -Code 'WEBAPP_SHOW_COMMAND_MISSING'
 Assert-Condition -Condition ($runnerSource -match "'webapp', 'config', 'appsettings', 'list'") -Code 'APPSETTINGS_LIST_COMMAND_MISSING'
 Assert-Condition -Condition ($runnerSource -match "'postgres', 'flexible-server', 'show'") -Code 'POSTGRES_SHOW_COMMAND_MISSING'
+Assert-Condition -Condition ($runnerSource -match 'CommandType -ne \[System\.Management\.Automation\.CommandTypes\]::Application') -Code 'AZURE_CLI_APPLICATION_TYPE_GATE_MISSING'
+Assert-Condition -Condition ($runnerSource -match "azureCliBaseName -cne 'az'") -Code 'AZURE_CLI_EXACT_NAME_GATE_MISSING'
+Assert-Condition -Condition ($runnerSource -match 'AzureCliCommand = \$azureCli\.Name') -Code 'AZURE_CLI_NAME_INVOCATION_MISSING'
+Assert-Condition -Condition ($runnerSource -notmatch 'AzureCliCommand = \$azureCli\.Source') -Code 'AZURE_CLI_UNUSABLE_SOURCE_INVOCATION_PRESENT'
 Assert-Condition -Condition ($runnerSource -match 'ExpectedContextSha256') -Code 'EXPECTED_CONTEXT_HASH_GATE_MISSING'
 Assert-Condition -Condition ($runnerSource -match 'READ_ONLY_TECHIE_IDENTITY_HARDENING_TARGET_PREFLIGHT_20260804') -Code 'OPERATION_CONFIRMATION_GATE_MISSING'
 foreach ($stage in @(

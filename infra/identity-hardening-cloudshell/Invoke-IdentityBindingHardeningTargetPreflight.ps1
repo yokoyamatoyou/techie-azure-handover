@@ -102,11 +102,24 @@ try {
         Throw-TargetPreflightSafeError -Code 'EXPECTED_CONTEXT_SHA256_MISMATCH'
     }
     $script:TargetPreflightStage = 'AZURE_CLI_RESOLVE'
-    $azureCli = Get-Command 'az' -CommandType Application -ErrorAction SilentlyContinue
-    if ($null -eq $azureCli -or [string]::IsNullOrWhiteSpace([string]$azureCli.Source)) {
+    $azureCli = Get-Command 'az' -ErrorAction SilentlyContinue
+    $azureCliBaseName = if ($null -ne $azureCli) {
+        [System.IO.Path]::GetFileNameWithoutExtension([string]$azureCli.Name)
+    }
+    else {
+        ''
+    }
+    if (
+        $null -eq $azureCli -or
+        $azureCli.CommandType -ne [System.Management.Automation.CommandTypes]::Application -or
+        $azureCliBaseName -cne 'az'
+    ) {
         Throw-TargetPreflightSafeError -Code 'AZURE_CLI_NOT_FOUND'
     }
-    $script:AzureCliCommand = $azureCli.Source
+    # Azure Cloud Shell can expose an executable `az` command whose reported
+    # Source/Path is not a usable filesystem leaf from pwsh. Re-resolving the
+    # exact validated application name is the supported cross-shell path.
+    $script:AzureCliCommand = $azureCli.Name
     $script:TargetPreflightStage = 'ACCOUNT_READ'
     $account = Invoke-TargetPreflightAzureJson -FailureCode 'AZURE_ACCOUNT_READ_FAILED' -Arguments @(
         'account', 'show', '--query', '{subscriptionId:id,tenantId:tenantId}', '--output', 'json', '--only-show-errors'
