@@ -3,8 +3,9 @@
 > **2026-08-04 current identity notice:** Microsoft／Google／メールログインの
 > canonical identity resolver はローカル実装・テスト済みですが、ライブDB、
 > API、Entra本番フロー、Stripeにはまだ反映していません。現在の正本は
-> [docs/identity_resolver_rollout_20260803.md](docs/identity_resolver_rollout_20260803.md)
-> です。以下の「実装は未実装」は旧Azure移行パッケージの説明であり、
+> [認証・事業テナント・Stripe境界](docs/identity_tenant_stripe_architecture_20260804.md)
+> と [適用状況・ゲート](docs/identity_resolver_rollout_20260803.md) です。
+> 以下の「実装は未実装」は旧Azure移行パッケージの説明であり、
 > 現在の認証・課金ランタイム全体の状態を示すものではありません。
 
 このフォルダは、TECHIE を Azure へ移行するために必要な**最小セット**をまとめたパッケージです。復元用のアーカイブ資産は含みません。**外部システム会社への引き渡し用**であり、開発ログ・Deep Research 結果・内部メモ・生成物は含めていません。

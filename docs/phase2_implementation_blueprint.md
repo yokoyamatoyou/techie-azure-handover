@@ -1,17 +1,27 @@
 # Phase 2 Stripe / Reseller Implementation Blueprint
 
+- Document role: billing/reseller design reference; not the current identity
+  rollout or deployment-status source of truth.
+- Identity boundary source of truth:
+  `docs/identity_tenant_stripe_architecture_20260804.md`
+
 ## Scope
 
 This repository now contains the Phase 2 foundation for the client's revised model:
 
-- Stripe remains the system of record for billing, checkout, invoices, coupons, transfers, and payouts.
+- Stripe remains the system of record for billing, checkout, invoices, coupons, transfers, and payouts. It is not the authority for authentication or business-tenant selection.
 - Azure and PostgreSQL remain the system of record for reseller assignment, contract state, coupon approval, payout eligibility, RBAC, and audit history.
 - Identity should now be treated as Microsoft Entra External ID for new customer-facing setup. Legacy `AZURE_B2C_*` environment names are still emitted for backward compatibility with existing code paths.
+- TECHIE PostgreSQL owns the stable business `tenants.tenant_id` and the one-to-one application anchor `customer_account.tenant_id -> customer_account.stripe_customer_id`. Google, Microsoft, and Email login methods may resolve to the same business tenant only through verified canonical identity bindings.
 - The Azure deployment keeps the existing runtime names already used by the project:
   - PostgreSQL server: `techie-pg-server`
   - Container Apps: `kotomake`, `kotomigaki`, `kotomusubi`, `techie-hub`
 
-The implementation in this repo focuses on deployable infrastructure and database foundations. Application handlers for Stripe APIs, webhook processors, payout workers, and reseller/admin UI still need to be wired in the services themselves.
+This is an architecture blueprint, not a current-runtime inventory. The
+repository has evolved since the original Phase 2 foundation; inspect current
+handlers, tests, live receipts, and the identity rollout documents before any
+implementation or deployment decision. A source file or local test is not
+production evidence.
 
 ## Assumptions Chosen For Phase 2
 
@@ -31,6 +41,9 @@ These were not fully specified in the client note, so the repo is aligned to the
 |------|--------|---------------------------|
 | Product and price catalog | Source of truth | Cached references only |
 | Customer, checkout, subscription, invoice | Source of truth | Contract mirror and access control |
+| Customer authentication | Not authoritative | TECHIE Entra External ID verifies Email, Google, and Microsoft identities |
+| Business tenant selection | Not authoritative; metadata is evidence only | `tenants.tenant_id` plus canonical identity bindings are authoritative |
+| Stripe Customer binding | Stripe owns the Customer object | `customer_account.tenant_id -> stripe_customer_id` is the application anchor; identity providers never rewrite it |
 | Coupon / promotion code issuance | Final object created here | Approval workflow and audit source of truth |
 | Connect account and transfer objects | Source of truth | Reseller mapping, payout decisioning, retry state |
 | Webhook events | Event source | Verification, idempotency, queueing, processing audit |
@@ -105,7 +118,7 @@ erDiagram
 | `customer.subscription.created` | `stripe-webhook-events` | create or update `subscription_contract` | idempotent on Stripe subscription id |
 | `customer.subscription.updated` | `stripe-webhook-events` | contract status and date updates | keep history in audit logs if needed |
 | `customer.subscription.deleted` | `stripe-webhook-events` | mark contract canceled / ended | do not delete |
-| `invoice.paid` | `stripe-webhook-events` | create `billing_event_ledger`, `payment_receipt_ledger`, `reseller_payout_ledger` | payout remains held until eligible |
+| `invoice.paid` | `stripe-webhook-events` | create `billing_event_ledger`, `payment_receipt_ledger`, `reseller_payout_ledger` | require an existing verified Customer-to-tenant anchor; unknown Customer is quarantined/fails closed and never mints a tenant |
 | `invoice.payment_failed` | `stripe-webhook-events` | mark billing failure, optionally create adjustment | no payout eligibility |
 | `payment_intent.succeeded` | `stripe-webhook-events` | enrich receipt timing / settlement state | useful for async methods |
 | `transfer.created` / `transfer.updated` | `reseller-payout-jobs` or webhook queue | update `reseller_payout_execution` | tie back by transfer id |
@@ -159,6 +172,9 @@ flowchart TD
 
 - Stripe webhook signatures are verified and duplicate event ids are ignored.
 - `invoice.paid` creates ledgers only once even with webhook retries.
+- An invoice for an unknown Stripe Customer cannot create a random tenant,
+  select a tenant from email, or trust unverified metadata; it must fail closed
+  or enter an explicit reconciliation queue.
 - Reseller users cannot query another reseller's customers by API or UI.
 - Refund or chargeback creates adjustment records and blocks or reverses payout.
 - Coupon approval creates both DB audit state and Stripe objects.

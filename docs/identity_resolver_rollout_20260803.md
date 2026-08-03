@@ -11,6 +11,13 @@ Microsoft/Google/email identity-linking slice. Older audit files remain valid
 as historical evidence for the state at their capture time, but their
 `IMPLEMENTATION HOLD` wording does not describe the current local branch.
 
+The canonical directory/identifier/Stripe boundary and current-versus-target
+state are defined in
+`docs/identity_tenant_stripe_architecture_20260804.md`. The user-observed live
+login state is Email-only. Google and Microsoft production provider/UI state
+was not revalidated in this docs-only pass. The three-option Hub source is a
+repository candidate, not deployment evidence.
+
 ## Non-negotiable ownership boundaries
 
 - The TECHIE Entra External ID directory is the customer authentication
@@ -21,10 +28,17 @@ as historical evidence for the state at their capture time, but their
 - `customer_account.tenant_id` remains the application-to-Stripe anchor.
 - Existing Stripe Customer, subscription, credit, and ledger identifiers are
   not rewritten by this migration.
+- Stripe is authoritative for billing objects, not for customer
+  authentication or business-tenant selection. Identity resolution must reach
+  Stripe only through the stable business `tenant_id` and
+  `customer_account.stripe_customer_id`.
 - Existing Stripe metadata and customer-management behavior are not extended
   by the identity resolver; canonical principal data remains in TECHIE's DB.
 - Google Cloud owns only the Google federation credential/configuration.
 - Email equality never proves account ownership and never selects a tenant.
+- `tenants.stripe_id` must not be used as an identity-link key. The current
+  inspected billing path uses `customer_account.stripe_customer_id`; the older
+  field requires a separate compatibility audit.
 
 ## Local implementation
 
@@ -257,6 +271,15 @@ customer linkage, deployment, or PR merge has been changed in this rollout
 status. Git commit/push is evidence publication only and does not satisfy any
 deployment, identity, or payment gate.
 
+Current source inspection also identified a pre-existing billing stop gate:
+`record_billing_from_invoice` can create a random business tenant when an
+`invoice.paid` event has an unknown Stripe Customer and no invoice-line
+`tenant_id`. This slice does not change that API/Stripe behavior. Before any
+Google or Microsoft production cutover, a separately approved billing change
+must make the unknown-customer path fail closed or quarantine it for explicit
+reconciliation. Email or unverified Stripe metadata must never select or mint
+a tenant. See the canonical architecture document for the full invariant.
+
 The application now rejects an empty or changed binding directory and any
 unknown or changed provider before creating or accepting a binding. Equivalent
 database CHECK constraints for non-empty `directory_tenant_id` and the three
@@ -407,9 +430,12 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    any extra/broad/conditional RBAC assignment or any result other than one
    exact Job create. A passing Job what-if does not authorize Job creation or
    execution.
-5. Verify email and Google traffic remains on its current authorization
-   tenant while `shadow_*` comparison evidence is collected. Verify the
-   isolated Microsoft pilot token's directory/provider claims separately.
+5. Revalidate the actual live provider/UI state first. The current user report
+   is Email-only; the repository's Google and Microsoft controls are not live
+   proof. Preserve verified Email traffic on its current authorization tenant
+   while `shadow_*` comparison evidence is collected. If a live Google path is
+   independently confirmed, verify it separately. Verify the isolated
+   Microsoft pilot token's directory/provider claims separately.
 6. While all identity tables are still empty, remotely verify and dry-run the
    hash-pinned binding-hardening migration. Apply it only under a separate
    explicit DB approval, then confirm two validated constraints, zero unsafe
@@ -429,8 +455,9 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    authorize live manifest creation, upload, dry-run, or apply.
 9. Move normal traffic to `enforce` only after existing-customer coverage and
    rollback evidence are complete, with auto-provision still `0`.
-10. Only after all prior gates pass, associate Microsoft with the production
-   flow and enable the TECHIE Microsoft UI.
+10. Only after all prior gates pass, separately approve and enable each missing
+    Google or Microsoft production provider/UI path. Provider enablement must
+    not change the business tenant or Stripe anchor.
 11. Consider auto-provision separately after collision and rollback
     validation.
 
@@ -438,12 +465,14 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
 
 - Before enforce, return the resolver to `legacy`; no schema deletion is
   required.
-- Disable the Microsoft production provider/UI independently; keep email and
-  Google available.
+- Disable each newly enabled Google or Microsoft provider/UI independently;
+  preserve the verified Email path and any separately verified pre-existing
+  provider path.
 - Disable or dispute identity bindings; do not delete historical bindings or
   audit rows.
-- Stop on directory ambiguity, provider ambiguity, customer/Stripe count
-  drift, any duplicate link, secret/PII exposure, or a migration hash mismatch.
+- Stop on directory ambiguity, provider ambiguity, an unknown-Stripe-customer
+  event that would create/select a tenant, customer/Stripe count drift, any
+  duplicate link, secret/PII exposure, or a migration hash mismatch.
 
 The live database migration is complete and must not be rerun. The read-only
 API-shadow probe is also complete. The current owner remains at the

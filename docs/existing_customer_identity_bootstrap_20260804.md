@@ -6,6 +6,8 @@
 - Current runner: `infra/20260804_existing_customer_identity_bootstrap_runner.js`
 - Rollback runner: `infra/20260804_existing_customer_identity_bootstrap_rollback_runner.js`
 - Manifest schema: `infra/existing_customer_identity_bootstrap_manifest.schema.json`
+- Directory/tenant/Stripe boundary:
+  `docs/identity_tenant_stripe_architecture_20260804.md`
 
 ## Purpose and boundary
 
@@ -19,6 +21,13 @@ records.
 The package is local preparation only. No live customer manifest has been
 created and no DB, API, Entra, Google Cloud, Stripe, Azure resource, or
 production setting has been read or changed by its tests.
+
+Bootstrap creates the first canonical identity anchor for an existing
+business tenant; adding a later Google, Microsoft, or Email login method uses
+the separate two-authentication link ceremony. Both operations preserve the
+same `canonical_principal`, business `tenant_id`, `customer_account`, and
+existing Stripe Customer. Provider addition is never a second customer or a
+new billing account.
 
 ## Why a separate bootstrap is required
 

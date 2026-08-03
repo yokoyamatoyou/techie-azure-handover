@@ -8,6 +8,8 @@
 - Guarded runner: `infra/20260804_identity_binding_hardening_runner.js`
 - Cloud Shell wrapper:
   `infra/identity-hardening-cloudshell/Invoke-IdentityBindingHardeningTargetPreflight.ps1`
+- Identity/business-tenant/Stripe boundary:
+  `docs/identity_tenant_stripe_architecture_20260804.md`
 
 ## Purpose
 
@@ -20,6 +22,10 @@ directory and the exact providers `email`, `google`, and `microsoft`.
 The SQL contains no business-data mutation and does not alter a tenant,
 customer account, payment customer, contract, credit, subscription, billing,
 payout, refund, or usage table.
+
+This gate hardens identity-coordinate storage only. It does not enable Google
+or Microsoft, link a customer, choose a business `tenant_id`, or change the
+`customer_account.tenant_id -> stripe_customer_id` anchor.
 
 ## Independent database-target confirmation
 
