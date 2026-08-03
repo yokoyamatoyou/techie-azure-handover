@@ -43,8 +43,7 @@
   };
   const SAFE_COUPON_ERROR = 'クーポンコードが無効、または期限切れです。コードを確認して再入力してください。';
   const AUTH_PROVIDER_HINTS = Object.freeze({
-    google: 'google',
-    microsoft: 'login.live.com'
+    google: 'google'
   });
 
   function isConfigured(value) {
@@ -265,7 +264,9 @@
       <section class="page-panel">
         <p class="eyebrow">ご利用開始</p>
         <h1>${current ? `ようこそ、${escapeHtml(current.name || current.username || 'ユーザー')}さん` : 'TECHIE を開始する'}</h1>
-        <p class="hero-summary">WIX から遷移したユーザーは、この Azure Hub で新規登録、ログイン、プラン選択、Stripe 決済、契約管理、各サービスへの遷移を行います。</p>
+        <p class="hero-summary">${current
+          ? 'プランの確認や契約管理、各サービスの利用はこちらから行えます。'
+          : 'TECHIE の各サービスを、ひとつのアカウントでご利用いただけます。初めての方は新規登録、登録済みの方はログインしてください。'}</p>
         <div class="button-row">
           ${current
             ? '<a class="button button-primary" href="/plans">プランを選択</a><a class="button button-secondary" href="/account">契約を管理</a>'
