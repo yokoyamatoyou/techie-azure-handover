@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from nicegui import app, ui
 
 from .jwt_validator import AuthError, extract_user_info, verify_token
+from .identity_resolver import identity_resolver_mode, resolve_user_info
 
 _DEV_MODE = os.environ.get("AUTH_DEV_MODE", "").lower() in ("1", "true", "yes")
 _DEV_TENANT_ID = os.environ.get("DEV_TENANT_ID", "dev-tenant-00000000")
@@ -52,6 +53,9 @@ def get_current_nicegui_user() -> Dict[str, str]:
             "email": str(getattr(request_state, "user_email", "") or ""),
             "name": str(getattr(request_state, "user_name", "") or ""),
             "tenant_id": str(state_tenant_id),
+            "principal_id": str(getattr(request_state, "principal_id", "") or ""),
+            "identity_binding_id": str(getattr(request_state, "identity_binding_id", "") or ""),
+            "identity_status": str(getattr(request_state, "identity_status", "") or ""),
             "roles": str(getattr(request_state, "user_roles", "user") or "user"),
         }
 
@@ -59,7 +63,13 @@ def get_current_nicegui_user() -> Dict[str, str]:
 
     storage_user = getattr(app.storage, "user", None)
     if not token and isinstance(storage_user, dict):
-        if storage_user.get("tenant_id") and storage_user.get("user_id"):
+        token = storage_user.get("access_token")
+        if (
+            not token
+            and identity_resolver_mode() == "legacy"
+            and storage_user.get("tenant_id")
+            and storage_user.get("user_id")
+        ):
             return {
                 "user_id": str(storage_user.get("user_id", "")),
                 "email": str(storage_user.get("email", "")),
@@ -67,7 +77,6 @@ def get_current_nicegui_user() -> Dict[str, str]:
                 "tenant_id": str(storage_user.get("tenant_id", "")),
                 "roles": str(storage_user.get("roles", "user")),
             }
-        token = storage_user.get("access_token")
 
     if not token:
         raise RuntimeError("Authentication required")
@@ -79,4 +88,4 @@ def get_current_nicegui_user() -> Dict[str, str]:
     except Exception as exc:  # pragma: no cover - defensive path
         raise RuntimeError("Token verification failed") from exc
 
-    return extract_user_info(claims)
+    return resolve_user_info(extract_user_info(claims))

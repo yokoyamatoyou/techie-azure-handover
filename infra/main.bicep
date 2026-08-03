@@ -54,11 +54,31 @@ param stripePublishableKey string = ''
 @description('Azure AD B2C tenant name')
 param b2cTenantName string = ''
 
+@description('Microsoft Entra External ID directory tenant ID')
+param b2cTenantId string = ''
+
 @description('Azure AD B2C client ID')
 param b2cClientId string = ''
 
 @description('Azure AD B2C policy name')
 param b2cPolicy string = 'B2C_1_signup_signin'
+
+@description('Canonical identity resolver mode. Keep legacy until schema and shadow gates pass.')
+@allowed(['legacy', 'shadow', 'enforce'])
+param identityResolverMode string = 'legacy'
+
+@description('Confirms that the additive identity schema was hash-verified and applied.')
+param identitySchemaVerified bool = false
+
+@description('Enable new identity auto-provisioning only after enforce collision gates pass.')
+param identityAutoProvision bool = false
+
+@description('Trust Entra tenant/principal binding claims only after their write controls are audited.')
+param trustEntraBindingClaims bool = false
+
+var effectiveIdentityResolverMode = identitySchemaVerified && !empty(b2cTenantId) ? identityResolverMode : 'legacy'
+var effectiveIdentityAutoProvision = effectiveIdentityResolverMode == 'enforce' && identityAutoProvision
+var effectiveTrustEntraBindingClaims = effectiveIdentityResolverMode == 'enforce' && trustEntraBindingClaims
 
 var prefix = 'techie-${environment}'
 var acrName = replace('acr${prefix}', '-', '')
@@ -209,7 +229,11 @@ module kotomake 'modules/container-app.bicep' = if (!useExistingContainerApps) {
       { name: 'PORT', value: '8080' }
       { name: 'HEADLESS', value: '1' }
       { name: 'AUTH_IDENTITY_MODE', value: 'entra_external_id' }
+      { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
+      { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
+      { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
+      { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
       { name: 'ENTRA_EXTERNAL_ID_POLICY', value: b2cPolicy }
       { name: 'AZURE_B2C_TENANT_NAME', value: b2cTenantName }
@@ -246,7 +270,11 @@ module kotomigaki 'modules/container-app.bicep' = if (!useExistingContainerApps)
       { name: 'HEADLESS', value: '1' }
       { name: 'PLAYWRIGHT_BROWSERS_PATH', value: '/ms-playwright' }
       { name: 'AUTH_IDENTITY_MODE', value: 'entra_external_id' }
+      { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
+      { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
+      { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
+      { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
       { name: 'ENTRA_EXTERNAL_ID_POLICY', value: b2cPolicy }
       { name: 'AZURE_B2C_TENANT_NAME', value: b2cTenantName }
@@ -308,7 +336,11 @@ module hub 'modules/container-app.bicep' = if (!useExistingContainerApps) {
     envVars: [
       { name: 'PORT', value: '8090' }
       { name: 'AUTH_IDENTITY_MODE', value: 'entra_external_id' }
+      { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
+      { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
+      { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
+      { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
       { name: 'ENTRA_EXTERNAL_ID_POLICY', value: b2cPolicy }
       { name: 'AZURE_B2C_TENANT_NAME', value: b2cTenantName }

@@ -1,5 +1,12 @@
 # Azure 移行用パッケージ（azure０３０７）
 
+> **2026-08-04 current identity notice:** Microsoft／Google／メールログインの
+> canonical identity resolver はローカル実装・テスト済みですが、ライブDB、
+> API、Entra本番フロー、Stripeにはまだ反映していません。現在の正本は
+> [docs/identity_resolver_rollout_20260803.md](docs/identity_resolver_rollout_20260803.md)
+> です。以下の「実装は未実装」は旧Azure移行パッケージの説明であり、
+> 現在の認証・課金ランタイム全体の状態を示すものではありません。
+
 このフォルダは、TECHIE を Azure へ移行するために必要な**最小セット**をまとめたパッケージです。復元用のアーカイブ資産は含みません。**外部システム会社への引き渡し用**であり、開発ログ・Deep Research 結果・内部メモ・生成物は含めていません。
 
 ---
@@ -23,7 +30,7 @@
 4. 統合起動なら `techie-hub/start.bat` を実行し、ブラウザで HUB（8090）→ 各サービス（8080/8081/8082）にアクセスする。詳細は [azure_migration_engineer_guide.md](docs/azure_migration_engineer_guide.md) の「前提条件」「Azure 上のデプロイ構成」「移行ステップ」を参照してください。
 
 **Azure 移行の流れ（要約）**  
-[docs/azure_migration_engineer_guide.md](docs/azure_migration_engineer_guide.md) に、デプロイ構成候補（App Service / Container Apps 等）、ポート・認証、Stripe 連携リセラーモデル、マルチテナント、PoC→Pilot→本番の移行ステップ、監査ログ・障害対応が書かれています。実装は未実装のため、同書を「設計・実装指示」として参照してください。
+[docs/azure_migration_engineer_guide.md](docs/azure_migration_engineer_guide.md) に、デプロイ構成候補（App Service / Container Apps 等）、ポート・認証、Stripe 連携リセラーモデル、マルチテナント、PoC→Pilot→本番の移行ステップ、監査ログ・障害対応が書かれています。この記述は旧移行パッケージの設計入口です。現在のidentity実装・適用ゲートは [docs/identity_resolver_rollout_20260803.md](docs/identity_resolver_rollout_20260803.md) を優先してください。
 
 ---
 

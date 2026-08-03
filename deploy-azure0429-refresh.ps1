@@ -31,6 +31,15 @@ param(
 
   [string]$ExternalAuthority = 'https://kyotokogyotechie.ciamlogin.com/198ccc88-e870-405e-bb50-5aac609976db',
 
+  [ValidateSet('legacy','shadow','enforce')]
+  [string]$IdentityResolverMode = 'legacy',
+
+  [switch]$IdentitySchemaVerified,
+
+  [switch]$EnableIdentityAutoProvision,
+
+  [switch]$TrustEntraBindingClaims,
+
   [string]$PlatformAdminEmails = '',
 
   [switch]$SkipBuild,
@@ -42,6 +51,16 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($IdentityResolverMode -ne 'legacy' -and -not $IdentitySchemaVerified) {
+  throw 'Non-legacy identity resolver deployment requires -IdentitySchemaVerified.'
+}
+if (($EnableIdentityAutoProvision -or $TrustEntraBindingClaims) -and $IdentityResolverMode -ne 'enforce') {
+  throw 'Identity auto-provision and Entra binding claims require -IdentityResolverMode enforce.'
+}
+if ($IdentityResolverMode -ne 'legacy' -and [string]::IsNullOrWhiteSpace($ExternalTenantId)) {
+  throw 'ExternalTenantId is required for shadow or enforce identity resolver mode.'
+}
 
 function Write-Step([string]$Message) {
   Write-Host "`n=== $Message ===" -ForegroundColor Cyan
@@ -419,6 +438,9 @@ $forcedRuntimeSettings = @(
   "CONTAINER_ENV=$Environment",
   'AUTH_DEV_MODE=0',
   'AUTH_IDENTITY_MODE=entra_external_id',
+  "AUTH_IDENTITY_RESOLVER_MODE=$IdentityResolverMode",
+  "AUTH_IDENTITY_AUTO_PROVISION=$(if ($EnableIdentityAutoProvision) { '1' } else { '0' })",
+  "AUTH_TRUST_ENTRA_BINDING_CLAIMS=$(if ($TrustEntraBindingClaims) { '1' } else { '0' })",
   'AUTH_ENFORCE_SERVICES=1',
   "HUB_LOGIN_URL=$resolvedHubBaseUrl/login",
   "HUB_BASE_URL=$resolvedHubBaseUrl",

@@ -4,6 +4,43 @@
 
 横断の current source of truth と全体判断は `C:\tetie\WORKLOG.md` に残し、このファイルには notecode 内の責務分け、module split、directory map、保持/削除判断の詳細導線を残します。
 
+## 2026-08-03 (Codex) TECHIE canonical identity resolver local implementation
+
+- decision: `local_implementation_pass_live_hold`
+- owner: `one_sol_techie_identity_resolver`
+- current source of truth: `docs/identity_resolver_rollout_20260803.md`
+- scope:
+  - Entra External IDの検証済みissuer／`oid`または`sub`をcanonical principalと既存business `tenant_id`へ加算的に解決するresolverを追加。
+  - email／Google／Microsoftを同一principalへ追加する、2回の本人認証を必須としたlink APIとHub UIを追加。
+  - 4個の加算的identity table migrationを追加。メール本文は新テーブルへ複製せずSHA-256 fingerprintのみをcollision guardに使用。
+  - legacy／shadow／enforceを分離し、既定はlegacy。auto-provisionと未監査Entra custom binding claimsの信頼は既定OFF。
+  - PowerShell 2入口とBicep 3アプリへ同じfail-safe設定を追加。schema確認とExternal ID tenant IDが揃わない限りeffective modeをlegacyへ固定し、auto-provision／binding claim trustはenforce以外で拒否または無効化。
+  - Stripe metadataへのcanonical principal追加は不要と判断して撤回し、既存のtenant-based管理を維持。
+- security findings closed before live mutation:
+  - 未監査`extension_tenantId`がlegacy互換値からcanonical resolverへ入る経路を遮断。
+  - 同一メールの別identity同時provision競合をadvisory transaction lockで直列化。
+  - provider evidenceがunknownの場合に要求providerへ推測補完せずfail closed。
+  - provider名の部分一致を廃止し、既知値・正確なhost・Microsoft consumer tenant IDの正規位置だけを許可。類似hostはunknownとしてfail closed。
+  - shadowは既存bindingまたは検証済みEntra `oid`とlegacy business tenantの完全一致をread-only比較し、match／tenant mismatchだけを記録。座標をresponseへ出さず、現行authorization `tenant_id`／principalを変更しない。
+  - unknown providerの新規binding／bootstrap、source identity自身へのlink、使用済みstateの別identity replayをfail closed。
+  - link完了時もsource principal／bindingのactive状態とExternal ID directoryを再確認。
+  - live migrationはpublic schemaへ固定し、専用updated-at関数、5秒lock timeout、60秒statement timeoutを使用。
+- validation:
+  - focused identity tests `39 passed`。
+  - Python 9ファイルin-memory syntax pass、PowerShell 2ファイルparser error 0、Hub inline script syntax pass、`git diff --check` pass。
+  - Bicepは静的deployment-contract regression pass。現在のcommand環境に`bicep`／`az`がないため実compileは`NOT_CHECKED`。
+  - hash固定・dry-run既定・明示apply必須・秘密非表示のKudu migration runnerを追加し、Node syntaxとfake-client 3-path dynamic test pass。
+- live boundary:
+  - live DB schema、API/app settings、deployment、Entra production flow、Google Cloud、Stripe、PR mergeは未変更。Git commit/pushは監査証跡の公開でありlive gate通過を意味しない。
+  - read-only aggregate preflightはtenant/customer/Stripe link各26、duplicate 0、identity table 0。顧客値・秘密値は出力していない。
+  - Chrome/Kudu制御が同一地点で3回timeoutしたため、transaction dry-runと実適用はHOLD。
+  - 変更ファイル22項目のversionedローカルZIP snapshotを作成し、SHA-256を監査manifestへ記録。GitHub CLIはWindows credential store経由で`yokoyamatoyou`認証を確認し、push先をuser-owned fork branchへ限定。
+  - Hubの既存localStorage token複製とquery token handoffは本slice以前からの別security gate。resolver変更へ混在させず、別ownerで全service transportを検証する。
+- next one owner: `identity_migration_transaction_dry_run_and_additive_apply`
+- non-owner boundary: 既存顧客レコード、business `tenant_id`、Stripe Customer／契約、Entra production flowは、migrationとshadow検証が通るまで変更しない。
+- API send count: `0`
+- Route V generation changed: `false`
+
 ## 2026-07-11 (Codex) Cross-suite UX audit UI fix
 
 - decision: `implementation_no_api_gate_pass`

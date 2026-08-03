@@ -45,6 +45,8 @@
   const AUTH_PROVIDER_HINTS = Object.freeze({
     google: 'google'
   });
+  const IDENTITY_LINK_TARGET_KEY = 'TECHIE_IDENTITY_LINK_TARGET';
+  const IDENTITY_LINK_STATE_KEY = 'TECHIE_IDENTITY_LINK_STATE';
 
   function isConfigured(value) {
     return Boolean(value && !placeholderPattern.test(String(value)));
@@ -155,6 +157,21 @@
 
   function userMessage(error) {
     const message = String(error && error.message ? error.message : error || '');
+    if (error && error.code === 'identity_link_required') {
+      return '既存アカウントとの安全な連携が必要です。元のログイン方法でログインし、契約管理からアカウントを連携してください。';
+    }
+    if (error && error.code === 'recent_authentication_required') {
+      return '本人確認の有効期限が切れました。もう一度ログインしてから連携してください。';
+    }
+    if (error && error.code === 'identity_provider_mismatch') {
+      return '選択したログイン方法と認証したアカウントの種類が一致しません。最初からやり直してください。';
+    }
+    if (error && error.code === 'identity_same_as_source') {
+      return '現在のログインと同じアカウントです。追加する別のログイン方法で認証してください。';
+    }
+    if (error && error.code === 'identity_link_state_already_used') {
+      return 'この連携操作は別の認証で使用済みです。契約管理から最初からやり直してください。';
+    }
     if (/authentication failed/i.test(message)) {
       return '認証に失敗しました。再度ログインしてからお試しください。';
     }
@@ -229,13 +246,14 @@
     let body = {};
     try { body = text ? JSON.parse(text) : {}; } catch (_) { body = {}; }
     if (!response.ok) {
-      const detail = typeof body.detail === 'string' ? body.detail : '';
+      const detailObject = body.detail && typeof body.detail === 'object' ? body.detail : {};
+      const detail = typeof body.detail === 'string' ? body.detail : String(detailObject.message || '');
       const safeDetail = detail && detail.length < 200 && !/[<>]/.test(detail)
         ? detail
         : `API リクエストに失敗しました: ${response.status}`;
       const error = new Error(safeDetail);
       error.status = response.status;
-      error.code = body.code || '';
+      error.code = body.code || detailObject.code || '';
       throw error;
     }
     return body;
@@ -329,14 +347,13 @@
             <p class="auth-method-detail">Google のアカウント選択画面へ直接移動します。現在は登録済みのテストユーザーのみ利用できます。</p>
             <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="google" type="button">Googleで続ける</button>
           </article>
-          <article class="auth-method-card auth-method-card-disabled" aria-labelledby="microsoft-auth-title">
+          <article class="auth-method-card" aria-labelledby="microsoft-auth-title">
             <div class="auth-method-heading">
               <span class="auth-method-name" id="microsoft-auth-title">Microsoft</span>
-              <span class="auth-method-badge auth-method-badge-construction">工事中</span>
             </div>
             <p class="auth-method-copy">Microsoft アカウントでログイン</p>
-            <p class="auth-method-detail">準備が整い次第、この画面からご利用いただけます。</p>
-            <button class="button button-secondary" type="button" disabled aria-disabled="true">Microsoftで続ける</button>
+            <p class="auth-method-detail">Microsoft の認証画面へ進みます。次の画面で Microsoft を選び直す場合があります。</p>
+            <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="microsoft" type="button">Microsoftで続ける</button>
           </article>
         </div>
         <aside class="auth-guidance" aria-label="これまでにご登録いただいた方へのご案内">
@@ -454,6 +471,16 @@
           <button class="button button-primary" id="portal-button" type="button">契約管理を開く</button>
           <button class="button button-secondary" id="refresh-credits" type="button">クレジット残高を更新</button>
         </div>
+        <section class="auth-guidance" aria-labelledby="identity-link-title">
+          <h2 id="identity-link-title">ログイン方法の管理</h2>
+          <p>本人確認を2回行い、同じTECHIEアカウントへログイン方法を追加します。メールアドレスが同じという理由だけで自動統合はしません。</p>
+          <div id="identity-bindings" class="notice">登録済みのログイン方法を確認しています...</div>
+          <div class="button-row">
+            <button class="button button-secondary identity-link-start" data-link-provider="email" type="button">メールを追加</button>
+            <button class="button button-secondary identity-link-start" data-link-provider="google" type="button">Googleを追加</button>
+            <button class="button button-secondary identity-link-start" data-link-provider="microsoft" type="button">Microsoftを追加</button>
+          </div>
+        </section>
         <form id="coupon-form" class="coupon-form">
           <label>無料クレジットクーポン
             <span class="field-note">購入前に配布されたクーポンコードを入力できます。</span>
@@ -497,8 +524,93 @@
     await ensureRedirectHandled();
     const intent = sessionStorage.getItem('TECHIE_AUTH_INTENT') || 'login';
     sessionStorage.removeItem('TECHIE_AUTH_INTENT');
+    if (intent === 'link_prepare') {
+      window.history.replaceState({}, document.title, '/account');
+      return prepareIdentityLink();
+    }
+    if (intent === 'link_complete') {
+      window.history.replaceState({}, document.title, '/account');
+      return completeIdentityLink();
+    }
     window.history.replaceState({}, document.title, intent === 'signup' ? '/onboarding' : '/');
     return intent === 'signup' ? renderOnboarding() : renderHome();
+  }
+
+  function identityProviderLabel(value) {
+    const provider = String(value || '').toLowerCase();
+    if (provider === 'google') return 'Google';
+    if (provider === 'microsoft') return 'Microsoft';
+    if (provider === 'email') return 'メール';
+    return 'Entraで管理されるログイン方法';
+  }
+
+  async function loadIdentityBindings() {
+    const target = document.getElementById('identity-bindings');
+    if (!target) return;
+    try {
+      const result = await apiFetch('/api/identity/bindings');
+      const bindings = Array.isArray(result.bindings) ? result.bindings : [];
+      target.className = 'notice';
+      target.innerHTML = bindings.length
+        ? `<strong>登録済み</strong><ul>${bindings.map(item => `<li>${escapeHtml(identityProviderLabel(item.provider))}（${escapeHtml(item.status || 'unknown')}）</li>`).join('')}</ul>`
+        : '登録済みのログイン方法を取得できませんでした。';
+    } catch (error) {
+      target.className = 'notice notice-warn';
+      target.textContent = userMessage(error);
+    }
+  }
+
+  async function beginIdentityLink(provider) {
+    if (!msalClient || !syncAccount()) throw new Error('ログインが必要です。');
+    sessionStorage.setItem(IDENTITY_LINK_TARGET_KEY, provider);
+    sessionStorage.setItem('TECHIE_AUTH_INTENT', 'link_prepare');
+    interactiveAuthInProgress = true;
+    await msalClient.loginRedirect({
+      account: account(),
+      scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
+      prompt: 'login',
+      extraQueryParameters: { ui_locales: 'ja' }
+    });
+  }
+
+  async function prepareIdentityLink() {
+    const provider = sessionStorage.getItem(IDENTITY_LINK_TARGET_KEY) || '';
+    if (!provider) return renderAccount();
+    const intent = await apiFetch('/api/identity/link-intents', {
+      method: 'POST',
+      body: JSON.stringify({ provider })
+    });
+    sessionStorage.setItem(IDENTITY_LINK_STATE_KEY, intent.state);
+    sessionStorage.setItem('TECHIE_AUTH_INTENT', 'link_complete');
+    const providerHint = AUTH_PROVIDER_HINTS[provider] || '';
+    const extraQueryParameters = { ui_locales: 'ja' };
+    if (providerHint) extraQueryParameters.domain_hint = providerHint;
+    interactiveAuthInProgress = true;
+    await msalClient.loginRedirect({
+      scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
+      prompt: providerHint ? 'login' : 'select_account',
+      extraQueryParameters
+    });
+  }
+
+  async function completeIdentityLink() {
+    const state = sessionStorage.getItem(IDENTITY_LINK_STATE_KEY) || '';
+    try {
+      if (!state) throw new Error('アカウント連携の有効期限が切れました。最初からやり直してください。');
+      await apiFetch('/api/identity/link-complete', {
+        method: 'POST',
+        body: JSON.stringify({ state })
+      });
+      sessionStorage.removeItem(IDENTITY_LINK_STATE_KEY);
+      sessionStorage.removeItem(IDENTITY_LINK_TARGET_KEY);
+      await renderAccount();
+      const target = document.getElementById('identity-bindings');
+      if (target) target.insertAdjacentHTML('beforebegin', '<div class="notice"><strong>ログイン方法を追加しました。</strong></div>');
+    } catch (error) {
+      sessionStorage.removeItem(IDENTITY_LINK_STATE_KEY);
+      sessionStorage.removeItem(IDENTITY_LINK_TARGET_KEY);
+      setView(`<section class="page-panel"><h1>アカウント連携を完了できませんでした</h1><p>${escapeHtml(userMessage(error))}</p><a class="button button-primary" href="/account">契約管理へ戻る</a></section>`);
+    }
   }
 
   async function startLogin(mode = 'login', provider = '') {
@@ -685,6 +797,9 @@
     });
     document.getElementById('portal-button')?.addEventListener('click', () => openPortal().catch(err => alert(userMessage(err))));
     document.getElementById('refresh-credits')?.addEventListener('click', () => syncAndRefreshCredits().catch(err => alert(userMessage(err))));
+    document.querySelectorAll('.identity-link-start').forEach(button => {
+      button.addEventListener('click', () => beginIdentityLink(button.dataset.linkProvider || '').catch(err => alert(userMessage(err))));
+    });
     document.getElementById('coupon-form')?.addEventListener('submit', event => {
       event.preventDefault();
       redeemCoupon(event.currentTarget).catch(err => {
@@ -700,6 +815,9 @@
     });
     if (document.getElementById('credit-summary')) {
       setTimeout(() => syncAndRefreshCredits().catch(error => console.warn('Initial credit refresh failed:', error)), 250);
+    }
+    if (document.getElementById('identity-bindings')) {
+      setTimeout(() => loadIdentityBindings().catch(error => console.warn('Identity binding refresh failed:', error)), 100);
     }
   }
 

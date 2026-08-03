@@ -19,6 +19,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
 from .jwt_validator import AuthError, extract_user_info, verify_token
+from .identity_resolver import (
+    IdentityLinkRequired,
+    IdentityResolutionError,
+    IdentityResolverUnavailable,
+    resolve_user_info,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +50,11 @@ _PUBLIC_PATHS = frozenset(
         "/api/stripe/webhooks",
     }
 )
+
+# This route verifies its fresh second-provider token with the dedicated
+# ``require_verified_identity`` dependency. Canonical resolution here would
+# reject the intentionally unbound identity before it can be linked.
+_ROUTE_VERIFIED_IDENTITY_PATHS = frozenset({"/api/identity/link-complete"})
 
 
 def _truthy(value: str | None) -> bool:
@@ -112,6 +123,14 @@ def _hub_plans_url(request: Request) -> str:
     return f"/plans?{urlencode(query)}"
 
 
+def _hub_identity_link_url(request: Request) -> str:
+    configured = os.environ.get("HUB_BASE_URL") or os.environ.get("HUB_URL") or ""
+    query = urlencode({"identity_link": "required", "next": str(request.url)})
+    if configured:
+        return f"{configured.rstrip('/')}/account?{query}"
+    return f"/account?{query}"
+
+
 def _has_active_entitlement(tenant_id: str) -> bool:
     service_key = os.environ.get("TECHIE_SERVICE_KEY") or os.environ.get("SERVICE_KEY") or None
     try:
@@ -154,6 +173,9 @@ class NiceGUIAuthMiddleware(BaseHTTPMiddleware):
         if _is_public(path):
             return await call_next(request)
 
+        if path in _ROUTE_VERIFIED_IDENTITY_PATHS:
+            return await call_next(request)
+
         if _dev_mode_enabled():
             request.state.tenant_id = _DEV_TENANT_ID
             request.state.user_id = "dev-user"
@@ -170,12 +192,42 @@ class NiceGUIAuthMiddleware(BaseHTTPMiddleware):
 
         try:
             claims = verify_token(token)
-            user = extract_user_info(claims)
+            user = resolve_user_info(extract_user_info(claims))
             request.state.tenant_id = user["tenant_id"]
             request.state.user_id = user["user_id"]
+            request.state.principal_id = user.get("principal_id", "")
+            request.state.identity_binding_id = user.get("identity_binding_id", "")
+            request.state.identity_status = user.get("identity_status", "")
             request.state.user_email = user["email"]
             request.state.user_name = user["name"]
             request.state.user_roles = user["roles"]
+        except IdentityResolverUnavailable as exc:
+            logger.error("Identity resolver unavailable for %s: %s", path, exc)
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    {"detail": {"code": exc.code, "message": str(exc)}},
+                    status_code=503,
+                )
+            return JSONResponse(
+                {"detail": "Identity service is temporarily unavailable."},
+                status_code=503,
+            )
+        except IdentityLinkRequired as exc:
+            logger.warning("Identity link required for %s: %s", path, exc)
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    {"detail": {"code": exc.code, "message": str(exc)}},
+                    status_code=409,
+                )
+            return RedirectResponse(url=_hub_identity_link_url(request), status_code=302)
+        except IdentityResolutionError as exc:
+            logger.warning("Identity resolution failed for %s: %s", path, exc)
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    {"detail": {"code": exc.code, "message": str(exc)}},
+                    status_code=403,
+                )
+            return RedirectResponse(url=_hub_login_url(request), status_code=302)
         except (AuthError, Exception) as exc:
             logger.warning("NiceGUI auth failed for %s: %s", path, exc)
             if path.startswith("/api/"):

@@ -17,6 +17,12 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .jwt_validator import AuthError, extract_user_info, verify_token
+from .identity_resolver import (
+    IdentityLinkRequired,
+    IdentityResolutionError,
+    IdentityResolverUnavailable,
+    resolve_user_info,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +53,14 @@ def _dev_mode_enabled() -> bool:
     return True
 
 
-async def require_auth(
+async def require_verified_identity(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> Dict[str, str]:
-    """JWT 検証し、ユーザー情報を返す。
+    """Verify an Entra token without resolving a canonical TECHIE tenant.
 
-    開発モード (AUTH_DEV_MODE=1) ではトークン検証をスキップし、
-    DEV_TENANT_ID を返す。
+    This dependency is reserved for the second, freshly authenticated token
+    used to complete an explicit account-linking ceremony.
     """
     if _dev_mode_enabled():
         return {
@@ -62,7 +68,9 @@ async def require_auth(
             "email": "dev@localhost",
             "name": "Developer",
             "tenant_id": _DEV_TENANT_ID,
+            "legacy_tenant_id": _DEV_TENANT_ID,
             "roles": "admin",
+            "identity_status": "dev",
         }
 
     if not credentials:
@@ -70,7 +78,7 @@ async def require_auth(
 
     try:
         claims = verify_token(credentials.credentials)
-        user = extract_user_info(claims)
+        return extract_user_info(claims)
     except AuthError as exc:
         logger.warning("Auth failed: %s", exc)
         raise HTTPException(status_code=401, detail=str(exc))
@@ -78,9 +86,31 @@ async def require_auth(
         logger.error("Token verification error: %s", exc, exc_info=True)
         raise HTTPException(status_code=401, detail="トークン検証に失敗しました")
 
+
+async def require_auth(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> Dict[str, str]:
+    """Verify Entra JWT and resolve the canonical TECHIE tenant."""
+    raw_user = await require_verified_identity(request, credentials)
+    if _dev_mode_enabled():
+        user = raw_user
+    else:
+        try:
+            user = resolve_user_info(raw_user)
+        except IdentityResolverUnavailable as exc:
+            raise HTTPException(status_code=503, detail={"code": exc.code, "message": str(exc)})
+        except IdentityLinkRequired as exc:
+            raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)})
+        except IdentityResolutionError as exc:
+            raise HTTPException(status_code=403, detail={"code": exc.code, "message": str(exc)})
+
     # tenant_id をリクエスト state に保存（DB RLS 用）
     request.state.tenant_id = user["tenant_id"]
     request.state.user_id = user["user_id"]
+    request.state.principal_id = user.get("principal_id", "")
+    request.state.identity_binding_id = user.get("identity_binding_id", "")
+    request.state.identity_status = user.get("identity_status", "")
     return user
 
 

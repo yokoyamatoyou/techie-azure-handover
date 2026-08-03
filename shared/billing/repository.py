@@ -3,23 +3,23 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence
-
-import psycopg2
-import psycopg2.extras
-from psycopg2.pool import ThreadedConnectionPool
+from urllib.parse import urlparse
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-_POOL: Optional[ThreadedConnectionPool] = None
+_POOL: Optional[Any] = None
 
 
-def _get_pool() -> ThreadedConnectionPool:
+def _get_pool() -> Any:
     global _POOL
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is not configured")
     if _POOL is None:
+        from psycopg2.pool import ThreadedConnectionPool
+
         _POOL = ThreadedConnectionPool(
             minconn=1,
             maxconn=int(os.environ.get("PHASE2_DB_POOL_SIZE", "10")),
@@ -44,8 +44,10 @@ def get_conn():
 
 @contextmanager
 def get_cursor(*, tenant_id: Optional[str] = None):
+    from psycopg2.extras import RealDictCursor
+
     with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             if tenant_id:
                 cursor.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
             yield cursor
@@ -91,6 +93,766 @@ def get_effective_roles(principal_id: str, email: str = "") -> List[str]:
         (principal_id, email or principal_id),
     )
     return sorted({row["role_code"] for row in rows})
+
+
+def _normalize_identity_email(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _identity_email_fingerprint(value: str) -> str:
+    normalized = _normalize_identity_email(value)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest() if normalized else ""
+
+
+def _normalize_identity_provider_value(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    consumer_tenant_id = "9188040d-6c67-4c5b-b112-36a304b66dad"
+    if raw in {"google", "google.com", "accounts.google.com"}:
+        return "google"
+    if raw in {"microsoft", "live.com", "login.live.com"}:
+        return "microsoft"
+    if raw == consumer_tenant_id:
+        return "microsoft"
+    parsed = urlparse(raw)
+    hostname = str(parsed.hostname or "").rstrip(".")
+    path_segments = {segment for segment in parsed.path.split("/") if segment}
+    if hostname in {"google.com", "accounts.google.com"}:
+        return "google"
+    if hostname == "login.live.com":
+        return "microsoft"
+    if hostname in {"login.microsoftonline.com", "sts.windows.net"} and (
+        consumer_tenant_id in path_segments or "consumers" in path_segments
+    ):
+        return "microsoft"
+    if raw in {"email", "local", "localaccount", "emailotp", "email_otp"}:
+        return "email"
+    return raw if raw in {"email", "google", "microsoft"} else "unknown"
+
+
+_ALLOWED_IDENTITY_PROVIDERS = frozenset({"email", "google", "microsoft"})
+
+
+def _uuid_or_none(value: str) -> Optional[str]:
+    try:
+        return str(uuid.UUID(str(value or "").strip()))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _find_active_identity_binding_with_cursor(
+    cursor,
+    *,
+    token_issuer: str,
+    subject_type: str,
+    subject_value: str,
+    lock: bool = False,
+) -> Optional[Dict[str, Any]]:
+    lock_clause = "FOR UPDATE OF eib, cp" if lock else ""
+    cursor.execute(
+        f"""
+        SELECT
+            eib.identity_binding_id,
+            eib.principal_id,
+            cp.tenant_id,
+            eib.identity_provider,
+            eib.link_method,
+            eib.status
+        FROM external_identity_binding eib
+        JOIN canonical_principal cp ON cp.principal_id = eib.principal_id
+        WHERE eib.token_issuer = %s
+          AND eib.subject_type = %s
+          AND eib.subject_value = %s
+          AND eib.status = 'active'
+          AND cp.status = 'active'
+        {lock_clause}
+        """,
+        (token_issuer, subject_type, subject_value),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def find_active_identity_binding(
+    *,
+    token_issuer: str,
+    subject_type: str,
+    subject_value: str,
+) -> Optional[Dict[str, Any]]:
+    """Return an active immutable Entra identity binding without mutation."""
+    with get_cursor() as cursor:
+        return _find_active_identity_binding_with_cursor(
+            cursor,
+            token_issuer=str(token_issuer or "").strip().rstrip("/").lower(),
+            subject_type=str(subject_type or "").strip().lower(),
+            subject_value=str(subject_value or "").strip(),
+        )
+
+
+def find_legacy_identity_candidate(*, entra_object_id: str) -> Optional[Dict[str, Any]]:
+    """Read a legacy oid-equals-tenant bootstrap candidate without mutation."""
+    candidate = _uuid_or_none(entra_object_id)
+    if not candidate:
+        return None
+    return _fetchone(
+        "SELECT tenant_id FROM tenants WHERE tenant_id = %s::uuid",
+        (candidate,),
+    )
+
+
+def _identity_email_collision_exists(cursor, email: str, email_fingerprint: str) -> bool:
+    if not email_fingerprint or not str(email or "").strip():
+        return False
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM external_identity_binding
+            WHERE status = 'active' AND email_fingerprint = %s
+            UNION ALL
+            SELECT 1
+            FROM customer_account
+            WHERE billing_email IS NOT NULL
+              AND lower(btrim(billing_email)) = lower(btrim(%s))
+        ) AS collision
+        """,
+        (email_fingerprint, email),
+    )
+    row = cursor.fetchone()
+    return bool(row and row["collision"])
+
+
+def _insert_binding_for_principal(
+    cursor,
+    *,
+    principal_id: str,
+    token_issuer: str,
+    directory_tenant_id: str,
+    subject_type: str,
+    subject_value: str,
+    entra_object_id: str,
+    token_subject: str,
+    identity_provider: str,
+    email_fingerprint: str,
+    link_method: str,
+    linked_by_principal_id: Optional[str] = None,
+) -> str:
+    normalized_provider = _normalize_identity_provider_value(identity_provider)
+    if normalized_provider not in _ALLOWED_IDENTITY_PROVIDERS:
+        raise ValueError("Unrecognized identity provider")
+    cursor.execute(
+        """
+        INSERT INTO external_identity_binding (
+            principal_id, directory_tenant_id, token_issuer, subject_type,
+            subject_value, entra_object_id, token_subject, identity_provider,
+            email_fingerprint, status, link_method, linked_by_principal_id,
+            linked_at, created_at, updated_at
+        )
+        VALUES (
+            %s::uuid, %s, %s, %s, %s, NULLIF(%s, ''), NULLIF(%s, ''),
+            %s, NULLIF(%s, ''), 'active', %s, %s::uuid, now(), now(), now()
+        )
+        RETURNING identity_binding_id
+        """,
+        (
+            principal_id,
+            directory_tenant_id,
+            token_issuer,
+            subject_type,
+            subject_value,
+            entra_object_id,
+            token_subject,
+            normalized_provider,
+            email_fingerprint,
+            link_method,
+            linked_by_principal_id,
+        ),
+    )
+    return str(cursor.fetchone()["identity_binding_id"])
+
+
+def _insert_identity_binding(
+    cursor,
+    *,
+    tenant_id: str,
+    token_issuer: str,
+    directory_tenant_id: str,
+    subject_type: str,
+    subject_value: str,
+    entra_object_id: str,
+    token_subject: str,
+    identity_provider: str,
+    email_fingerprint: str,
+    link_method: str,
+    linked_by_principal_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    principal_id = str(uuid.uuid4())
+    cursor.execute(
+        """
+        INSERT INTO canonical_principal (
+            principal_id, tenant_id, status, created_at, updated_at
+        )
+        VALUES (%s::uuid, %s::uuid, 'active', now(), now())
+        """,
+        (principal_id, tenant_id),
+    )
+    identity_binding_id = _insert_binding_for_principal(
+        cursor,
+        principal_id=principal_id,
+        directory_tenant_id=directory_tenant_id,
+        token_issuer=token_issuer,
+        subject_type=subject_type,
+        subject_value=subject_value,
+        entra_object_id=entra_object_id,
+        token_subject=token_subject,
+        identity_provider=identity_provider,
+        email_fingerprint=email_fingerprint,
+        link_method=link_method,
+        linked_by_principal_id=linked_by_principal_id,
+    )
+    cursor.execute(
+        """
+        INSERT INTO identity_link_audit_log (
+            principal_id, identity_binding_id, action_type, result_status,
+            details, created_at
+        )
+        VALUES (%s::uuid, %s::uuid, %s, 'success', '{}'::jsonb, now())
+        """,
+        (principal_id, identity_binding_id, link_method),
+    )
+    return {
+        "identity_binding_id": identity_binding_id,
+        "principal_id": principal_id,
+        "tenant_id": tenant_id,
+        "status": link_method,
+    }
+
+
+def resolve_or_provision_identity(
+    *,
+    token_issuer: str,
+    directory_tenant_id: str,
+    subject_type: str,
+    subject_value: str,
+    entra_object_id: str,
+    token_subject: str,
+    identity_provider: str,
+    email: str,
+    display_name: str,
+    legacy_tenant_id: str,
+    claimed_business_tenant_id: str,
+    claimed_principal_id: str,
+    allow_auto_provision: bool,
+) -> Dict[str, Any]:
+    """Atomically resolve, legacy-bootstrap, or provision an Entra identity.
+
+    Email matches only block unsafe auto-provisioning. They never select a
+    principal or tenant.
+    """
+    normalized_issuer = str(token_issuer or "").strip().rstrip("/").lower()
+    normalized_subject_type = str(subject_type or "").strip().lower()
+    normalized_subject_value = str(subject_value or "").strip()
+    normalized_provider = _normalize_identity_provider_value(identity_provider)
+    if not normalized_issuer or normalized_subject_type not in {"oid", "sub"} or not normalized_subject_value:
+        return {"status": "invalid_identity"}
+
+    email_fingerprint = _identity_email_fingerprint(email)
+    advisory_key = f"{normalized_issuer}|{normalized_subject_type}|{normalized_subject_value}"
+    with get_cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (advisory_key,))
+        existing = _find_active_identity_binding_with_cursor(
+            cursor,
+            token_issuer=normalized_issuer,
+            subject_type=normalized_subject_type,
+            subject_value=normalized_subject_value,
+        )
+        if existing:
+            existing["status"] = "bound"
+            return existing
+
+        if normalized_provider not in _ALLOWED_IDENTITY_PROVIDERS:
+            return {"status": "unknown_provider"}
+
+        if claimed_business_tenant_id:
+            claimed_tenant = _uuid_or_none(claimed_business_tenant_id)
+            if not claimed_tenant:
+                return {"status": "invalid_claimed_tenant"}
+            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = %s::uuid", (claimed_tenant,))
+            if not cursor.fetchone():
+                return {"status": "invalid_claimed_tenant"}
+
+            target_principal = None
+            parsed_claimed_principal = _uuid_or_none(claimed_principal_id)
+            if claimed_principal_id and not parsed_claimed_principal:
+                return {"status": "invalid_claimed_principal"}
+            if parsed_claimed_principal:
+                cursor.execute(
+                    """
+                    SELECT principal_id
+                    FROM canonical_principal
+                    WHERE principal_id = %s::uuid
+                      AND tenant_id = %s::uuid
+                      AND status = 'active'
+                    """,
+                    (parsed_claimed_principal, claimed_tenant),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return {"status": "invalid_claimed_principal"}
+                target_principal = str(row["principal_id"])
+            else:
+                cursor.execute(
+                    """
+                    SELECT principal_id
+                    FROM canonical_principal
+                    WHERE tenant_id = %s::uuid AND status = 'active'
+                    ORDER BY created_at, principal_id
+                    LIMIT 2
+                    """,
+                    (claimed_tenant,),
+                )
+                principals = cursor.fetchall()
+                if len(principals) > 1:
+                    return {"status": "claimed_tenant_ambiguous"}
+                if principals:
+                    target_principal = str(principals[0]["principal_id"])
+
+            if target_principal:
+                identity_binding_id = _insert_binding_for_principal(
+                    cursor,
+                    principal_id=target_principal,
+                    token_issuer=normalized_issuer,
+                    directory_tenant_id=directory_tenant_id,
+                    subject_type=normalized_subject_type,
+                    subject_value=normalized_subject_value,
+                    entra_object_id=entra_object_id,
+                    token_subject=token_subject,
+                    identity_provider=normalized_provider,
+                    email_fingerprint=email_fingerprint,
+                    link_method="entra_extension_binding",
+                    linked_by_principal_id=target_principal,
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO identity_link_audit_log (
+                        principal_id, identity_binding_id, action_type,
+                        result_status, details, created_at
+                    )
+                    VALUES (
+                        %s::uuid, %s::uuid, 'entra_extension_binding',
+                        'success', '{}'::jsonb, now()
+                    )
+                    """,
+                    (target_principal, identity_binding_id),
+                )
+                return {
+                    "identity_binding_id": identity_binding_id,
+                    "principal_id": target_principal,
+                    "tenant_id": claimed_tenant,
+                    "status": "entra_extension_binding",
+                }
+
+            result = _insert_identity_binding(
+                cursor,
+                tenant_id=claimed_tenant,
+                token_issuer=normalized_issuer,
+                directory_tenant_id=directory_tenant_id,
+                subject_type=normalized_subject_type,
+                subject_value=normalized_subject_value,
+                entra_object_id=entra_object_id,
+                token_subject=token_subject,
+                identity_provider=normalized_provider,
+                email_fingerprint=email_fingerprint,
+                link_method="entra_extension_bootstrap",
+            )
+            result["status"] = "entra_extension_bootstrap"
+            return result
+
+        legacy_candidates = []
+        for candidate in (entra_object_id, legacy_tenant_id):
+            parsed = _uuid_or_none(candidate)
+            if parsed and parsed not in legacy_candidates:
+                legacy_candidates.append(parsed)
+        legacy_tenant = None
+        for candidate in legacy_candidates:
+            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = %s::uuid", (candidate,))
+            if cursor.fetchone():
+                legacy_tenant = candidate
+                break
+
+        if legacy_tenant:
+            result = _insert_identity_binding(
+                cursor,
+                tenant_id=legacy_tenant,
+                token_issuer=normalized_issuer,
+                directory_tenant_id=directory_tenant_id,
+                subject_type=normalized_subject_type,
+                subject_value=normalized_subject_value,
+                entra_object_id=entra_object_id,
+                token_subject=token_subject,
+                identity_provider=normalized_provider,
+                email_fingerprint=email_fingerprint,
+                link_method="legacy_bootstrap",
+            )
+            result["status"] = "legacy_bootstrap"
+            return result
+
+        if email_fingerprint:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"identity-email|{email_fingerprint}",),
+            )
+        if _identity_email_collision_exists(cursor, email, email_fingerprint):
+            return {"status": "link_required"}
+        if not allow_auto_provision:
+            return {"status": "unlinked"}
+        if not email_fingerprint or not str(email or "").isascii():
+            return {"status": "link_required"}
+
+        tenant_id = _uuid_or_none(entra_object_id) or str(uuid.uuid4())
+        cursor.execute(
+            """
+            INSERT INTO tenants (tenant_id, company_name, plan_status, created_at, updated_at)
+            VALUES (%s::uuid, %s, 'trial', now(), now())
+            ON CONFLICT (tenant_id) DO NOTHING
+            """,
+            (tenant_id, display_name or "TECHIE customer"),
+        )
+        result = _insert_identity_binding(
+            cursor,
+            tenant_id=tenant_id,
+            token_issuer=normalized_issuer,
+            directory_tenant_id=directory_tenant_id,
+            subject_type=normalized_subject_type,
+            subject_value=normalized_subject_value,
+            entra_object_id=entra_object_id,
+            token_subject=token_subject,
+            identity_provider=normalized_provider,
+            email_fingerprint=email_fingerprint,
+            link_method="provisioned",
+        )
+        result["status"] = "provisioned"
+        return result
+
+
+def create_identity_link_intent(
+    *,
+    principal_id: str,
+    source_identity_binding_id: str,
+    state_digest: str,
+    requested_provider: str,
+    expires_in_seconds: int = 600,
+) -> Dict[str, Any]:
+    """Create a single-use, digest-only identity linking intent."""
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"identity-link-intent|{principal_id}",),
+        )
+        cursor.execute(
+            """
+            SELECT 1
+            FROM external_identity_binding eib
+            JOIN canonical_principal cp ON cp.principal_id = eib.principal_id
+            WHERE cp.principal_id = %s::uuid
+              AND cp.status = 'active'
+              AND eib.identity_binding_id = %s::uuid
+              AND eib.status = 'active'
+            """,
+            (principal_id, source_identity_binding_id),
+        )
+        if not cursor.fetchone():
+            raise RuntimeError("Active source identity binding not found")
+        cursor.execute(
+            """
+            UPDATE identity_link_intent
+            SET status = 'cancelled', updated_at = now()
+            WHERE principal_id = %s::uuid
+              AND status = 'pending'
+            """,
+            (principal_id,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO identity_link_intent (
+                principal_id, source_identity_binding_id, state_digest,
+                requested_provider, status, expires_at, created_at, updated_at
+            )
+            VALUES (
+                %s::uuid, %s::uuid, %s, %s, 'pending',
+                now() + (%s * interval '1 second'), now(), now()
+            )
+            RETURNING identity_link_intent_id, expires_at
+            """,
+            (
+                principal_id,
+                source_identity_binding_id,
+                state_digest,
+                requested_provider,
+                max(60, min(int(expires_in_seconds), 900)),
+            ),
+        )
+        row = dict(cursor.fetchone())
+        cursor.execute(
+            """
+            INSERT INTO identity_link_audit_log (
+                principal_id, identity_binding_id, identity_link_intent_id,
+                action_type, result_status, details, created_at
+            )
+            VALUES (
+                %s::uuid, %s::uuid, %s::uuid,
+                'link_intent_created', 'pending',
+                jsonb_build_object('requested_provider', %s), now()
+            )
+            """,
+            (
+                principal_id,
+                source_identity_binding_id,
+                row["identity_link_intent_id"],
+                requested_provider,
+            ),
+        )
+        return row
+
+
+def complete_identity_link(
+    *,
+    state_digest: str,
+    token_issuer: str,
+    directory_tenant_id: str,
+    subject_type: str,
+    subject_value: str,
+    entra_object_id: str,
+    token_subject: str,
+    identity_provider: str,
+    email: str,
+) -> Dict[str, Any]:
+    """Bind a freshly reauthenticated Entra identity to an approved principal."""
+    normalized_issuer = str(token_issuer or "").strip().rstrip("/").lower()
+    normalized_subject_type = str(subject_type or "").strip().lower()
+    normalized_subject_value = str(subject_value or "").strip()
+    if not state_digest or not normalized_issuer or normalized_subject_type not in {"oid", "sub"} or not normalized_subject_value:
+        return {"status": "invalid_request"}
+
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"identity-link-complete|{state_digest}",),
+        )
+        cursor.execute(
+            """
+            SELECT
+                ili.identity_link_intent_id,
+                ili.principal_id,
+                ili.source_identity_binding_id,
+                ili.requested_provider,
+                ili.status,
+                ili.expires_at,
+                ili.completed_identity_binding_id,
+                cp.tenant_id
+            FROM identity_link_intent ili
+            JOIN canonical_principal cp ON cp.principal_id = ili.principal_id
+            JOIN external_identity_binding source_eib
+              ON source_eib.identity_binding_id = ili.source_identity_binding_id
+             AND source_eib.principal_id = ili.principal_id
+            WHERE ili.state_digest = %s
+              AND cp.status = 'active'
+              AND source_eib.status = 'active'
+            FOR UPDATE OF ili, source_eib, cp
+            """,
+            (state_digest,),
+        )
+        intent_row = cursor.fetchone()
+        if not intent_row:
+            return {"status": "invalid_intent"}
+        intent = dict(intent_row)
+        if intent["status"] == "completed":
+            completed_binding_id = str(intent.get("completed_identity_binding_id") or "")
+            if not completed_binding_id:
+                return {"status": "invalid_intent"}
+            cursor.execute(
+                """
+                SELECT 1
+                FROM external_identity_binding
+                WHERE identity_binding_id = %s::uuid
+                  AND principal_id = %s::uuid
+                  AND token_issuer = %s
+                  AND subject_type = %s
+                  AND subject_value = %s
+                  AND status = 'active'
+                """,
+                (
+                    completed_binding_id,
+                    intent["principal_id"],
+                    normalized_issuer,
+                    normalized_subject_type,
+                    normalized_subject_value,
+                ),
+            )
+            return {"status": "completed"} if cursor.fetchone() else {"status": "already_used"}
+        cursor.execute("SELECT now() >= %s AS expired", (intent["expires_at"],))
+        if cursor.fetchone()["expired"]:
+            cursor.execute(
+                "UPDATE identity_link_intent SET status = 'expired', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
+                (intent["identity_link_intent_id"],),
+            )
+            return {"status": "expired"}
+        if intent["status"] != "pending":
+            return {"status": intent["status"]}
+
+        existing = _find_active_identity_binding_with_cursor(
+            cursor,
+            token_issuer=normalized_issuer,
+            subject_type=normalized_subject_type,
+            subject_value=normalized_subject_value,
+            lock=True,
+        )
+        if existing and str(existing["principal_id"]) != str(intent["principal_id"]):
+            cursor.execute(
+                "UPDATE identity_link_intent SET status = 'conflict', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
+                (intent["identity_link_intent_id"],),
+            )
+            cursor.execute(
+                """
+                INSERT INTO identity_link_audit_log (
+                    principal_id, identity_binding_id, identity_link_intent_id,
+                    action_type, result_status, details, created_at
+                )
+                VALUES (
+                    %s::uuid, %s::uuid, %s::uuid,
+                    'identity_link_completed', 'conflict', '{}'::jsonb, now()
+                )
+                """,
+                (
+                    intent["principal_id"],
+                    intent["source_identity_binding_id"],
+                    intent["identity_link_intent_id"],
+                ),
+            )
+            return {"status": "conflict"}
+
+        if existing and str(existing["identity_binding_id"]) == str(intent["source_identity_binding_id"]):
+            cursor.execute(
+                "UPDATE identity_link_intent SET status = 'cancelled', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
+                (intent["identity_link_intent_id"],),
+            )
+            cursor.execute(
+                """
+                INSERT INTO identity_link_audit_log (
+                    principal_id, identity_binding_id, identity_link_intent_id,
+                    action_type, result_status, details, created_at
+                )
+                VALUES (
+                    %s::uuid, %s::uuid, %s::uuid,
+                    'identity_link_completed', 'same_identity', '{}'::jsonb, now()
+                )
+                """,
+                (
+                    intent["principal_id"],
+                    intent["source_identity_binding_id"],
+                    intent["identity_link_intent_id"],
+                ),
+            )
+            return {"status": "same_identity"}
+
+        requested_provider = _normalize_identity_provider_value(str(intent["requested_provider"] or ""))
+        observed_provider = _normalize_identity_provider_value(
+            str(existing.get("identity_provider") or "") if existing else identity_provider
+        )
+        if requested_provider not in {"email", "google", "microsoft"} or observed_provider != requested_provider:
+            cursor.execute(
+                "UPDATE identity_link_intent SET status = 'cancelled', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
+                (intent["identity_link_intent_id"],),
+            )
+            cursor.execute(
+                """
+                INSERT INTO identity_link_audit_log (
+                    principal_id, identity_binding_id, identity_link_intent_id,
+                    action_type, result_status, details, created_at
+                )
+                VALUES (
+                    %s::uuid, %s::uuid, %s::uuid,
+                    'identity_link_completed', 'provider_mismatch',
+                    jsonb_build_object(
+                        'requested_provider', %s,
+                        'observed_provider', %s
+                    ), now()
+                )
+                """,
+                (
+                    intent["principal_id"],
+                    intent["source_identity_binding_id"],
+                    intent["identity_link_intent_id"],
+                    requested_provider,
+                    observed_provider,
+                ),
+            )
+            return {"status": "provider_mismatch"}
+
+        if existing:
+            new_binding_id = existing["identity_binding_id"]
+        else:
+            new_binding_id = _insert_binding_for_principal(
+                cursor,
+                principal_id=str(intent["principal_id"]),
+                directory_tenant_id=directory_tenant_id,
+                token_issuer=normalized_issuer,
+                subject_type=normalized_subject_type,
+                subject_value=normalized_subject_value,
+                entra_object_id=entra_object_id,
+                token_subject=token_subject,
+                identity_provider=observed_provider,
+                email_fingerprint=_identity_email_fingerprint(email),
+                link_method="reauthenticated_link",
+                linked_by_principal_id=str(intent["principal_id"]),
+            )
+
+        cursor.execute(
+            """
+            UPDATE identity_link_intent
+            SET status = 'completed', completed_identity_binding_id = %s::uuid,
+                used_at = now(), updated_at = now()
+            WHERE identity_link_intent_id = %s::uuid
+            """,
+            (new_binding_id, intent["identity_link_intent_id"]),
+        )
+        cursor.execute(
+            """
+            INSERT INTO identity_link_audit_log (
+                principal_id, identity_binding_id, identity_link_intent_id,
+                action_type, result_status, details, created_at
+            )
+            VALUES (
+                %s::uuid, %s::uuid, %s::uuid,
+                'identity_link_completed', 'success',
+                jsonb_build_object('requested_provider', %s), now()
+            )
+            """,
+            (
+                intent["principal_id"],
+                new_binding_id,
+                intent["identity_link_intent_id"],
+                intent["requested_provider"],
+            ),
+        )
+        return {
+            "status": "completed",
+            "principal_id": intent["principal_id"],
+            "tenant_id": intent["tenant_id"],
+            "identity_binding_id": new_binding_id,
+        }
+
+
+def list_identity_bindings_for_principal(principal_id: str) -> List[Dict[str, Any]]:
+    """List only non-secret provider/status metadata for the account UI."""
+    return _fetchall(
+        """
+        SELECT identity_provider, status, link_method, linked_at
+        FROM external_identity_binding
+        WHERE principal_id = %s::uuid
+        ORDER BY linked_at, identity_binding_id
+        """,
+        (principal_id,),
+    )
 
 
 def ensure_tenant(tenant_id: str, company_name: str) -> Dict[str, Any]:

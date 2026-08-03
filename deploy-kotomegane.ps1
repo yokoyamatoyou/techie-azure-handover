@@ -37,6 +37,15 @@ param(
 
   [string]$ExternalIdPolicy = 'default',
 
+  [ValidateSet('legacy','shadow','enforce')]
+  [string]$IdentityResolverMode = 'legacy',
+
+  [switch]$IdentitySchemaVerified,
+
+  [switch]$EnableIdentityAutoProvision,
+
+  [switch]$TrustEntraBindingClaims,
+
   [string]$PlatformAdminEmails = '',
 
   [string]$ServiceBaseUrl = 'https://api.techie.jp',
@@ -52,6 +61,16 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($IdentityResolverMode -ne 'legacy' -and -not $IdentitySchemaVerified) {
+  throw 'Non-legacy identity resolver deployment requires -IdentitySchemaVerified.'
+}
+if (($EnableIdentityAutoProvision -or $TrustEntraBindingClaims) -and $IdentityResolverMode -ne 'enforce') {
+  throw 'Identity auto-provision and Entra binding claims require -IdentityResolverMode enforce.'
+}
+if ($IdentityResolverMode -ne 'legacy' -and [string]::IsNullOrWhiteSpace($ExternalTenantId)) {
+  throw 'ExternalTenantId is required for shadow or enforce identity resolver mode.'
+}
 
 function Write-Step([string]$Message) {
   Write-Host "`n=== $Message ===" -ForegroundColor Cyan
@@ -240,6 +259,9 @@ $envPairs.Add("ENVIRONMENT=$Environment")
 $envPairs.Add("CONTAINER_ENV=$Environment")
 $envPairs.Add("AUTH_DEV_MODE=$(if ($Environment -eq 'dev') { '1' } else { '0' })")
 $envPairs.Add("AUTH_IDENTITY_MODE=entra_external_id")
+$envPairs.Add("AUTH_IDENTITY_RESOLVER_MODE=$IdentityResolverMode")
+$envPairs.Add("AUTH_IDENTITY_AUTO_PROVISION=$(if ($EnableIdentityAutoProvision) { '1' } else { '0' })")
+$envPairs.Add("AUTH_TRUST_ENTRA_BINDING_CLAIMS=$(if ($TrustEntraBindingClaims) { '1' } else { '0' })")
 $envPairs.Add("AUTH_ENFORCE_SERVICES=1")
 $envPairs.Add("NICEGUI_STORAGE_SECRET=techie-prod-nicegui-storage-v1")
 $envPairs.Add("REQUIRE_ACTIVE_ENTITLEMENT=1")
