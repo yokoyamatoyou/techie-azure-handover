@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -222,9 +222,21 @@ deployment, identity, or payment gate.
 The application now rejects an empty or changed binding directory and any
 unknown or changed provider before creating or accepting a binding. Equivalent
 database CHECK constraints for non-empty `directory_tenant_id` and the three
-allowed `identity_provider` values are still `NOT_APPLIED`. Do not create the
-first live binding or enable enforce until a separate additive DB-hardening
-migration is reviewed, hash-pinned, dry-run, explicitly approved, and applied.
+allowed `identity_provider` values are locally prepared but still
+`NOT_APPLIED`. The additive migration is
+`infra/20260804_identity_binding_hardening.sql`; its guarded runner refuses
+unknown arguments, defaults to rollback, requires the exact reviewed SHA-256
+for apply, requires all four identity tables to remain empty, and verifies
+unchanged business/Stripe aggregates before and after the transaction. The
+migration touches only `external_identity_binding`, drops its two unsafe
+defaults, adds and validates the two binding CHECK constraints, and contains no
+data mutation. Guarded hardening-runner tests: `5 passed`.
+
+Hardening migration SHA-256:
+`4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.
+Do not create the first live binding or enable enforce until this separate
+migration is re-reviewed, remote-hash verified, dry-run, explicitly approved,
+and applied. It has not been uploaded to Kudu or executed against any database.
 
 The immutable local execution receipt is
 `C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.
@@ -284,18 +296,22 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
 5. Verify email and Google traffic remains on its current authorization
    tenant while `shadow_*` comparison evidence is collected. Verify the
    isolated Microsoft pilot token's directory/provider claims separately.
-6. Before global enforce, approve and execute a bounded non-customer instance
+6. While all identity tables are still empty, remotely verify and dry-run the
+   hash-pinned binding-hardening migration. Apply it only under a separate
+   explicit DB approval, then confirm two validated constraints, zero unsafe
+   defaults, zero identity rows, and unchanged business/Stripe aggregates.
+7. Before global enforce, approve and execute a bounded non-customer instance
    or maintenance window that is not serving normal customer traffic. Use it
    to bootstrap a pilot binding and verify email, Google, Microsoft, and the
    explicit two-authentication link ceremony.
-7. Bootstrap existing customers only from immutable verified Entra
+8. Bootstrap existing customers only from immutable verified Entra
    coordinates. Verify each business tenant and Stripe Customer remains
    unchanged; email equality is not a bootstrap key.
-8. Move normal traffic to `enforce` only after existing-customer coverage and
+9. Move normal traffic to `enforce` only after existing-customer coverage and
    rollback evidence are complete, with auto-provision still `0`.
-9. Only after all prior gates pass, associate Microsoft with the production
+10. Only after all prior gates pass, associate Microsoft with the production
    flow and enable the TECHIE Microsoft UI.
-10. Consider auto-provision separately after collision and rollback
+11. Consider auto-provision separately after collision and rollback
     validation.
 
 ## Rollback and stop conditions
