@@ -154,6 +154,7 @@ def _find_active_identity_binding_with_cursor(
             eib.identity_binding_id,
             eib.principal_id,
             cp.tenant_id,
+            eib.directory_tenant_id,
             eib.identity_provider,
             eib.link_method,
             eib.status
@@ -349,11 +350,19 @@ def resolve_or_provision_identity(
     principal or tenant.
     """
     normalized_issuer = str(token_issuer or "").strip().rstrip("/").lower()
+    normalized_directory_id = str(directory_tenant_id or "").strip().lower()
     normalized_subject_type = str(subject_type or "").strip().lower()
     normalized_subject_value = str(subject_value or "").strip()
     normalized_provider = _normalize_identity_provider_value(identity_provider)
-    if not normalized_issuer or normalized_subject_type not in {"oid", "sub"} or not normalized_subject_value:
+    if (
+        not normalized_issuer
+        or not normalized_directory_id
+        or normalized_subject_type not in {"oid", "sub"}
+        or not normalized_subject_value
+    ):
         return {"status": "invalid_identity"}
+    if normalized_provider not in _ALLOWED_IDENTITY_PROVIDERS:
+        return {"status": "unknown_provider"}
 
     email_fingerprint = _identity_email_fingerprint(email)
     advisory_key = f"{normalized_issuer}|{normalized_subject_type}|{normalized_subject_value}"
@@ -366,11 +375,14 @@ def resolve_or_provision_identity(
             subject_value=normalized_subject_value,
         )
         if existing:
+            stored_directory_id = str(existing.get("directory_tenant_id") or "").strip().lower()
+            stored_provider = _normalize_identity_provider_value(existing.get("identity_provider"))
+            if stored_directory_id != normalized_directory_id:
+                return {"status": "directory_mismatch"}
+            if stored_provider != normalized_provider:
+                return {"status": "provider_mismatch"}
             existing["status"] = "bound"
             return existing
-
-        if normalized_provider not in _ALLOWED_IDENTITY_PROVIDERS:
-            return {"status": "unknown_provider"}
 
         if claimed_business_tenant_id:
             claimed_tenant = _uuid_or_none(claimed_business_tenant_id)
@@ -421,7 +433,7 @@ def resolve_or_provision_identity(
                     cursor,
                     principal_id=target_principal,
                     token_issuer=normalized_issuer,
-                    directory_tenant_id=directory_tenant_id,
+                    directory_tenant_id=normalized_directory_id,
                     subject_type=normalized_subject_type,
                     subject_value=normalized_subject_value,
                     entra_object_id=entra_object_id,
@@ -455,7 +467,7 @@ def resolve_or_provision_identity(
                 cursor,
                 tenant_id=claimed_tenant,
                 token_issuer=normalized_issuer,
-                directory_tenant_id=directory_tenant_id,
+                directory_tenant_id=normalized_directory_id,
                 subject_type=normalized_subject_type,
                 subject_value=normalized_subject_value,
                 entra_object_id=entra_object_id,
@@ -484,7 +496,7 @@ def resolve_or_provision_identity(
                 cursor,
                 tenant_id=legacy_tenant,
                 token_issuer=normalized_issuer,
-                directory_tenant_id=directory_tenant_id,
+                directory_tenant_id=normalized_directory_id,
                 subject_type=normalized_subject_type,
                 subject_value=normalized_subject_value,
                 entra_object_id=entra_object_id,
@@ -521,7 +533,7 @@ def resolve_or_provision_identity(
             cursor,
             tenant_id=tenant_id,
             token_issuer=normalized_issuer,
-            directory_tenant_id=directory_tenant_id,
+            directory_tenant_id=normalized_directory_id,
             subject_type=normalized_subject_type,
             subject_value=normalized_subject_value,
             entra_object_id=entra_object_id,
@@ -628,9 +640,16 @@ def complete_identity_link(
 ) -> Dict[str, Any]:
     """Bind a freshly reauthenticated Entra identity to an approved principal."""
     normalized_issuer = str(token_issuer or "").strip().rstrip("/").lower()
+    normalized_directory_id = str(directory_tenant_id or "").strip().lower()
     normalized_subject_type = str(subject_type or "").strip().lower()
     normalized_subject_value = str(subject_value or "").strip()
-    if not state_digest or not normalized_issuer or normalized_subject_type not in {"oid", "sub"} or not normalized_subject_value:
+    if (
+        not state_digest
+        or not normalized_issuer
+        or not normalized_directory_id
+        or normalized_subject_type not in {"oid", "sub"}
+        or not normalized_subject_value
+    ):
         return {"status": "invalid_request"}
 
     with get_cursor() as cursor:
@@ -706,6 +725,29 @@ def complete_identity_link(
             subject_value=normalized_subject_value,
             lock=True,
         )
+        if existing and str(existing.get("directory_tenant_id") or "").strip().lower() != normalized_directory_id:
+            cursor.execute(
+                "UPDATE identity_link_intent SET status = 'cancelled', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
+                (intent["identity_link_intent_id"],),
+            )
+            cursor.execute(
+                """
+                INSERT INTO identity_link_audit_log (
+                    principal_id, identity_binding_id, identity_link_intent_id,
+                    action_type, result_status, details, created_at
+                )
+                VALUES (
+                    %s::uuid, %s::uuid, %s::uuid,
+                    'identity_link_completed', 'directory_mismatch', '{}'::jsonb, now()
+                )
+                """,
+                (
+                    intent["principal_id"],
+                    intent["source_identity_binding_id"],
+                    intent["identity_link_intent_id"],
+                ),
+            )
+            return {"status": "directory_mismatch"}
         if existing and str(existing["principal_id"]) != str(intent["principal_id"]):
             cursor.execute(
                 "UPDATE identity_link_intent SET status = 'conflict', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
@@ -794,7 +836,7 @@ def complete_identity_link(
             new_binding_id = _insert_binding_for_principal(
                 cursor,
                 principal_id=str(intent["principal_id"]),
-                directory_tenant_id=directory_tenant_id,
+                directory_tenant_id=normalized_directory_id,
                 token_issuer=normalized_issuer,
                 subject_type=normalized_subject_type,
                 subject_value=normalized_subject_value,

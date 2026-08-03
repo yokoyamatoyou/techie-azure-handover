@@ -180,6 +180,8 @@ def test_shadow_mode_uses_binding_without_writing():
             "tenant_id": "canonical-tenant",
             "principal_id": "canonical-principal",
             "identity_binding_id": "binding-id",
+            "directory_tenant_id": "external-directory",
+            "identity_provider": "google",
         }
     )
 
@@ -199,6 +201,8 @@ def test_shadow_mode_records_a_match_without_exposing_canonical_coordinates():
             "tenant_id": "legacy-tenant",
             "principal_id": "canonical-principal",
             "identity_binding_id": "binding-id",
+            "directory_tenant_id": "external-directory",
+            "identity_provider": "google",
         }
     )
 
@@ -210,6 +214,38 @@ def test_shadow_mode_records_a_match_without_exposing_canonical_coordinates():
     assert result["identity_binding_id"] == ""
     assert "shadow_principal_id" not in result
     assert "shadow_identity_binding_id" not in result
+
+
+@pytest.mark.parametrize(
+    ("binding_overrides", "expected_status"),
+    [
+        ({"directory_tenant_id": "workforce-directory"}, "shadow_binding_directory_mismatch"),
+        ({"identity_provider": "microsoft"}, "shadow_binding_provider_mismatch"),
+    ],
+)
+def test_shadow_binding_drift_fails_closed_without_exposing_coordinates(
+    binding_overrides,
+    expected_status,
+):
+    binding = {
+        "tenant_id": "legacy-tenant",
+        "principal_id": "canonical-principal",
+        "identity_binding_id": "binding-id",
+        "directory_tenant_id": "external-directory",
+        "identity_provider": "google",
+        **binding_overrides,
+    }
+
+    result = resolve_user_info(
+        verified_user(),
+        mode="shadow",
+        repository=FakeIdentityRepository(binding=binding),
+    )
+
+    assert result["identity_status"] == expected_status
+    assert result["tenant_id"] == "legacy-tenant"
+    assert result["principal_id"] == ""
+    assert result["identity_binding_id"] == ""
 
 
 def test_shadow_mode_observes_verified_oid_legacy_candidate_without_writing():
@@ -478,6 +514,26 @@ def test_link_complete_fails_closed_on_provider_mismatch(monkeypatch):
     assert error.value.detail["code"] == "identity_provider_mismatch"
 
 
+def test_link_complete_fails_closed_on_stored_directory_mismatch(monkeypatch):
+    fake_repository = type(
+        "FakeLinkRepository",
+        (),
+        {"complete_identity_link": staticmethod(lambda **kwargs: {"status": "directory_mismatch"})},
+    )()
+    monkeypatch.setattr(identity_api, "_repository", lambda: fake_repository)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            identity_api.complete_link(
+                identity_api.LinkCompleteRequest(state="x" * 43),
+                verified_user(),
+            )
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "identity_directory_mismatch"
+
+
 @pytest.mark.parametrize(
     ("repository_status", "expected_code"),
     [
@@ -544,6 +600,9 @@ class FakeLinkCompletionCursor:
         if "WHERE identity_binding_id = %s::uuid" in statement:
             self.row = {"matched": 1} if self.completed_match else None
             return
+        if statement.startswith("INSERT INTO external_identity_binding"):
+            self.row = {"identity_binding_id": "00000000-0000-0000-0000-000000000105"}
+            return
         if statement.startswith("UPDATE identity_link_intent") or statement.startswith(
             "INSERT INTO identity_link_audit_log"
         ):
@@ -586,6 +645,7 @@ def test_linking_the_source_identity_to_itself_is_cancelled(monkeypatch):
         "identity_binding_id": "00000000-0000-0000-0000-000000000102",
         "principal_id": "00000000-0000-0000-0000-000000000101",
         "tenant_id": "00000000-0000-0000-0000-000000000104",
+        "directory_tenant_id": "external-directory",
         "identity_provider": "google",
         "link_method": "legacy_bootstrap",
         "status": "active",
@@ -596,6 +656,150 @@ def test_linking_the_source_identity_to_itself_is_cancelled(monkeypatch):
     assert any("'same_identity'" in statement for statement in cursor.statements)
     assert any("FOR UPDATE OF ili, source_eib, cp" in statement for statement in cursor.statements)
     assert any("FOR UPDATE OF eib, cp" in statement for statement in cursor.statements)
+
+
+def test_linking_an_existing_binding_with_stored_directory_drift_is_cancelled(monkeypatch):
+    drifted_binding = {
+        "identity_binding_id": "00000000-0000-0000-0000-000000000106",
+        "principal_id": "00000000-0000-0000-0000-000000000101",
+        "tenant_id": "00000000-0000-0000-0000-000000000104",
+        "directory_tenant_id": "workforce-directory",
+        "identity_provider": "google",
+        "link_method": "reauthenticated_link",
+        "status": "active",
+    }
+    cursor = FakeLinkCompletionCursor(intent_status="pending", existing=drifted_binding)
+
+    assert _complete_with_fake_cursor(monkeypatch, cursor) == {"status": "directory_mismatch"}
+    assert any("'directory_mismatch'" in statement for statement in cursor.statements)
+    assert not any("INSERT INTO external_identity_binding" in statement for statement in cursor.statements)
+    assert not any("customer_account" in statement for statement in cursor.statements)
+    assert not any("stripe" in statement.lower() for statement in cursor.statements)
+
+
+def test_reauthenticated_link_changes_only_identity_tables_and_keeps_business_tenant(monkeypatch):
+    cursor = FakeLinkCompletionCursor(intent_status="pending", existing=None)
+
+    result = _complete_with_fake_cursor(monkeypatch, cursor)
+
+    assert result == {
+        "status": "completed",
+        "principal_id": "00000000-0000-0000-0000-000000000101",
+        "tenant_id": "00000000-0000-0000-0000-000000000104",
+        "identity_binding_id": "00000000-0000-0000-0000-000000000105",
+    }
+    mutation_sql = [
+        statement
+        for statement in cursor.statements
+        if statement.startswith("INSERT ") or statement.startswith("UPDATE ")
+    ]
+    assert any("INSERT INTO external_identity_binding" in statement for statement in mutation_sql)
+    assert any("UPDATE identity_link_intent" in statement for statement in mutation_sql)
+    assert any("INSERT INTO identity_link_audit_log" in statement for statement in mutation_sql)
+    assert not any("customer_account" in statement for statement in mutation_sql)
+    assert not any("stripe" in statement.lower() for statement in mutation_sql)
+    assert not any("UPDATE tenants" in statement for statement in mutation_sql)
+    assert not any("UPDATE canonical_principal" in statement for statement in mutation_sql)
+
+
+class ExistingBindingCursor:
+    def __init__(self, binding):
+        self.binding = dict(binding)
+        self.row = None
+        self.statements = []
+
+    def execute(self, query, params=()):
+        statement = " ".join(str(query).split())
+        self.statements.append(statement)
+        self.row = None
+        if "pg_advisory_xact_lock" in statement:
+            return
+        if "FROM external_identity_binding eib" in statement:
+            self.row = dict(self.binding)
+            return
+        raise AssertionError(f"binding drift reached unexpected SQL: {statement}")
+
+    def fetchone(self):
+        return self.row
+
+
+def _resolve_existing_binding_with_cursor(monkeypatch, cursor, *, provider="google"):
+    @contextmanager
+    def fake_get_cursor(*args, **kwargs):
+        yield cursor
+
+    monkeypatch.setattr(billing_repository, "get_cursor", fake_get_cursor)
+    return billing_repository.resolve_or_provision_identity(
+        token_issuer="https://issuer.example.test/v2.0",
+        directory_tenant_id="external-directory",
+        subject_type="oid",
+        subject_value="existing-object",
+        entra_object_id="existing-object",
+        token_subject="existing-subject",
+        identity_provider=provider,
+        email="person@example.test",
+        display_name="Example",
+        legacy_tenant_id="",
+        claimed_business_tenant_id="",
+        claimed_principal_id="",
+        allow_auto_provision=False,
+    )
+
+
+@pytest.mark.parametrize("provider", ["email", "google", "microsoft"])
+def test_repository_existing_binding_accepts_each_provider_without_tenant_or_billing_mutation(
+    monkeypatch,
+    provider,
+):
+    cursor = ExistingBindingCursor(
+        {
+            "identity_binding_id": "00000000-0000-0000-0000-000000000201",
+            "principal_id": "00000000-0000-0000-0000-000000000202",
+            "tenant_id": "00000000-0000-0000-0000-000000000203",
+            "directory_tenant_id": "external-directory",
+            "identity_provider": provider,
+            "link_method": "reauthenticated_link",
+            "status": "active",
+        }
+    )
+
+    result = _resolve_existing_binding_with_cursor(monkeypatch, cursor, provider=provider)
+
+    assert result["status"] == "bound"
+    assert result["tenant_id"] == "00000000-0000-0000-0000-000000000203"
+    assert not any(statement.startswith("INSERT ") or statement.startswith("UPDATE ") for statement in cursor.statements)
+    assert not any("customer_account" in statement or "stripe" in statement.lower() for statement in cursor.statements)
+
+
+@pytest.mark.parametrize(
+    ("binding_overrides", "provider", "expected_status"),
+    [
+        ({"directory_tenant_id": "workforce-directory"}, "google", "directory_mismatch"),
+        ({"identity_provider": "microsoft"}, "google", "provider_mismatch"),
+    ],
+)
+def test_repository_existing_binding_rejects_directory_or_provider_drift_before_mutation(
+    monkeypatch,
+    binding_overrides,
+    provider,
+    expected_status,
+):
+    binding = {
+        "identity_binding_id": "00000000-0000-0000-0000-000000000201",
+        "principal_id": "00000000-0000-0000-0000-000000000202",
+        "tenant_id": "00000000-0000-0000-0000-000000000203",
+        "directory_tenant_id": "external-directory",
+        "identity_provider": "google",
+        "link_method": "reauthenticated_link",
+        "status": "active",
+        **binding_overrides,
+    }
+    cursor = ExistingBindingCursor(binding)
+
+    result = _resolve_existing_binding_with_cursor(monkeypatch, cursor, provider=provider)
+
+    assert result == {"status": expected_status}
+    assert not any(statement.startswith("INSERT ") or statement.startswith("UPDATE ") for statement in cursor.statements)
 
 
 def test_unknown_provider_cannot_create_a_new_binding(monkeypatch):

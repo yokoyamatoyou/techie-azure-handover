@@ -15,6 +15,8 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+_ALLOWED_IDENTITY_PROVIDERS = frozenset({"email", "google", "microsoft"})
+
 
 class IdentityResolutionError(RuntimeError):
     """A verified identity cannot be safely mapped to a business tenant."""
@@ -180,6 +182,27 @@ def resolve_user_info(
             shadow["identity_status"] = "shadow_lookup_error"
             return shadow
         if binding:
+            stored_directory_id = str(binding.get("directory_tenant_id") or "").strip().lower()
+            observed_provider = str(user.get("identity_provider") or "unknown").strip().lower()
+            stored_provider = str(binding.get("identity_provider") or "unknown").strip().lower()
+            if stored_directory_id != actual_directory_id:
+                shadow = dict(user)
+                shadow["identity_status"] = "shadow_binding_directory_mismatch"
+                shadow["principal_id"] = ""
+                shadow["identity_binding_id"] = ""
+                logger.info("Identity resolver observation: %s", shadow["identity_status"])
+                return shadow
+            if (
+                observed_provider not in _ALLOWED_IDENTITY_PROVIDERS
+                or stored_provider not in _ALLOWED_IDENTITY_PROVIDERS
+                or observed_provider != stored_provider
+            ):
+                shadow = dict(user)
+                shadow["identity_status"] = "shadow_binding_provider_mismatch"
+                shadow["principal_id"] = ""
+                shadow["identity_binding_id"] = ""
+                logger.info("Identity resolver observation: %s", shadow["identity_status"])
+                return shadow
             return _observe_shadow_tenant(user, binding.get("tenant_id"), source="binding")
         try:
             legacy_candidate = repository.find_legacy_identity_candidate(

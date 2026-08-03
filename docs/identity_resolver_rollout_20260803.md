@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -52,6 +52,14 @@ The resolver modes are:
   tenant/principal, creates a binding, or rejects an unbound identity.
 - `enforce`: require an active binding, a guarded legacy bootstrap, or an
   explicitly enabled new-account provision.
+
+An active binding is accepted only when its saved External ID directory and
+saved provider (`email`, `google`, or `microsoft`) both match the newly verified
+token evidence. Shadow mode reports directory/provider drift only as a status
+without exposing canonical coordinates. Enforce and link completion fail
+closed; link completion cancels the intent and writes an identity-only audit
+row. These checks never select or update a business tenant, customer account,
+Stripe Customer, subscription, contract, credit, or ledger record.
 
 Safety defaults remain:
 
@@ -112,7 +120,8 @@ currently running app setting or Azure resource.
 
 ## Validation and live state
 
-- Focused identity tests: `39 passed`.
+- Focused identity tests: `49 passed` with pytest cache writes disabled because
+  this managed workspace denies pytest's final cache-directory creation.
 - Guarded migration-runner dynamic tests: `3 passed`.
 - Python in-memory syntax validation: `9` files passed.
 - PowerShell parser validation: both deployment scripts passed with zero
@@ -163,9 +172,18 @@ currently running app setting or Azure resource.
   zero duplicate or orphan identity rows; a zero-match synthetic identity;
   and one internal legacy-candidate lookup without emitting its coordinate.
 - Shadow-probe dynamic tests: `4 passed`. Existing migration-runner dynamic
-  tests: `3 passed`. Existing Python resolver tests reached all 39 test bodies
-  and 100%, but the process did not exit before the 120-second timeout; this is
-  test-body pass with teardown timeout, not a clean command pass.
+  tests: `3 passed`.
+- A normal pytest invocation reached all 49 test bodies and 100% but stalled in
+  pytest `cacheprovider` while attempting a denied temporary-directory write.
+  A faulthandler trace identified that exact framework teardown path. Repeating
+  the same suite with plugin autoload and only `cacheprovider` disabled exited
+  cleanly: `49 passed in 0.88s`.
+- The added coverage proves that email, Google, and Microsoft bindings return
+  the same saved business tenant without mutation; a stored workforce-directory
+  or provider mismatch fails before mutation; and reauthenticated linking
+  touches only identity binding/intent/audit tables while leaving
+  `customer_account`, Stripe data, `tenants`, and `canonical_principal`
+  unchanged.
 - The current PostgreSQL client warned that a future connection-string major
   version may change `sslmode=require` semantics. The successful run used the
   current certificate-verifying behavior; a later connection-setting change
@@ -200,6 +218,13 @@ setting, API image, Entra production flow, Google Cloud setting, Stripe object,
 customer linkage, deployment, or PR merge has been changed in this rollout
 status. Git commit/push is evidence publication only and does not satisfy any
 deployment, identity, or payment gate.
+
+The application now rejects an empty or changed binding directory and any
+unknown or changed provider before creating or accepting a binding. Equivalent
+database CHECK constraints for non-empty `directory_tenant_id` and the three
+allowed `identity_provider` values are still `NOT_APPLIED`. Do not create the
+first live binding or enable enforce until a separate additive DB-hardening
+migration is reviewed, hash-pinned, dry-run, explicitly approved, and applied.
 
 The immutable local execution receipt is
 `C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.

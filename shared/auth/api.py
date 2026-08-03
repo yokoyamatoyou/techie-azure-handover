@@ -169,6 +169,14 @@ async def complete_link(
                 "message": "selected login method did not match the reauthenticated identity",
             },
         )
+    if status == "directory_mismatch":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "identity_directory_mismatch",
+                "message": "stored identity directory did not match the verified External ID directory",
+            },
+        )
     if status == "same_identity":
         raise HTTPException(
             status_code=409,
