@@ -4,8 +4,10 @@
  * Guarded TECHIE identity-binding invariant hardening runner.
  *
  * Usage in an isolated, access-controlled operator directory:
- *   node 20260804_identity_binding_hardening_runner.js
+ *   node 20260804_identity_binding_hardening_runner.js \
+ *     --confirm-database-target-sha256 <independently-reviewed-target-sha256>
  *   node 20260804_identity_binding_hardening_runner.js --apply \
+ *     --confirm-database-target-sha256 <independently-reviewed-target-sha256> \
  *     --confirm-sha256 4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53
  *
  * DATABASE_URL is read from the process environment and is never printed.
@@ -18,7 +20,9 @@ const fs = require('fs');
 const path = require('path');
 
 const EXPECTED_SHA256 = '4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53';
+const EXPECTED_BUSINESS_STATE_SHA256 = '28FA3613F4DB035EE728837861ED0A5C1403C8B45BE8858972E36F007011DEB3';
 const MIGRATION_FILE = path.join(__dirname, '20260804_identity_binding_hardening.sql');
+const SHA256_PATTERN = /^[0-9A-F]{64}$/;
 const IDENTITY_TABLES = [
   'canonical_principal',
   'external_identity_binding',
@@ -50,6 +54,7 @@ function parseOptions(argv) {
   const options = argv.slice(2);
   let apply = false;
   let confirmedHash = '';
+  let confirmedDatabaseTargetHash = '';
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     if (option === '--apply') {
@@ -64,10 +69,21 @@ function parseOptions(argv) {
       index += 1;
       continue;
     }
+    if (option === '--confirm-database-target-sha256') {
+      assertCondition(!confirmedDatabaseTargetHash, 'DUPLICATE_DATABASE_TARGET_HASH_CONFIRMATION');
+      assertCondition(index + 1 < options.length, 'DATABASE_TARGET_HASH_CONFIRMATION_VALUE_REQUIRED');
+      confirmedDatabaseTargetHash = String(options[index + 1]).trim().toUpperCase();
+      index += 1;
+      continue;
+    }
     assertCondition(false, 'UNKNOWN_ARGUMENT');
   }
   assertCondition(apply || !confirmedHash, 'HASH_CONFIRMATION_WITHOUT_APPLY');
-  return { apply, confirmedHash };
+  assertCondition(
+    SHA256_PATTERN.test(confirmedDatabaseTargetHash),
+    'DATABASE_TARGET_HASH_CONFIRMATION_REQUIRED',
+  );
+  return { apply, confirmedHash, confirmedDatabaseTargetHash };
 }
 
 function safeErrorCode(error) {
@@ -77,6 +93,75 @@ function safeErrorCode(error) {
 
 function businessCountsEqual(before, after) {
   return BUSINESS_KEYS.every(key => Number(before[key]) === Number(after[key]));
+}
+
+function businessStateSha256(state) {
+  const canonical = BUSINESS_KEYS
+    .map(key => `${key}=${Number(state[key])}`)
+    .join('|');
+  return crypto.createHash('sha256').update(canonical).digest('hex').toUpperCase();
+}
+
+function assertExpectedBusinessState(state, prefix) {
+  assertCondition(
+    businessStateSha256(state) === EXPECTED_BUSINESS_STATE_SHA256,
+    `${prefix}_BUSINESS_STATE_DIGEST_MISMATCH`,
+  );
+}
+
+function canonicalDatabaseTarget(host, port, databaseName) {
+  const normalizedHost = String(host || '').trim().toLowerCase();
+  const normalizedPort = String(port || '5432').trim();
+  const normalizedDatabaseName = String(databaseName || '').trim();
+  assertCondition(/^[a-z0-9.-]+$/.test(normalizedHost), 'DATABASE_TARGET_HOST_INVALID');
+  assertCondition(
+    /^[0-9]{1,5}$/.test(normalizedPort)
+      && Number(normalizedPort) >= 1
+      && Number(normalizedPort) <= 65535,
+    'DATABASE_TARGET_PORT_INVALID',
+  );
+  assertCondition(
+    /^[A-Za-z0-9_.-]+$/.test(normalizedDatabaseName),
+    'DATABASE_TARGET_NAME_INVALID',
+  );
+  return `postgresql://${normalizedHost}:${normalizedPort}/${normalizedDatabaseName}`;
+}
+
+function databaseTargetSha256FromParts(host, port, databaseName) {
+  return crypto
+    .createHash('sha256')
+    .update(canonicalDatabaseTarget(host, port, databaseName))
+    .digest('hex')
+    .toUpperCase();
+}
+
+function databaseTargetSha256(connectionString) {
+  let parsed;
+  try {
+    parsed = new URL(String(connectionString || ''));
+  } catch (_) {
+    assertCondition(false, 'DATABASE_URL_INVALID');
+  }
+  assertCondition(
+    parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:',
+    'DATABASE_URL_PROTOCOL_INVALID',
+  );
+  assertCondition(Boolean(parsed.hostname), 'DATABASE_URL_HOST_MISSING');
+  const encodedDatabaseName = parsed.pathname.replace(/^\/+/, '');
+  assertCondition(Boolean(encodedDatabaseName), 'DATABASE_URL_NAME_MISSING');
+  let databaseName;
+  try {
+    databaseName = decodeURIComponent(encodedDatabaseName);
+  } catch (_) {
+    assertCondition(false, 'DATABASE_URL_NAME_INVALID');
+  }
+  assertCondition(Boolean(databaseName) && !databaseName.includes('/'), 'DATABASE_URL_NAME_INVALID');
+  return databaseTargetSha256FromParts(parsed.hostname, parsed.port || '5432', databaseName);
+}
+
+function hashesEqual(left, right) {
+  if (!SHA256_PATTERN.test(left) || !SHA256_PATTERN.test(right)) return false;
+  return crypto.timingSafeEqual(Buffer.from(left, 'ascii'), Buffer.from(right, 'ascii'));
 }
 
 async function summary(client) {
@@ -179,7 +264,7 @@ async function runHardening({
   output = console,
 } = {}) {
   assertCondition(typeof ClientClass === 'function', 'PG_CLIENT_NOT_CONFIGURED');
-  const { apply, confirmedHash } = parseOptions(argv);
+  const { apply, confirmedHash, confirmedDatabaseTargetHash } = parseOptions(argv);
   if (apply) {
     assertCondition(confirmedHash === EXPECTED_SHA256, 'APPLY_HASH_CONFIRMATION_REQUIRED');
   }
@@ -188,6 +273,11 @@ async function runHardening({
   const actualHash = crypto.createHash('sha256').update(sql).digest('hex').toUpperCase();
   assertCondition(actualHash === EXPECTED_SHA256, 'MIGRATION_HASH_MISMATCH');
   assertCondition(Boolean(env.DATABASE_URL), 'DATABASE_URL_NOT_CONFIGURED');
+  const actualDatabaseTargetHash = databaseTargetSha256(env.DATABASE_URL);
+  assertCondition(
+    hashesEqual(confirmedDatabaseTargetHash, actualDatabaseTargetHash),
+    'DATABASE_TARGET_HASH_CONFIRMATION_MISMATCH',
+  );
 
   const client = new ClientClass({
     connectionString: env.DATABASE_URL,
@@ -204,6 +294,7 @@ async function runHardening({
       ? await identityRowCounts(client)
       : {};
     assertUnhardenedEmptyState(before, beforeRows);
+    assertExpectedBusinessState(before, 'PRECHECK');
     assertCondition(Number(before.duplicate_tenant_accounts) === 0, 'DUPLICATE_TENANT_ACCOUNT_PRECHECK');
     assertCondition(Number(before.duplicate_stripe_links) === 0, 'DUPLICATE_STRIPE_LINK_PRECHECK');
 
@@ -219,6 +310,7 @@ async function runHardening({
     const insideRows = await identityRowCounts(client);
     assertHardenedEmptyState(inside, insideRows, 'IN_TRANSACTION');
     assertCondition(businessCountsEqual(before, inside), 'BUSINESS_COUNTS_CHANGED_IN_TRANSACTION');
+    assertExpectedBusinessState(inside, 'IN_TRANSACTION');
 
     if (!apply) {
       await client.query('ROLLBACK');
@@ -227,7 +319,8 @@ async function runHardening({
       const rollbackRows = await identityRowCounts(client);
       assertUnhardenedEmptyState(afterRollback, rollbackRows);
       assertCondition(businessCountsEqual(before, afterRollback), 'ROLLBACK_BUSINESS_COUNTS_CHANGED');
-      output.log(`HARDENING_DRY_RUN_PASS ${JSON.stringify(afterRollback)}`);
+      assertExpectedBusinessState(afterRollback, 'ROLLBACK');
+      output.log('HARDENING_DRY_RUN_PASS target_confirmed=true business_state_confirmed=true identity_rows=0 commit_state=not_committed');
       return { ok: true, mode: 'dry-run', committed: false };
     }
 
@@ -238,7 +331,8 @@ async function runHardening({
     const committedRows = await identityRowCounts(client);
     assertHardenedEmptyState(afterCommit, committedRows, 'COMMIT');
     assertCondition(businessCountsEqual(before, afterCommit), 'COMMIT_BUSINESS_COUNTS_CHANGED');
-    output.log(`HARDENING_APPLY_PASS ${JSON.stringify(afterCommit)}`);
+    assertExpectedBusinessState(afterCommit, 'COMMIT');
+    output.log('HARDENING_APPLY_PASS target_confirmed=true business_state_confirmed=true identity_rows=0 commit_state=committed');
     return { ok: true, mode: 'apply', committed: true };
   } catch (error) {
     if (connected && inTransaction) {
@@ -272,8 +366,13 @@ if (require.main === module) {
 
 module.exports = {
   EXPECTED_SHA256,
+  EXPECTED_BUSINESS_STATE_SHA256,
   HARDENING_CONSTRAINTS,
   IDENTITY_TABLES,
+  businessStateSha256,
+  canonicalDatabaseTarget,
+  databaseTargetSha256,
+  databaseTargetSha256FromParts,
   parseOptions,
   runHardening,
 };

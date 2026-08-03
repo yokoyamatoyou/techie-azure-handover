@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / EXISTING-CUSTOMER BOOTSTRAP+ROLLBACK LOCAL PASS+LIVE APPLY HOLD / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING TARGET+STATE GUARDS LOCAL PASS+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / EXISTING-CUSTOMER BOOTSTRAP+ROLLBACK LOCAL PASS+LIVE APPLY HOLD / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -268,13 +268,21 @@ for apply, requires all four identity tables to remain empty, and verifies
 unchanged business/Stripe aggregates before and after the transaction. The
 migration touches only `external_identity_binding`, drops its two unsafe
 defaults, adds and validates the two binding CHECK constraints, and contains no
-data mutation. Guarded hardening-runner tests: `5 passed`.
+data mutation. The current runner additionally requires an independently
+derived credential-free database-target SHA-256 and the exact aggregate-state
+digest from the immutable live migration receipt before `BEGIN`. Its success
+output no longer prints the aggregate counts. The offline independent-target
+preflight makes no network/DB call and rejects any host, port, database-name,
+or URL-protocol mismatch. Guarded hardening-runner tests: `8 passed`; target
+preflight tests: `6 passed`. The exact protected-session procedure is in
+`docs/identity_binding_hardening_live_gate_20260804.md`.
 
 Hardening migration SHA-256:
 `4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.
 Do not create the first live binding or enable enforce until this separate
-migration is re-reviewed, remote-hash verified, dry-run, explicitly approved,
-and applied. It has not been uploaded to Kudu or executed against any database.
+migration is re-reviewed, independently target-confirmed, remote-hash verified,
+dry-run, explicitly approved, and applied. The current target preflight and
+runner changes have not been uploaded to Kudu or executed against any database.
 
 The immutable local execution receipt is
 `C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.

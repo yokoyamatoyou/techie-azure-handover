@@ -5,10 +5,34 @@ const fs = require('fs');
 const path = require('path');
 const {
   EXPECTED_SHA256,
+  EXPECTED_BUSINESS_STATE_SHA256,
   IDENTITY_TABLES,
+  businessStateSha256,
+  databaseTargetSha256,
   parseOptions,
   runHardening,
 } = require('./20260804_identity_binding_hardening_runner');
+
+const TEST_DATABASE_URL = 'postgresql://fixture-user:fixture-credential@db.example.test:5432/techie?sslmode=require';
+const TEST_DATABASE_TARGET_SHA256 = databaseTargetSha256(TEST_DATABASE_URL);
+
+function dryRunArgv() {
+  return [
+    'node',
+    'runner',
+    '--confirm-database-target-sha256',
+    TEST_DATABASE_TARGET_SHA256,
+  ];
+}
+
+function applyArgv() {
+  return [
+    ...dryRunArgv(),
+    '--apply',
+    '--confirm-sha256',
+    EXPECTED_SHA256,
+  ];
+}
 
 function makeState(overrides = {}) {
   return {
@@ -96,8 +120,8 @@ async function testDryRunRollsBackEveryHardeningChange() {
   const capture = captureOutput();
   const result = await runHardening({
     ClientClass: FakeClient,
-    argv: ['node', 'runner'],
-    env: { DATABASE_URL: 'test-database-url-must-not-be-printed' },
+    argv: dryRunArgv(),
+    env: { DATABASE_URL: TEST_DATABASE_URL },
     output: capture.output,
   });
   const instance = FakeClient.instances.at(-1);
@@ -106,15 +130,16 @@ async function testDryRunRollsBackEveryHardeningChange() {
   assert.strictEqual(instance.state.hardening_constraints, 0);
   assert.strictEqual(instance.state.unsafe_binding_defaults, 2);
   assert.match(capture.messages.join('\n'), /^HARDENING_DRY_RUN_PASS /);
-  assert.doesNotMatch(capture.messages.join('\n'), /must-not-be-printed/);
+  assert.doesNotMatch(capture.messages.join('\n'), /fixture-user|fixture-credential|db\.example\.test|techie/);
+  assert.doesNotMatch(capture.messages.join('\n'), /tenants|customer_accounts|stripe_links/);
 }
 
 async function testApplyRequiresExactHashAndCommits() {
   await assert.rejects(
     () => runHardening({
       ClientClass: FakeClient,
-      argv: ['node', 'runner', '--apply'],
-      env: { DATABASE_URL: 'test-database-url-must-not-be-printed' },
+      argv: [...dryRunArgv(), '--apply'],
+      env: { DATABASE_URL: TEST_DATABASE_URL },
       output: captureOutput().output,
     }),
     error => error && error.code === 'APPLY_HASH_CONFIRMATION_REQUIRED',
@@ -124,8 +149,8 @@ async function testApplyRequiresExactHashAndCommits() {
   const capture = captureOutput();
   const result = await runHardening({
     ClientClass: FakeClient,
-    argv: ['node', 'runner', '--apply', '--confirm-sha256', EXPECTED_SHA256],
-    env: { DATABASE_URL: 'test-database-url-must-not-be-printed' },
+    argv: applyArgv(),
+    env: { DATABASE_URL: TEST_DATABASE_URL },
     output: capture.output,
   });
   const instance = FakeClient.instances.at(-1);
@@ -134,7 +159,7 @@ async function testApplyRequiresExactHashAndCommits() {
   assert.strictEqual(instance.state.validated_hardening_constraints, 2);
   assert.strictEqual(instance.state.unsafe_binding_defaults, 0);
   assert.match(capture.messages.join('\n'), /^HARDENING_APPLY_PASS /);
-  assert.doesNotMatch(capture.messages.join('\n'), /must-not-be-printed/);
+  assert.doesNotMatch(capture.messages.join('\n'), /fixture-user|fixture-credential|db\.example\.test|techie/);
 }
 
 async function testNonEmptyIdentityStateFailsBeforeTransaction() {
@@ -144,21 +169,65 @@ async function testNonEmptyIdentityStateFailsBeforeTransaction() {
   const capture = captureOutput();
   const result = await runHardening({
     ClientClass: FakeClient,
-    argv: ['node', 'runner'],
-    env: { DATABASE_URL: 'test-database-url-must-not-be-printed' },
+    argv: dryRunArgv(),
+    env: { DATABASE_URL: TEST_DATABASE_URL },
     output: capture.output,
   });
   const instance = FakeClient.instances.at(-1);
   assert.deepStrictEqual(result, { ok: false, mode: 'dry-run', committed: false });
   assert.match(capture.messages.join('\n'), /IDENTITY_SCHEMA_NOT_EMPTY/);
   assert(!instance.queries.includes('BEGIN'));
-  assert.doesNotMatch(capture.messages.join('\n'), /must-not-be-printed/);
+  assert.doesNotMatch(capture.messages.join('\n'), /fixture-user|fixture-credential|db\.example\.test|techie/);
 }
 
 function testUnknownArgumentsFailBeforeConnection() {
   assert.throws(
     () => parseOptions(['node', 'runner', '--force']),
     error => error && error.code === 'UNKNOWN_ARGUMENT',
+  );
+}
+
+async function testDatabaseTargetConfirmationFailsBeforeConnection() {
+  const instanceCount = FakeClient.instances.length;
+  await assert.rejects(
+    () => runHardening({
+      ClientClass: FakeClient,
+      argv: [
+        'node', 'runner', '--confirm-database-target-sha256', '0'.repeat(64),
+      ],
+      env: { DATABASE_URL: TEST_DATABASE_URL },
+      output: captureOutput().output,
+    }),
+    error => error && error.code === 'DATABASE_TARGET_HASH_CONFIRMATION_MISMATCH',
+  );
+  assert.strictEqual(FakeClient.instances.length, instanceCount);
+}
+
+async function testBusinessStateDriftFailsBeforeTransaction() {
+  FakeClient.nextState = makeState({ tenants: 27 });
+  const capture = captureOutput();
+  const result = await runHardening({
+    ClientClass: FakeClient,
+    argv: dryRunArgv(),
+    env: { DATABASE_URL: TEST_DATABASE_URL },
+    output: capture.output,
+  });
+  const instance = FakeClient.instances.at(-1);
+  assert.deepStrictEqual(result, { ok: false, mode: 'dry-run', committed: false });
+  assert.match(capture.messages.join('\n'), /PRECHECK_BUSINESS_STATE_DIGEST_MISMATCH/);
+  assert(!instance.queries.includes('BEGIN'));
+}
+
+function testFingerprintContracts() {
+  assert.strictEqual(businessStateSha256(makeState()), EXPECTED_BUSINESS_STATE_SHA256);
+  assert.strictEqual(TEST_DATABASE_TARGET_SHA256.length, 64);
+  assert.strictEqual(
+    databaseTargetSha256('postgres://different:credentials@DB.EXAMPLE.TEST/techie?other=value'),
+    TEST_DATABASE_TARGET_SHA256,
+  );
+  assert.throws(
+    () => parseOptions(['node', 'runner']),
+    error => error && error.code === 'DATABASE_TARGET_HASH_CONFIRMATION_REQUIRED',
   );
 }
 
@@ -182,9 +251,12 @@ function testMigrationTouchesOnlyBindingInvariants() {
   await testDryRunRollsBackEveryHardeningChange();
   await testApplyRequiresExactHashAndCommits();
   await testNonEmptyIdentityStateFailsBeforeTransaction();
+  await testDatabaseTargetConfirmationFailsBeforeConnection();
+  await testBusinessStateDriftFailsBeforeTransaction();
   testUnknownArgumentsFailBeforeConnection();
+  testFingerprintContracts();
   testMigrationTouchesOnlyBindingInvariants();
-  console.log('identity-binding-hardening-runner-tests: 5 passed');
+  console.log('identity-binding-hardening-runner-tests: 8 passed');
 })().catch(error => {
   console.error(`identity-binding-hardening-runner-tests: failed ${String(error && (error.code || error.name) || 'UNKNOWN')}`);
   process.exitCode = 1;
