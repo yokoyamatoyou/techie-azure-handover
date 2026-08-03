@@ -7,6 +7,18 @@ Stripe objects, or change the resolver mode of any running TECHIE application.
 
 Current state: **LOCAL PREPARATION ONLY / NOT DEPLOYED / NOT STARTED**.
 
+## Local validation evidence
+
+- `foundation.bicep` and `job.bicep` both compiled successfully with the
+  Microsoft-signed Bicep CLI v0.45.15. The downloaded compiler SHA-256 matched
+  its published value before execution.
+- Compiled ARM inspection confirmed exactly one dedicated identity, two role
+  assignments, one manual Job, individual-secret Key Vault scope, ACR scope,
+  no secret `value`, no ingress, one replica, zero retries, and the expected
+  timeout and resolver safety settings.
+- Docker build, ACR push, Azure what-if, and all live resources remain
+  `NOT_CHECKED` or `NOT_STARTED` and require their own approvals.
+
 ## Safety contract
 
 - The job uses `Manual` trigger, one replica, zero retries, and a five-minute

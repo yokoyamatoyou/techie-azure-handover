@@ -183,11 +183,17 @@ currently running app setting or Azure resource.
 - Isolated-job contract test: `1 passed`. Existing shadow-probe tests: `4
   passed`. Existing migration-runner tests: `3 passed`. The dependency lock is
   internally consistent and npm reported zero known vulnerabilities.
-- A real Bicep compile, Docker build, ACR push, Azure what-if, Key Vault secret
-  bootstrap, identity/RBAC creation, job creation, and job start are all
-  `NOT_CHECKED` or `NOT_STARTED`. Neither `az`, `bicep`, nor `docker` is
-  installed in the local command environment. These remain explicit live
-  approval gates and are not implied by the local preparation.
+- Both Bicep templates compiled successfully with the Microsoft-signed Bicep
+  CLI v0.45.15 after its SHA-256 matched the published binary hash. Compiled
+  ARM inspection confirmed the exact ACR and individual-secret role scopes,
+  manual-only trigger, one replica, zero retries, five-minute timeout,
+  digest-based image reference, secure secret-version parameter, Key Vault
+  reference without a secret `value`, and no ingress or Stripe configuration.
+- Docker build, ACR push, Azure what-if, Key Vault secret bootstrap,
+  identity/RBAC creation, job creation, and job start remain `NOT_CHECKED` or
+  `NOT_STARTED`. Neither `az` nor `docker` is installed in the local command
+  environment. These remain explicit live approval gates and are not implied
+  by the successful local Bicep compile.
 
 Only the additive, empty identity schema has been applied. No application
 setting, API image, Entra production flow, Google Cloud setting, Stripe object,

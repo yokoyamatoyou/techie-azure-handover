@@ -51,6 +51,7 @@ assert.doesNotMatch(job, /stripe/i);
 assert.doesNotMatch(job, /clientSecret|passwordSecretRef|secretValue/i);
 
 assert.match(runbook, /LOCAL PREPARATION ONLY \/ NOT DEPLOYED \/ NOT STARTED/);
+assert.match(runbook, /Bicep CLI v0\.45\.15/);
 assert.match(runbook, /separate approval/i);
 assert.match(runbook, /never deploy by tag/i);
 assert.match(runbook, /External ID[\s\S]*not the deployment directory/i);
