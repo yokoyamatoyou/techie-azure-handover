@@ -6,7 +6,7 @@ const path = require('path');
 const {
   EXPECTED_PG_VERSION,
   EXPECTED_REMOTE_DIRECTORY,
-  EXPECTED_RUNNER_SHA256,
+  EXPECTED_ENGINE_SHA256,
   EXPECTED_RUNNER_SUCCESS,
   EXPECTED_SQL_SHA256,
   parseOptions,
@@ -15,7 +15,7 @@ const {
 
 const TARGET_HASH = 'A'.repeat(64);
 const FIXTURE_DATABASE_URL = 'postgresql://fixture-user:fixture-credential@db.example.test:5432/techie';
-const RUNNER_BYTES = Buffer.from('fixture-runner');
+const ENGINE_BYTES = Buffer.from('fixture-engine');
 const SQL_BYTES = Buffer.from('fixture-sql');
 
 function captureOutput() {
@@ -42,11 +42,11 @@ function baseDependencies(overrides = {}) {
       platform: 'linux',
       nodeVersion: '22.18.0',
       readFile: filePath => (
-        String(filePath).endsWith('20260804_identity_binding_hardening_runner.js')
-          ? RUNNER_BYTES
+        String(filePath).endsWith('20260804_identity_binding_hardening_dryrun_engine.js')
+          ? ENGINE_BYTES
           : SQL_BYTES
       ),
-      runHardening: async options => {
+      runHardeningDryRun: async options => {
         calls.push(options);
         options.output.log(EXPECTED_RUNNER_SUCCESS);
         return { ok: true, mode: 'dry-run', committed: false };
@@ -61,8 +61,8 @@ function baseDependencies(overrides = {}) {
 
 function productionReadFile(filePath) {
   const name = path.basename(String(filePath));
-  if (name === '20260804_identity_binding_hardening_runner.js') {
-    return fs.readFileSync(path.join(__dirname, '..', name));
+  if (name === '20260804_identity_binding_hardening_dryrun_engine.js') {
+    return fs.readFileSync(path.join(__dirname, name));
   }
   if (name === '20260804_identity_binding_hardening.sql') {
     return fs.readFileSync(path.join(__dirname, '..', name));
@@ -87,13 +87,12 @@ async function main() {
   const result = await runDryRunOnly(valid.dependencies);
   assert.deepStrictEqual(result, { ok: true, committed: false });
   assert.strictEqual(valid.calls.length, 1);
-  assert.deepStrictEqual(valid.calls[0].argv, [
-    'node',
-    '20260804_identity_binding_hardening_runner.js',
-    '--confirm-database-target-sha256',
-    TARGET_HASH,
-  ]);
-  assert.doesNotMatch(valid.calls[0].argv.join(' '), /--apply/);
+  assert.strictEqual(valid.calls[0].confirmedTargetHash, TARGET_HASH);
+  assert.strictEqual(
+    require('crypto').createHash('sha256').update(valid.calls[0].sqlBytes).digest('hex').toUpperCase(),
+    EXPECTED_SQL_SHA256,
+  );
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(valid.calls[0], 'argv'), false);
   assert.match(valid.capture.messages.join('\n'), /apply_capability=false/);
   assert.doesNotMatch(valid.capture.messages.join('\n'), /fixture-user|fixture-credential|db\.example\.test|techie/);
 
@@ -108,15 +107,15 @@ async function main() {
     assert.strictEqual(fixture.calls.length, 0);
   }
 
-  const badRunner = baseDependencies({
+  const badEngine = baseDependencies({
     readFile: filePath => (
-      String(filePath).endsWith('20260804_identity_binding_hardening_runner.js')
-        ? RUNNER_BYTES
+      String(filePath).endsWith('20260804_identity_binding_hardening_dryrun_engine.js')
+        ? ENGINE_BYTES
         : productionReadFile(filePath)
     ),
   });
-  await assert.rejects(() => runDryRunOnly(badRunner.dependencies), /REMOTE_HARDENING_RUNNER_HASH_MISMATCH/);
-  assert.strictEqual(badRunner.calls.length, 0);
+  await assert.rejects(() => runDryRunOnly(badEngine.dependencies), /REMOTE_HARDENING_ENGINE_HASH_MISMATCH/);
+  assert.strictEqual(badEngine.calls.length, 0);
 
   const badSql = baseDependencies({
     readFile: filePath => (
@@ -130,7 +129,7 @@ async function main() {
 
   const unexpectedCommit = baseDependencies({
     readFile: productionReadFile,
-    runHardening: async options => {
+    runHardeningDryRun: async options => {
       options.output.log(EXPECTED_RUNNER_SUCCESS);
       return { ok: true, mode: 'apply', committed: true };
     },
@@ -142,7 +141,7 @@ async function main() {
 
   const unexpectedOutput = baseDependencies({
     readFile: productionReadFile,
-    runHardening: async options => {
+    runHardeningDryRun: async options => {
       options.output.log('unexpected');
       return { ok: true, mode: 'dry-run', committed: false };
     },
@@ -158,7 +157,13 @@ async function main() {
   );
   assert.doesNotMatch(wrapperSource, /argv[^\n]*--apply|options\.push\([^\n]*--apply/);
   assert.match(wrapperSource, /apply_capability=false/);
-  assert.match(wrapperSource, /ssl|runHardening/);
+  assert.match(wrapperSource, /runHardeningDryRun/);
+  const engineSource = fs.readFileSync(
+    path.join(__dirname, '20260804_identity_binding_hardening_dryrun_engine.js'),
+    'utf8',
+  );
+  assert.doesNotMatch(engineSource, /client\.query\(['"]COMMIT|--apply|HARDENING_APPLY/);
+  assert.match(engineSource, /client\.query\(['"]ROLLBACK/);
 
   const manifest = JSON.parse(fs.readFileSync(
     path.join(__dirname, 'kudu_hardening_dryrun_manifest.json'),
@@ -171,17 +176,17 @@ async function main() {
   assert.strictEqual(manifest.entries.length, 3);
   const expectedEntries = new Map([
     ['20260804_identity_binding_hardening.sql', EXPECTED_SQL_SHA256],
-    ['20260804_identity_binding_hardening_runner.js', EXPECTED_RUNNER_SHA256],
+    ['20260804_identity_binding_hardening_dryrun_engine.js', EXPECTED_ENGINE_SHA256],
     [
       '20260804_identity_binding_hardening_dryrun_only.js',
-      '4250B233E3988A1D9614FBCBF0B9DE0FC4BAE5CD1AE842F8DDDC63B92653F4D2',
+      '611A3B1A0616A3DA19A8BA04E063630B7B8F17714BF0F0FCFC87722D60050772',
     ],
   ]);
   for (const entry of manifest.entries) {
     assert.strictEqual(entry.sha256, expectedEntries.get(entry.name));
-    const sourcePath = entry.name === '20260804_identity_binding_hardening_dryrun_only.js'
-      ? path.join(__dirname, entry.name)
-      : path.join(__dirname, '..', entry.name);
+    const sourcePath = entry.name === '20260804_identity_binding_hardening.sql'
+      ? path.join(__dirname, '..', entry.name)
+      : path.join(__dirname, entry.name);
     const bytes = fs.readFileSync(sourcePath);
     assert.strictEqual(entry.bytes, bytes.length);
     assert.strictEqual(

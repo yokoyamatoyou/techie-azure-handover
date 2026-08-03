@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const EXPECTED_REMOTE_DIRECTORY = '/home/LogFiles/techie-identity-hardening-audit';
-const EXPECTED_RUNNER_SHA256 = '4296FE2A7C3399302B68021D77F01420D685E02FBF3BCE4F6FD209736FF3155B';
+const EXPECTED_ENGINE_SHA256 = '96BE661CC2D96337FD70CC95F6DEEAC8957C6A5917AEA7C6D34333CB9D1EC32D';
 const EXPECTED_SQL_SHA256 = '4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53';
 const EXPECTED_PG_VERSION = '8.22.0';
 const SUPPORTED_NODE_MAJORS = new Set([20, 22]);
@@ -55,7 +55,7 @@ async function runDryRunOnly({
   platform = process.platform,
   nodeVersion = process.versions.node,
   readFile = fs.readFileSync,
-  runHardening,
+  runHardeningDryRun,
   ClientClass,
   pgVersion,
   output = console,
@@ -69,38 +69,34 @@ async function runDryRunOnly({
   const nodeMajor = Number(String(nodeVersion || '').split('.')[0]);
   assertCondition(SUPPORTED_NODE_MAJORS.has(nodeMajor), 'NODE_RUNTIME_VERSION_NOT_REVIEWED');
 
-  const runnerPath = path.join(__dirname, '20260804_identity_binding_hardening_runner.js');
+  const enginePath = path.join(__dirname, '20260804_identity_binding_hardening_dryrun_engine.js');
   const sqlPath = path.join(__dirname, '20260804_identity_binding_hardening.sql');
-  const runnerBytes = readFile(runnerPath);
+  const engineBytes = readFile(enginePath);
   const sqlBytes = readFile(sqlPath);
-  assertCondition(sha256(runnerBytes) === EXPECTED_RUNNER_SHA256, 'REMOTE_HARDENING_RUNNER_HASH_MISMATCH');
+  assertCondition(sha256(engineBytes) === EXPECTED_ENGINE_SHA256, 'REMOTE_HARDENING_ENGINE_HASH_MISMATCH');
   assertCondition(sha256(sqlBytes) === EXPECTED_SQL_SHA256, 'REMOTE_HARDENING_SQL_HASH_MISMATCH');
   assertCondition(Boolean(env.DATABASE_URL), 'DATABASE_URL_NOT_CONFIGURED');
 
-  let resolvedRunHardening = runHardening;
+  let resolvedRunHardeningDryRun = runHardeningDryRun;
   let resolvedClientClass = ClientClass;
   let resolvedPgVersion = pgVersion;
-  if (!resolvedRunHardening || !resolvedClientClass || !resolvedPgVersion) {
-    const runnerModule = require(runnerPath);
+  if (!resolvedRunHardeningDryRun || !resolvedClientClass || !resolvedPgVersion) {
+    const engineModule = require(enginePath);
     const pgPackage = require('pg/package.json');
     const pgModule = require('pg');
-    resolvedRunHardening = runnerModule.runHardening;
+    resolvedRunHardeningDryRun = engineModule.runHardeningDryRun;
     resolvedClientClass = pgModule.Client;
     resolvedPgVersion = pgPackage.version;
   }
-  assertCondition(typeof resolvedRunHardening === 'function', 'HARDENING_RUNNER_EXPORT_INVALID');
+  assertCondition(typeof resolvedRunHardeningDryRun === 'function', 'HARDENING_ENGINE_EXPORT_INVALID');
   assertCondition(typeof resolvedClientClass === 'function', 'PG_CLIENT_EXPORT_INVALID');
   assertCondition(resolvedPgVersion === EXPECTED_PG_VERSION, 'PG_RUNTIME_VERSION_NOT_REVIEWED');
 
   const runnerMessages = [];
-  const result = await resolvedRunHardening({
+  const result = await resolvedRunHardeningDryRun({
     ClientClass: resolvedClientClass,
-    argv: [
-      'node',
-      '20260804_identity_binding_hardening_runner.js',
-      '--confirm-database-target-sha256',
-      confirmedTargetHash,
-    ],
+    confirmedTargetHash,
+    sqlBytes,
     env,
     output: {
       log: value => runnerMessages.push(String(value)),
@@ -133,7 +129,7 @@ if (require.main === module) cliMain();
 module.exports = {
   EXPECTED_PG_VERSION,
   EXPECTED_REMOTE_DIRECTORY,
-  EXPECTED_RUNNER_SHA256,
+  EXPECTED_ENGINE_SHA256,
   EXPECTED_RUNNER_SUCCESS,
   EXPECTED_SQL_SHA256,
   parseOptions,

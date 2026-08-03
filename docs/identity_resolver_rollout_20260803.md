@@ -283,10 +283,31 @@ write or database connection command is present.
 A separate Kudu transaction dry-run bundle is locally prepared under
 `infra/identity-hardening-kudu-dryrun/`. Its wrapper is apply-incapable, accepts
 only the protected target confirmation SHA-256, pins the isolated directory,
-Linux/Node/`pg` runtime and runner/SQL hashes, captures underlying output, and
-accepts only `dry-run` plus `committed=false`. Thirteen scenarios and exact
-manifest/source checks pass. It is `NOT_UPLOADED` and `NOT_EXECUTED`; the exact
-gate is `docs/identity_binding_hardening_kudu_dryrun_20260804.md`.
+Linux/Node/`pg` runtime and dedicated-engine/SQL hashes, captures underlying
+output, and accepts only `dry-run` plus `committed=false`. The dedicated engine
+has no CLI, apply option, or commit branch. Thirteen wrapper scenarios, seven
+engine scenarios, and exact manifest/source checks pass. It is `NOT_UPLOADED`
+and `NOT_EXECUTED`; the exact gate is
+`docs/identity_binding_hardening_kudu_dryrun_20260804.md`.
+
+The earlier `a92e41e` ZIP is `HOLD / SUPERSEDED BEFORE LIVE USE`: its wrapper
+was dry-run-only, but the bundle also contained the general apply-capable
+runner. It was never uploaded or executed and caused no live change. Its
+historical snapshot/receipt must not be deleted or treated as an approved
+upload. Only the corrected dedicated-engine bundle may proceed to a future
+separately approved upload review.
+
+An empty-identity emergency schema rollback is also locally prepared as
+`infra/20260804_identity_binding_hardening_emergency_rollback.sql` plus its
+guarded runner and documented in
+`docs/identity_binding_hardening_emergency_rollback_20260804.md`. It restores
+only the two pre-hardening defaults and removes only the two hardening CHECK
+constraints. The runner requires the exact DB target, pinned business state,
+four empty identity tables, hardened pre-state, exact rollback SQL, a separate
+emergency approval receipt, and the hardening-apply receipt. Eleven scenarios
+pass, including a post-commit failure that remains visibly
+`commit_state=committed`. It is not uploaded and no live rollback dry-run or
+apply is approved.
 
 Hardening migration SHA-256:
 `4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.

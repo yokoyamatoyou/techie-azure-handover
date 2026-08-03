@@ -105,12 +105,22 @@ wrapper and exact flat-bundle contract in
 `docs/identity_binding_hardening_kudu_dryrun_20260804.md`. The bundle accepts
 only the protected target SHA-256, verifies directory/runtime/dependency/source
 hashes, captures underlying output, and refuses every apply or extra argument.
-Its 13 local scenarios pass. It has not been uploaded or executed.
+Its corrected bundle contains a dedicated no-CLI/no-commit dry-run engine, not
+the general apply-capable runner. Thirteen wrapper scenarios and seven engine
+scenarios pass. It has not been uploaded or executed. The earlier `a92e41e`
+ZIP is `HOLD / SUPERSEDED BEFORE LIVE USE` because it included the general
+runner; it was never uploaded or executed and caused no live change.
 
 ## Apply gate
 
 Apply additionally requires `--apply` and the exact committed migration SQL
 SHA-256. It remains prohibited until a later, separate explicit approval.
+
+Before any apply review, the empty-identity emergency rollback source and
+runner must be commit-fixed, remote-hash verifiable, and locally passing. Its
+separate contract is
+`docs/identity_binding_hardening_emergency_rollback_20260804.md`. Preparing
+that package does not authorize upload, rollback dry-run, or rollback apply.
 
 ```text
 node 20260804_identity_binding_hardening_runner.js --confirm-database-target-sha256 <protected-sha256> --apply --confirm-sha256 <reviewed-migration-sha256>
@@ -135,6 +145,10 @@ run result. A post-commit verification failure must remain visibly
 ## Current local verification
 
 - Guarded hardening runner: `8 passed`.
+- Corrected Kudu dry-run wrapper/engine: `13 + 7 passed`; legacy `a92e41e`
+  upload ZIP is superseded and prohibited.
+- Empty-identity emergency rollback runner: `11 passed`; live use is
+  `NOT_APPROVED`.
 - Offline independent-target preflight: `6 passed`.
 - Cloud Shell read-only wrapper/module: `9 scenarios passed`, three PowerShell
   files parsed, zero mutation/DB-connection commands, and zero sensitive output

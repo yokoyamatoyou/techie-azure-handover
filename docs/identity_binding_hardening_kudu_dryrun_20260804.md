@@ -2,9 +2,22 @@
 
 - Updated: 2026-08-04 JST
 - Owner: one SOL agent only
-- Status: `LOCAL DRY-RUN-ONLY PACKAGE PASS / NOT UPLOADED / DB NOT CONNECTED`
+- Status: `CORRECTED LOCAL DRY-RUN-ONLY PACKAGE PASS / LEGACY a92e41e ZIP HOLD / NOT UPLOADED / DB NOT CONNECTED`
 - Remote directory: `/home/LogFiles/techie-identity-hardening-audit`
 - Live apply capability in this bundle: `false`
+
+## 2026-08-04 pre-live correction
+
+The earlier `a92e41e` ZIP is `HOLD / SUPERSEDED BEFORE LIVE USE`. Although its
+wrapper rejected apply arguments, that ZIP also contained the general
+hardening runner, which has a direct apply path. It therefore did not satisfy
+the stronger contract that the uploaded bundle itself must be apply-incapable.
+
+The earlier ZIP was never uploaded to Kudu and never executed, so it caused no
+Azure, database, Entra, Google, Stripe, API, customer, or production change.
+Its snapshot and original receipt remain immutable historical evidence. Do not
+upload or execute it. This corrected package replaces the general runner with
+a dedicated engine that has no CLI, apply option, or commit branch.
 
 ## Purpose and order
 
@@ -35,7 +48,7 @@ cutover, Microsoft production enablement, or a Stripe/Entra change.
 The upload bundle contains exactly:
 
 - `20260804_identity_binding_hardening.sql`;
-- `20260804_identity_binding_hardening_runner.js`;
+- `20260804_identity_binding_hardening_dryrun_engine.js`;
 - `20260804_identity_binding_hardening_dryrun_only.js`;
 - `kudu_hardening_dryrun_manifest.json`.
 
@@ -73,11 +86,11 @@ node 20260804_identity_binding_hardening_dryrun_only.js --confirm-database-targe
 ```
 
 Any missing, duplicate, extra, unknown, malformed, or apply argument is
-rejected before DB connection. The wrapper constructs the underlying runner
-arguments itself and never forwards caller arguments. The constructed
-arguments contain no `--apply`.
+rejected before DB connection. The wrapper passes only the independently
+confirmed target hash and hash-verified SQL bytes to the dedicated engine. The
+engine exposes no argument parser or apply mode.
 
-It also verifies the runner and SQL hashes, captures all underlying output in
+It also verifies the engine and SQL hashes, captures all underlying output in
 memory, requires the exact reviewed success line, and rejects any result whose
 mode is not `dry-run` or whose `committed` state is not `false`.
 
@@ -92,7 +105,7 @@ identifier, or token may appear. Any other output is a stop condition.
 
 ## Rollback and post-run boundary
 
-The underlying runner performs the hardening DDL inside one transaction,
+The dedicated engine performs the hardening DDL inside one transaction,
 checks the target/business-state/empty-identity invariants, rolls back, and
 verifies the original defaults and absent constraints are restored. A dry-run
 success therefore leaves the hardening unapplied.
@@ -105,10 +118,14 @@ separate apply package/review rather than modifying this bundle.
 ## Current local evidence
 
 - Dry-run-only wrapper scenarios: `13 passed`.
+- Dedicated no-commit engine scenarios: `7 passed`.
 - Apply/extra arguments rejected before connection.
-- Wrong directory, OS, Node major, `pg` version, runner hash, or SQL hash
+- Wrong directory, OS, Node major, `pg` version, engine hash, or SQL hash
   rejected before connection.
 - Unexpected commit or output rejected.
+- In-transaction validation failure rolled back and restored the original
+  schema state; no reachable `COMMIT`, apply option, or apply mode exists in
+  the engine source.
 - Manifest/source hash and byte equality passed.
 - Live upload, runtime dependency state, DB transaction, and rollback remain
   `NOT_CHECKED`.
