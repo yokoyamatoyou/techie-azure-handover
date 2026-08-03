@@ -67,3 +67,10 @@ aio2-main/Notebook_previous_*/
 Thumbs.db
 *.tmp
 *.log
+
+# Protected existing-customer identity manifests and approval material must
+# remain outside the source tree. These patterns are a secondary guard only;
+# both bootstrap runners also reject an in-repository manifest path.
+infra/existing_customer_identity_bootstrap_manifest.runtime*.json
+infra/existing_customer_identity_bootstrap_manifest.protected*.json
+infra/existing_customer_identity_bootstrap_*approval*.json

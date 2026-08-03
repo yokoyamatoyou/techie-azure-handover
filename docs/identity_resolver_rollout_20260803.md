@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / EXISTING-CUSTOMER BOOTSTRAP+ROLLBACK LOCAL PASS+LIVE APPLY HOLD / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -235,6 +235,21 @@ currently running app setting or Azure resource.
   The Job what-if passes only for one exact Job `Create`. Nineteen synthetic
   runtime/RBAC/what-if scenarios plus parser, mutation/value-read-command, and
   sensitive-literal checks passed locally. No live Job what-if was run.
+- A separate existing-customer bootstrap runner and exact-key manifest schema
+  are locally prepared under `infra/` and documented in
+  `docs/existing_customer_identity_bootstrap_20260804.md`. The protected live
+  manifest is not stored in Git and has not been created. It accepts only an
+  explicitly approved immutable External ID issuer/OID coordinate, existing
+  business tenant UUID, customer-account/Stripe anchor hashes, and approval
+  and identity-evidence receipt hashes. Email is not an input or selection
+  key. Default execution is SERIALIZABLE dry-run plus rollback; apply requires
+  the exact manifest hash and operation count. A separate local dispute-only
+  rollback runner preserves history, requires its own non-reused approval
+  receipt hash, and changes only identity status/audit rows. Bootstrap and
+  rollback each have 21 guarded scenarios passing locally. Both CLI runners
+  reject manifests inside the source tree. Live DB execution and
+  existing-customer linkage remain prohibited and `HOLD`; the local package is
+  neither a live dry-run receipt nor apply authorization.
 
 Only the additive, empty identity schema has been applied. No application
 setting, API image, Entra production flow, Google Cloud setting, Stripe object,
@@ -339,7 +354,13 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    explicit two-authentication link ceremony.
 8. Bootstrap existing customers only from immutable verified Entra
    coordinates. Verify each business tenant and Stripe Customer remains
-   unchanged; email equality is not a bootstrap key.
+   unchanged; email equality is not a bootstrap key. Use the protected
+   manifest contract and runner only after the binding-hardening apply,
+   immutable provider evidence, explicit mapping approval, exact remote hash
+   verification, default transaction-rollback dry-run, maintenance window, the
+   commit-fixed dispute-only rollback runner, its separate approval gate, and
+   a protected-batch rollback dry-run. The current local package does not
+   authorize live manifest creation, upload, dry-run, or apply.
 9. Move normal traffic to `enforce` only after existing-customer coverage and
    rollback evidence are complete, with auto-provision still `0`.
 10. Only after all prior gates pass, associate Microsoft with the production
