@@ -1,0 +1,30 @@
+{
+  "schema_version": "techie-identity-binding-hardening-kudu-apply-v1",
+  "mode": "persistent-apply-with-independent-receipt-gates",
+  "authorization_embedded": false,
+  "remote_directory": "/home/LogFiles/techie-identity-hardening-apply",
+  "required_pg_version": "8.22.0",
+  "required_operation": "APPLY_TECHIE_EMPTY_IDENTITY_BINDING_HARDENING_20260804",
+  "entries": [
+    {
+      "name": "20260804_identity_binding_hardening.sql",
+      "bytes": 1694,
+      "sha256": "4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53"
+    },
+    {
+      "name": "20260804_identity_binding_hardening_apply_engine.js",
+      "bytes": 8731,
+      "sha256": "CF798F8C970247CAE813247B3ED42A9A5E72C64F47980599EDC72D695F4D913F"
+    },
+    {
+      "name": "emergency_recovery_manifest.json",
+      "bytes": 719,
+      "sha256": "00DB2C4E21C0D0F1A3C8DC4A967A7DAE112E97A1B27A3CE94D308448EEBCE768"
+    },
+    {
+      "name": "20260804_identity_binding_hardening_apply_only.js",
+      "bytes": 10820,
+      "sha256": "95DB7DD6ACF7BFA4214A4CF962FB21E72816214F29855297AEDBB16A844004A8"
+    }
+  ]
+}

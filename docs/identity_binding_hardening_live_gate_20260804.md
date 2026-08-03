@@ -113,8 +113,10 @@ runner; it was never uploaded or executed and caused no live change.
 
 ## Apply gate
 
-Apply additionally requires `--apply` and the exact committed migration SQL
-SHA-256. It remains prohibited until a later, separate explicit approval.
+Apply remains prohibited until a later, separate explicit approval. The
+general runner is no longer an acceptable direct live apply entrypoint. The
+only current candidate is the separate apply-only wrapper documented in
+`docs/identity_binding_hardening_kudu_apply_20260804.md`.
 
 Before any apply review, the empty-identity emergency rollback source and
 runner must be commit-fixed, remote-hash verifiable, and locally passing. Its
@@ -122,13 +124,18 @@ separate contract is
 `docs/identity_binding_hardening_emergency_rollback_20260804.md`. Preparing
 that package does not authorize upload, rollback dry-run, or rollback apply.
 
-```text
-node 20260804_identity_binding_hardening_runner.js --confirm-database-target-sha256 <protected-sha256> --apply --confirm-sha256 <reviewed-migration-sha256>
-```
+The wrapper additionally requires the corrected dry-run package, a successful
+protected dry-run receipt, separate change approval, fresh production-legacy
+runtime-state receipt, maintenance-window receipt, commit-fixed emergency
+recovery manifest, target confirmation, and exact operation phrase. It then
+calls a hash-pinned no-CLI apply engine with only the target and reviewed SQL
+bytes. Fifteen wrapper and eight engine scenarios pass; it is not packaged,
+uploaded, or executed.
 
-The runner permits apply only while all four identity tables are empty, the
-two constraints are absent, the two unsafe defaults are present, duplicates
-are zero, the DB target matches, and the pinned aggregate digest matches.
+The underlying runner still permits apply only while all four identity tables
+are empty, the two constraints are absent, the two unsafe defaults are
+present, duplicates are zero, the DB target matches, and the pinned aggregate
+digest matches.
 
 ## Safe output and stop conditions
 
@@ -149,6 +156,8 @@ run result. A post-commit verification failure must remain visibly
   upload ZIP is superseded and prohibited.
 - Empty-identity emergency rollback runner: `11 passed`; live use is
   `NOT_APPROVED`.
+- Separate apply-only wrapper/engine/manifest: `15 + 8 passed`; packaging, upload, and
+  live apply are `NOT_APPROVED`.
 - Offline independent-target preflight: `6 passed`.
 - Cloud Shell read-only wrapper/module: `9 scenarios passed`, three PowerShell
   files parsed, zero mutation/DB-connection commands, and zero sensitive output

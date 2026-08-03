@@ -309,6 +309,22 @@ pass, including a post-commit failure that remains visibly
 `commit_state=committed`. It is not uploaded and no live rollback dry-run or
 apply is approved.
 
+A separate persistent-apply candidate is locally prepared under
+`infra/identity-hardening-kudu-apply/` and documented in
+`docs/identity_binding_hardening_kudu_apply_20260804.md`. The general runner is
+not an approved direct live apply entrypoint and is not included in the apply
+bundle. The apply-only wrapper pins the no-CLI apply engine, hardening SQL, and
+emergency-recovery manifest and requires independent target,
+corrected dry-run package, successful dry-run receipt, change-approval,
+production-legacy runtime-state, maintenance-window, recovery-manifest, and
+exact-operation confirmations before DB connection. It forwards no receipt
+hash and preserves `not_committed`, `committed`, and `unknown` outcomes.
+Fifteen wrapper scenarios, eight engine scenarios, and exact apply/recovery
+manifest checks pass. Only the
+non-executable recovery manifest is a future normal-apply input; emergency
+rollback SQL/runner remain offline and require a separate emergency gate. It is not
+packaged, uploaded, executed, or approved for live apply.
+
 Hardening migration SHA-256:
 `4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.
 Do not create the first live binding or enable enforce until this separate

@@ -1,0 +1,18 @@
+{
+  "schema_version": "techie-identity-binding-hardening-emergency-recovery-v1",
+  "source_commit": "692e9ff85092aa4323f5029ca5d91a987c19b3a0",
+  "purpose": "restore-pre-hardening-schema-only-while-identity-tables-empty-and-production-legacy",
+  "persistent_use_requires_separate_emergency_approval": true,
+  "entries": [
+    {
+      "name": "20260804_identity_binding_hardening_emergency_rollback.sql",
+      "bytes": 664,
+      "sha256": "40C6774F8DD9251999F09A571C46297E8AFB8DD7118D6008266099CB1B58F19E"
+    },
+    {
+      "name": "20260804_identity_binding_hardening_emergency_rollback_runner.js",
+      "bytes": 12701,
+      "sha256": "C049F7661DEC1AD2D5CB5E57E873DFA70A3E0906F6928DF57B300A726AB7CBCC"
+    }
+  ]
+}
