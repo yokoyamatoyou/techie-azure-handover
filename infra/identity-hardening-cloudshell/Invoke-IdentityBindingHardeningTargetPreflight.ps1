@@ -7,6 +7,8 @@ param(
     [Parameter(Mandatory = $true)][string]$WebAppName,
     [Parameter(Mandatory = $true)][string]$PostgresServerName,
     [Parameter(Mandatory = $true)][string]$DatabaseName,
+    [Parameter(Mandatory = $true)][string]$ExpectedContextSha256,
+    [Parameter(Mandatory = $true)][string]$ConfirmOperation,
     [string]$DatabaseSettingName = 'DATABASE_URL',
     [int]$DatabasePort = 5432
 )
@@ -14,7 +16,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $modulePath = Join-Path $PSScriptRoot 'IdentityBindingHardeningTargetPreflight.psm1'
-$script:ReviewedModuleSha256 = '9ABD8271CE8ED481E2196FFFC031D6F8C791A2CE3515741C8AB40FB4EB975C04'
+$script:ReviewedModuleSha256 = 'ADEB85E208CFBF8DC2AF086E558FA57C079817BB8F0C0D7EAD351EFDC212C875'
+$script:ExpectedOperation = 'READ_ONLY_TECHIE_IDENTITY_HARDENING_TARGET_PREFLIGHT_20260804'
 
 function Throw-TargetPreflightSafeError {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -81,6 +84,17 @@ try {
         DatabasePort = $DatabasePort
     }
     [void](Assert-IdentityBindingHardeningTargetInput @inputArguments)
+    if ($ConfirmOperation -cne $script:ExpectedOperation) {
+        Throw-TargetPreflightSafeError -Code 'TARGET_PREFLIGHT_OPERATION_CONFIRMATION_MISMATCH'
+    }
+    $normalizedExpectedContextSha256 = $ExpectedContextSha256.Trim().ToUpperInvariant()
+    if ($normalizedExpectedContextSha256 -notmatch '^[0-9A-F]{64}$') {
+        Throw-TargetPreflightSafeError -Code 'EXPECTED_CONTEXT_SHA256_INVALID'
+    }
+    $actualExpectedContextSha256 = Get-HardeningTargetContextSha256 @inputArguments
+    if ($actualExpectedContextSha256 -cne $normalizedExpectedContextSha256) {
+        Throw-TargetPreflightSafeError -Code 'EXPECTED_CONTEXT_SHA256_MISMATCH'
+    }
     $azureCli = Get-Command 'az' -CommandType Application -ErrorAction SilentlyContinue
     if ($null -eq $azureCli -or [string]::IsNullOrWhiteSpace([string]$azureCli.Source)) {
         Throw-TargetPreflightSafeError -Code 'AZURE_CLI_NOT_FOUND'
@@ -115,6 +129,7 @@ try {
         -WebAppName $WebAppName `
         -PostgresServerName $PostgresServerName `
         -DatabaseName $DatabaseName `
+        -ExpectedContextSha256 $normalizedExpectedContextSha256 `
         -DatabaseSettingName $DatabaseSettingName `
         -DatabasePort $DatabasePort
     $databaseSettings = $null
@@ -124,6 +139,8 @@ try {
         web_app_resource_match = $evidence.WebAppResourceMatch
         postgres_resource_match = $evidence.PostgresResourceMatch
         target_match = $evidence.TargetMatch
+        expected_context_match = $evidence.ContextMatch
+        confirm_expected_context_sha256 = $evidence.ContextSha256
         confirm_database_target_sha256 = $evidence.ConfirmationSha256
         azure_write_performed = $false
         database_connection_opened = $false

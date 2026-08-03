@@ -97,6 +97,54 @@ function Get-HardeningTargetSha256FromParts {
     }
 }
 
+function Get-HardeningTargetContextSha256 {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ExpectedSubscriptionId,
+        [Parameter(Mandatory = $true)][string]$ExpectedResourceTenantId,
+        [Parameter(Mandatory = $true)][string]$ExpectedExternalDirectoryId,
+        [Parameter(Mandatory = $true)][string]$ResourceGroupName,
+        [Parameter(Mandatory = $true)][string]$WebAppName,
+        [Parameter(Mandatory = $true)][string]$PostgresServerName,
+        [Parameter(Mandatory = $true)][string]$DatabaseName,
+        [string]$DatabaseSettingName = 'DATABASE_URL',
+        [int]$DatabasePort = 5432
+    )
+    $inputArguments = @{
+        ExpectedSubscriptionId = $ExpectedSubscriptionId
+        ExpectedResourceTenantId = $ExpectedResourceTenantId
+        ExpectedExternalDirectoryId = $ExpectedExternalDirectoryId
+        ResourceGroupName = $ResourceGroupName
+        WebAppName = $WebAppName
+        PostgresServerName = $PostgresServerName
+        DatabaseName = $DatabaseName
+        DatabaseSettingName = $DatabaseSettingName
+        DatabasePort = $DatabasePort
+    }
+    $state = Assert-IdentityBindingHardeningTargetInput @inputArguments
+    $canonical = @(
+        'schema=techie-identity-hardening-target-context-v1'
+        "subscription_id=$($state.SubscriptionId)"
+        "resource_tenant_id=$($state.ResourceTenantId)"
+        "external_directory_id=$($state.ExternalDirectoryId)"
+        "resource_group_name=$($state.ResourceGroupName.ToLowerInvariant())"
+        "web_app_name=$($state.WebAppName.ToLowerInvariant())"
+        "postgres_server_name=$($state.PostgresServerName.ToLowerInvariant())"
+        "database_name=$($state.DatabaseName)"
+        "database_setting_name=$($state.DatabaseSettingName)"
+        "database_port=$($state.DatabasePort)"
+    ) -join '|'
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($canonical)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        return ([System.BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '')
+    }
+    finally {
+        if ($null -ne $sha) { $sha.Dispose() }
+        [Array]::Clear($bytes, 0, $bytes.Length)
+    }
+}
+
 function Get-HardeningTargetSha256FromConnectionString {
     param([Parameter(Mandatory = $true)][string]$ConnectionString)
     try {
@@ -131,6 +179,7 @@ function Test-IdentityBindingHardeningTargetEvidence {
         [Parameter(Mandatory = $true)][string]$WebAppName,
         [Parameter(Mandatory = $true)][string]$PostgresServerName,
         [Parameter(Mandatory = $true)][string]$DatabaseName,
+        [Parameter(Mandatory = $true)][string]$ExpectedContextSha256,
         [string]$DatabaseSettingName = 'DATABASE_URL',
         [int]$DatabasePort = 5432
     )
@@ -146,6 +195,14 @@ function Test-IdentityBindingHardeningTargetEvidence {
         DatabasePort = $DatabasePort
     }
     $inputState = Assert-IdentityBindingHardeningTargetInput @inputArguments
+    $normalizedContextSha256 = $ExpectedContextSha256.Trim().ToUpperInvariant()
+    if ($normalizedContextSha256 -notmatch '^[0-9A-F]{64}$') {
+        Throw-HardeningTargetSafeError -Code 'EXPECTED_CONTEXT_SHA256_INVALID'
+    }
+    $actualContextSha256 = Get-HardeningTargetContextSha256 @inputArguments
+    if ($actualContextSha256 -cne $normalizedContextSha256) {
+        Throw-HardeningTargetSafeError -Code 'EXPECTED_CONTEXT_SHA256_MISMATCH'
+    }
     if ([string]$Account.tenantId -ieq $inputState.ExternalDirectoryId) {
         Throw-HardeningTargetSafeError -Code 'EXTERNAL_DIRECTORY_SELECTED_FOR_RESOURCE_READ'
     }
@@ -183,11 +240,14 @@ function Test-IdentityBindingHardeningTargetEvidence {
         WebAppResourceMatch = $true
         PostgresResourceMatch = $true
         TargetMatch = $true
+        ContextMatch = $true
+        ContextSha256 = $actualContextSha256
     }
 }
 
 Export-ModuleMember -Function @(
     'Assert-IdentityBindingHardeningTargetInput',
+    'Get-HardeningTargetContextSha256',
     'Get-HardeningTargetSha256FromConnectionString',
     'Get-HardeningTargetSha256FromParts',
     'Test-IdentityBindingHardeningTargetEvidence'

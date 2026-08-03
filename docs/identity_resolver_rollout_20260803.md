@@ -277,8 +277,12 @@ or URL-protocol mismatch. Guarded hardening-runner tests: `8 passed`; target
 preflight tests: `6 passed`. The exact protected-session procedure is in
 `docs/identity_binding_hardening_live_gate_20260804.md`. A hash-pinned Cloud
 Shell wrapper is also locally prepared with only four exact read-only Azure CLI
-commands; nine synthetic context/resource/target scenarios pass, and no Azure
-write or database connection command is present.
+commands. It now requires a separately reviewed SHA-256 of the complete
+subscription/two-directory/resource/database expectation tuple plus an exact
+read-only operation phrase before Azure CLI use. Thirteen synthetic
+context/resource/target scenarios pass, and no Azure write or database
+connection command is present. Expected identifiers remain protected-session
+inputs rather than Git values.
 
 A separate Kudu transaction dry-run bundle is locally prepared under
 `infra/identity-hardening-kudu-dryrun/`. Its wrapper is apply-incapable, accepts
