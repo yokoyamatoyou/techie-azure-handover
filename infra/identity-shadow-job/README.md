@@ -18,6 +18,23 @@ Current state: **LOCAL PREPARATION ONLY / NOT DEPLOYED / NOT STARTED**.
   timeout and resolver safety settings.
 - Docker build, ACR push, Azure what-if, and all live resources remain
   `NOT_CHECKED` or `NOT_STARTED` and require their own approvals.
+- `Invoke-IdentityShadowFoundationPreflight.ps1` is a secret-free, read-only
+  context and foundation what-if gate. It compares the current Azure CLI
+  subscription/workforce tenant to caller-supplied expected GUIDs without
+  printing them. Its what-if parser permits exactly three `Create` changes:
+  the dedicated identity, `AcrPull` at the exact ACR scope, and Key Vault
+  Secrets User at the exact individual-secret scope. Every other change type,
+  resource, duplicate, broad vault scope, or directory ambiguity fails closed.
+- The preflight never stores a live parameter file or prints raw Azure CLI
+  output, resource IDs, tenant/subscription IDs, secret URIs, or values. The
+  `ContextOnly` action may safely report that the secret is absent. The
+  `FoundationWhatIf` action requires the separately approved secret version to
+  exist but still performs no Azure write.
+- Local synthetic validation is run with
+  `powershell -NoProfile -File .\Test-IdentityShadowFoundationPreflight.ps1`.
+  It covers valid and invalid what-if shapes, exact role scopes, directory
+  separation, PowerShell parsing, mutation-command absence, and secret-literal
+  scanning without contacting Azure.
 
 ## Safety contract
 
@@ -92,6 +109,11 @@ customer directory is not the deployment directory.
    redacted change list. Expected additions are one user-assigned identity and
    two role assignments scoped respectively to the existing ACR and the
    individual existing `database-url` secret.
+   Prefer the reviewed `Invoke-IdentityShadowFoundationPreflight.ps1` with
+   `-Action FoundationWhatIf`; supply all real IDs and names only in the
+   protected operator session. Its output is aggregate-only and it stops
+   unless the current CLI context is the workforce resource tenant rather than
+   the TECHIE External ID tenant.
 3. Only after explicit approval, deploy the foundation.
 4. Confirm the exact role assignment scopes. Wait for RBAC propagation.
 5. Run `az deployment group what-if` for `job.bicep`. Expected addition is one

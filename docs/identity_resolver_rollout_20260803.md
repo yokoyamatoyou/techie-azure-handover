@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION PREFLIGHT LOCAL PASS / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -212,6 +212,18 @@ currently running app setting or Azure resource.
   `NOT_STARTED`. Neither `az` nor `docker` is installed in the local command
   environment. These remain explicit live approval gates and are not implied
   by the successful local Bicep compile.
+- The isolated-job package now also includes a secret-free Azure context and
+  foundation what-if preflight. Its pure validator passed nine synthetic
+  scenarios plus parser, mutation-command, and sensitive-literal checks. The
+  live wrapper accepts the expected subscription, workforce resource tenant,
+  and External ID tenant only as runtime parameters; verifies the two tenant
+  roles are distinct; suppresses raw CLI output; and emits only aggregate
+  booleans/counts. Foundation what-if passes only for exactly one dedicated
+  identity create, one role assignment at the exact ACR scope, and one role
+  assignment at the exact individual-secret scope. `Modify`, `Delete`,
+  `Deploy`, `Ignore`, `Unsupported`, duplicate, unexpected, broad-vault, and
+  malformed results all fail closed. No live Azure context check or what-if
+  was run by this local validation.
 
 Only the additive, empty identity schema has been applied. No application
 setting, API image, Entra production flow, Google Cloud setting, Stripe object,
@@ -293,6 +305,11 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    Standard-or-higher App Service tier and staging-slot option remains an
    alternative requiring its own approval. Any isolated runtime must keep
    resolver `shadow`, auto-provision `0`, and Entra binding claims trust `0`.
+   Before any foundation write, use the reviewed local preflight first in
+   `ContextOnly` mode and then, after the separately approved individual secret
+   exists, in `FoundationWhatIf` mode. Store no live parameter file. Stop if
+   the aggregate-only result is anything other than the exact three-create
+   allowlist; what-if approval does not authorize foundation deployment.
 5. Verify email and Google traffic remains on its current authorization
    tenant while `shadow_*` comparison evidence is collected. Verify the
    isolated Microsoft pilot token's directory/provider claims separately.
