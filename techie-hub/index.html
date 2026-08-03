@@ -42,6 +42,10 @@
     kotomegane: config.KOTOMEGANE_URL
   };
   const SAFE_COUPON_ERROR = 'クーポンコードが無効、または期限切れです。コードを確認して再入力してください。';
+  const AUTH_PROVIDER_HINTS = Object.freeze({
+    google: 'google',
+    microsoft: 'login.live.com'
+  });
 
   function isConfigured(value) {
     return Boolean(value && !placeholderPattern.test(String(value)));
@@ -321,7 +325,7 @@
               <span class="auth-method-badge auth-method-badge-test">テスト提供中</span>
             </div>
             <p class="auth-method-copy">Google アカウントでログイン</p>
-            <p class="auth-method-detail">次の画面で「Google でサインイン」を選択します。現在は登録済みのテストユーザーのみ利用できます。</p>
+            <p class="auth-method-detail">Google のアカウント選択画面へ直接移動します。現在は登録済みのテストユーザーのみ利用できます。</p>
             <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="google" type="button">Googleで続ける</button>
           </article>
           <article class="auth-method-card auth-method-card-disabled" aria-labelledby="microsoft-auth-title">
@@ -517,10 +521,13 @@
     interactiveAuthInProgress = true;
     sessionStorage.setItem('TECHIE_AUTH_INTENT', mode);
     try {
+      const providerHint = AUTH_PROVIDER_HINTS[provider] || '';
+      const extraQueryParameters = { ui_locales: 'ja' };
+      if (providerHint) extraQueryParameters.domain_hint = providerHint;
       await msalClient.loginRedirect({
         scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
-        prompt: mode === 'signup' ? 'create' : provider === 'google' ? 'login' : 'select_account',
-        extraQueryParameters: { ui_locales: 'ja' }
+        prompt: mode === 'signup' ? 'create' : providerHint ? 'login' : 'select_account',
+        extraQueryParameters
       });
     } catch (error) {
       interactiveAuthInProgress = false;
