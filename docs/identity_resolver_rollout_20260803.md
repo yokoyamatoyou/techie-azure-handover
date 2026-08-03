@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING TARGET+STATE GUARDS LOCAL PASS+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / EXISTING-CUSTOMER BOOTSTRAP+ROLLBACK LOCAL PASS+LIVE APPLY HOLD / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / CLOUD SHELL HARDENING TARGET PREFLIGHT LIVE PASS+DB NOT CONNECTED / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / EXISTING-CUSTOMER BOOTSTRAP+ROLLBACK LOCAL PASS+LIVE APPLY HOLD / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -335,6 +335,12 @@ Do not create the first live binding or enable enforce until this separate
 migration is re-reviewed, independently target-confirmed, remote-hash verified,
 dry-run, explicitly approved, and applied. The current target preflight and
 runner changes have not been uploaded to Kudu or executed against any database.
+
+The separately approved Cloud Shell target preflight passed on 2026-08-04 with
+all resource/directory/target/context matches true, Azure write false, and
+database connection false. Its protected inputs and confirmation hashes are
+not stored in Git or this document. The protected-session receipt is
+`C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_BINDING_CLOUDSHELL_TARGET_PREFLIGHT_RECEIPT_20260804.md`.
 
 The immutable local execution receipt is
 `C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.

@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Owner: one SOL agent only
-- Status: `LOCAL TARGET PREFLIGHT + GUARDED RUNNER PASS / LIVE NOT RUN / APPLY NOT APPROVED`
+- Status: `LIVE TARGET PREFLIGHT PASS / DB NOT CONNECTED / APPLY NOT APPROVED`
 - Migration: `infra/20260804_identity_binding_hardening.sql`
 - Target preflight: `infra/20260804_identity_binding_hardening_target_preflight.js`
 - Guarded runner: `infra/20260804_identity_binding_hardening_runner.js`
@@ -65,6 +65,20 @@ SHA-256 of the complete canonical expectation tuple before any Azure CLI call.
 It also requires the exact read-only operation phrase. It does not call the
 database, create Cloud Shell storage, change Azure context, upload to Kudu, or
 run DDL.
+
+The approved live read-only preflight passed on 2026-08-04 using commit
+`f2567362e5bc57df91aec1f91a8fbf3a69e562ec`. Account context, directory-role
+separation, exact Web App and PostgreSQL resources, protected runtime target,
+and the separately reviewed expectation context all matched. The result
+reported `azure_write_performed=false` and
+`database_connection_opened=false`. Protected raw inputs and confirmation
+hashes remain absent from Git and receipts.
+
+Cloud Shell required one compatibility correction: the effective `az`
+command was an exact Application and executable by name, but its reported
+`Source/Path` was not an invocable filesystem leaf. The commit-fixed wrapper
+keeps the Application-type and exact-name gates and invokes that validated
+name without broadening the read-only allowlist.
 
 Representative protected-session shape:
 
@@ -176,4 +190,6 @@ run result. A post-commit verification failure must remain visibly
   paths.
 - Migration SQL SHA-256 remains pinned and unchanged.
 - JavaScript syntax: passed.
-- Live target values and live DB behavior remain `NOT_CHECKED` in this package.
+- Live target match: `PASS`; Azure write `false`; database connection `false`.
+- Live DB hardening dry-run/apply behavior remains `NOT_CHECKED` in this
+  package and requires separate approval.

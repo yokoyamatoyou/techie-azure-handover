@@ -1,7 +1,7 @@
 # TECHIE identity-binding Cloud Shell target preflight
 
 - Owner: one SOL agent only
-- Status: `LOCAL PASS / AZURE NOT CALLED / DB NOT CONNECTED`
+- Status: `LIVE PASS / AZURE WRITE FALSE / DB NOT CONNECTED`
 
 This package confirms that the protected App Service `DATABASE_URL` points to
 the exact reviewed Azure PostgreSQL resource before a separately approved
@@ -43,3 +43,18 @@ storage creation, stop without creating it.
 
 Current local tests: `13 scenarios passed`; three PowerShell files parsed,
 mutation/DB-connection commands `0`, sensitive output paths `0`.
+
+Live execution on 2026-08-04 used commit
+`f2567362e5bc57df91aec1f91a8fbf3a69e562ec` and passed all account,
+directory-role, Web App, PostgreSQL resource, database-target, and expected-
+context checks. Azure writes and database connections remained false. Raw
+target inputs and the two protected confirmation hashes were not retained.
+
+Azure Cloud Shell PowerShell exposed the valid `az` Application by exact
+command name while its reported `Source/Path` was not an invocable filesystem
+leaf. The wrapper therefore requires the effective command to remain an
+Application with exact base name `az`, then invokes that validated name. It
+does not relax the Azure command allowlist.
+
+External protected-session receipt:
+`C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_BINDING_CLOUDSHELL_TARGET_PREFLIGHT_RECEIPT_20260804.md`.
