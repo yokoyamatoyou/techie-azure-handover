@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LOCAL IMPLEMENTATION PASS / LIVE DB NOT APPLIED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA APPLIED / API SHADOW NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -128,16 +128,33 @@ currently running app setting or Azure resource.
   `CCB52A8EC66D0312DA77C89D93003365D7A7C95A0BB7FCBA23D059F1AA83EF37`
 - Read-only live aggregate preflight: `26` business tenants, `26` customer
   accounts, `26` Stripe links, zero duplicate tenant-account links, zero
-  duplicate Stripe links, and zero identity tables.
+  duplicate Stripe links, and zero identity tables before the migration.
+- Remote SQL and runner hashes matched the reviewed commit exactly before any
+  database execution.
+- Transaction dry-run: `DRY_RUN_PASS`; rollback verification returned zero
+  identity tables and unchanged business aggregates.
+- One-time additive apply: `APPLY_PASS`; post-commit verification returned four
+  empty identity tables, unchanged `26`/`26`/`26` business aggregates, and zero
+  duplicate tenant-account or Stripe links.
 - No customer fields, emails, tokens, secrets, or Stripe identifiers were
-  emitted by the aggregate preflight.
+  emitted by the preflight, dry-run, apply, or receipt.
 - Azure reports seven completed automatic backups. On-demand backup is not
   supported by the server's current burstable compute tier.
+- The current PostgreSQL client warned that a future connection-string major
+  version may change `sslmode=require` semantics. The successful run used the
+  current certificate-verifying behavior; a later connection-setting change
+  must preserve explicit `verify-full` semantics without exposing the URL.
 
-No live schema, application setting, API image, Entra production flow, Google
-Cloud setting, Stripe object, deployment, or PR merge has been performed in
-this rollout status. Git commit/push is evidence publication only and does not
-satisfy any live migration, deployment, identity, or payment gate.
+Only the additive, empty identity schema has been applied. No application
+setting, API image, Entra production flow, Google Cloud setting, Stripe object,
+customer linkage, deployment, or PR merge has been changed in this rollout
+status. Git commit/push is evidence publication only and does not satisfy any
+deployment, identity, or payment gate.
+
+The immutable local execution receipt is
+`C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.
+It records only the reviewed hashes, aggregate counts, commit result, unchanged
+boundaries, and residual warning.
 
 A versioned local changed-file snapshot is available under
 `C:\tmp\techie-live-audit-20260803`. The external snapshot manifest records
@@ -162,16 +179,17 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
 
 ## Required live sequence
 
-1. Upload the exact hashed migration into the isolated Kudu audit directory.
-2. Upload `infra/20260803_identity_binding_runner.js` beside it and run the
+1. **Completed 2026-08-04:** place the exact hashed migration in the isolated
+   Kudu audit directory.
+2. **Completed 2026-08-04:** place
+   `infra/20260803_identity_binding_runner.js` beside it and run the
    runner without flags. It verifies the migration hash, executes inside a
    transaction, verifies four empty tables and unchanged business aggregates,
    rolls back, then verifies zero identity tables.
-3. Apply the same hash additively. Verify four empty identity tables and that
-   the six pre-change aggregate counts are unchanged. Apply mode requires both
-   `--apply` and the exact `--confirm-sha256` value; the DB URL is never logged.
-   The runner keeps TLS certificate verification enabled and stops before DDL
-   if the Kudu runtime cannot validate the database certificate chain.
+3. **Completed 2026-08-04:** apply the same hash additively and verify four
+   empty identity tables and unchanged pre-change aggregates. Apply mode used
+   both `--apply` and the exact `--confirm-sha256` value; the DB URL was never
+   logged. The runner kept TLS certificate verification enabled.
 4. Deploy code with resolver `shadow`, auto-provision `0`, and Entra binding
    claims trust `0`.
 5. Verify email and Google traffic remains on its current authorization
@@ -202,8 +220,10 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
 - Stop on directory ambiguity, provider ambiguity, customer/Stripe count
   drift, any duplicate link, secret/PII exposure, or a migration hash mismatch.
 
-The live database migration remains on hold after the Chrome/Kudu automation
-connection timed out three times. GitHub CLI authentication was validated for
-`yokoyamatoyou` through the Windows credential store before publication. Any
-push must target the user-owned fork branch; PR merge and every live gate remain
-separate and prohibited at this stage.
+The live database migration is complete and must not be rerun. The current
+owner is now at the API-shadow gate: first confirm the live settings and a
+bounded slot/canary capability read-only, then deploy only with resolver
+`shadow`, auto-provision `0`, and Entra binding-claim trust `0`. The running
+application remains on legacy behavior until that separate deployment gate is
+verified. Any push must target the user-owned fork branch; PR merge and every
+remaining live gate remain separate and prohibited at this stage.
