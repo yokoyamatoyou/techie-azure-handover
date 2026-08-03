@@ -275,7 +275,10 @@ output no longer prints the aggregate counts. The offline independent-target
 preflight makes no network/DB call and rejects any host, port, database-name,
 or URL-protocol mismatch. Guarded hardening-runner tests: `8 passed`; target
 preflight tests: `6 passed`. The exact protected-session procedure is in
-`docs/identity_binding_hardening_live_gate_20260804.md`.
+`docs/identity_binding_hardening_live_gate_20260804.md`. A hash-pinned Cloud
+Shell wrapper is also locally prepared with only four exact read-only Azure CLI
+commands; nine synthetic context/resource/target scenarios pass, and no Azure
+write or database connection command is present.
 
 Hardening migration SHA-256:
 `4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.

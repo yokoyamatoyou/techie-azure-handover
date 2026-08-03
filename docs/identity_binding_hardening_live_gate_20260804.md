@@ -6,6 +6,8 @@
 - Migration: `infra/20260804_identity_binding_hardening.sql`
 - Target preflight: `infra/20260804_identity_binding_hardening_target_preflight.js`
 - Guarded runner: `infra/20260804_identity_binding_hardening_runner.js`
+- Cloud Shell wrapper:
+  `infra/identity-hardening-cloudshell/Invoke-IdentityBindingHardeningTargetPreflight.ps1`
 
 ## Purpose
 
@@ -40,6 +42,21 @@ will be used to connect. In the protected operator session:
 The preflight makes no network or database call. It reports only a pass/error
 code and the non-secret confirmation SHA-256. Never put the raw inputs or the
 actual confirmation hash in chat, Git, a screenshot, or a public artifact.
+
+The commit-fixed Cloud Shell wrapper obtains the two sources without printing
+them. Its Azure CLI allowlist contains only:
+
+- `az account show`;
+- `az webapp show`;
+- `az webapp config appsettings list` with a query selecting only the named DB
+  setting;
+- `az postgres flexible-server show` selecting only resource ID and FQDN.
+
+It pins the offline validation module hash, requires the exact workforce
+subscription/tenant, rejects the customer External ID directory as the Azure
+resource context, verifies exact App Service and PostgreSQL resource IDs, and
+then compares the two target hashes in memory. It does not call the database,
+create Cloud Shell storage, change Azure context, upload to Kudu, or run DDL.
 
 Representative protected-session shape:
 
@@ -112,6 +129,9 @@ run result. A post-commit verification failure must remain visibly
 
 - Guarded hardening runner: `8 passed`.
 - Offline independent-target preflight: `6 passed`.
+- Cloud Shell read-only wrapper/module: `9 scenarios passed`, three PowerShell
+  files parsed, zero mutation/DB-connection commands, and zero sensitive output
+  paths.
 - Migration SQL SHA-256 remains pinned and unchanged.
 - JavaScript syntax: passed.
 - Live target values and live DB behavior remain `NOT_CHECKED` in this package.
