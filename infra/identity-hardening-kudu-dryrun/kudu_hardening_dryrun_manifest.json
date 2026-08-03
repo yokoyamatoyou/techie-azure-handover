@@ -1,0 +1,24 @@
+{
+  "schema_version": "techie-identity-binding-hardening-kudu-dryrun-v1",
+  "mode": "transaction-rollback-dry-run-only",
+  "apply_capability": false,
+  "remote_directory": "/home/LogFiles/techie-identity-hardening-audit",
+  "required_pg_version": "8.22.0",
+  "entries": [
+    {
+      "name": "20260804_identity_binding_hardening.sql",
+      "sha256": "4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53",
+      "bytes": 1694
+    },
+    {
+      "name": "20260804_identity_binding_hardening_runner.js",
+      "sha256": "4296FE2A7C3399302B68021D77F01420D685E02FBF3BCE4F6FD209736FF3155B",
+      "bytes": 14350
+    },
+    {
+      "name": "20260804_identity_binding_hardening_dryrun_only.js",
+      "sha256": "4250B233E3988A1D9614FBCBF0B9DE0FC4BAE5CD1AE842F8DDDC63B92653F4D2",
+      "bytes": 5522
+    }
+  ]
+}

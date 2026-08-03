@@ -100,6 +100,13 @@ This live dry-run requires separate explicit approval. A passing target
 preflight is not approval to connect to the DB. A passing dry-run is not
 approval to apply.
 
+The reviewed Kudu upload/execution path uses the separate apply-incapable
+wrapper and exact flat-bundle contract in
+`docs/identity_binding_hardening_kudu_dryrun_20260804.md`. The bundle accepts
+only the protected target SHA-256, verifies directory/runtime/dependency/source
+hashes, captures underlying output, and refuses every apply or extra argument.
+Its 13 local scenarios pass. It has not been uploaded or executed.
+
 ## Apply gate
 
 Apply additionally requires `--apply` and the exact committed migration SQL

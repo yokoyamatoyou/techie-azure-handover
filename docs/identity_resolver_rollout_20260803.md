@@ -280,6 +280,14 @@ Shell wrapper is also locally prepared with only four exact read-only Azure CLI
 commands; nine synthetic context/resource/target scenarios pass, and no Azure
 write or database connection command is present.
 
+A separate Kudu transaction dry-run bundle is locally prepared under
+`infra/identity-hardening-kudu-dryrun/`. Its wrapper is apply-incapable, accepts
+only the protected target confirmation SHA-256, pins the isolated directory,
+Linux/Node/`pg` runtime and runner/SQL hashes, captures underlying output, and
+accepts only `dry-run` plus `committed=false`. Thirteen scenarios and exact
+manifest/source checks pass. It is `NOT_UPLOADED` and `NOT_EXECUTED`; the exact
+gate is `docs/identity_binding_hardening_kudu_dryrun_20260804.md`.
+
 Hardening migration SHA-256:
 `4E4D677AF23BF6781262F185FCC5C99338C112455294984CCAF2B1E59C310E53`.
 Do not create the first live binding or enable enforce until this separate
