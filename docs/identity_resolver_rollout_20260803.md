@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION PREFLIGHT LOCAL PASS / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / BINDING DIRECTORY+PROVIDER GUARD LOCAL PASS / DB BINDING HARDENING LOCAL PACKAGE READY+NOT APPLIED / ISOLATED JOB + FOUNDATION/JOB PREFLIGHT LOCAL PASS / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -224,6 +224,17 @@ currently running app setting or Azure resource.
   `Deploy`, `Ignore`, `Unsupported`, duplicate, unexpected, broad-vault, and
   malformed results all fail closed. No live Azure context check or what-if
   was run by this local validation.
+- The same wrapper now has a later `JobWhatIf` gate. Before the Job what-if it
+  verifies the reviewed Bicep hashes, exact workforce subscription/directory,
+  existing environment/ACR/Key Vault/dedicated identity, absent Job, and
+  exactly two direct role assignments for that identity: `AcrPull` on the ACR
+  and Key Vault Secrets User on the individual database-secret scope. It reads
+  only Key Vault secret-version identifiers and enabled attributes, never the
+  secret value. Runtime input rejects mutable/uppercase image digests,
+  unreviewed repositories, non-Consumption profiles, and malformed versions.
+  The Job what-if passes only for one exact Job `Create`. Nineteen synthetic
+  runtime/RBAC/what-if scenarios plus parser, mutation/value-read-command, and
+  sensitive-literal checks passed locally. No live Job what-if was run.
 
 Only the additive, empty identity schema has been applied. No application
 setting, API image, Entra production flow, Google Cloud setting, Stripe object,
@@ -310,6 +321,11 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    exists, in `FoundationWhatIf` mode. Store no live parameter file. Stop if
    the aggregate-only result is anything other than the exact three-create
    allowlist; what-if approval does not authorize foundation deployment.
+   After an approved foundation exists and the immutable image digest and
+   enabled secret version are separately available, use `JobWhatIf`. Stop on
+   any extra/broad/conditional RBAC assignment or any result other than one
+   exact Job create. A passing Job what-if does not authorize Job creation or
+   execution.
 5. Verify email and Google traffic remains on its current authorization
    tenant while `shadow_*` comparison evidence is collected. Verify the
    isolated Microsoft pilot token's directory/provider claims separately.

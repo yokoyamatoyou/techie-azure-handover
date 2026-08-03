@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:ReviewedFoundationTemplateSha256 = 'EEC7F55C1CBCEBD578E69D6AB7A8220FC64DA36542FF9C8D2E25F4AFF1D9623E'
+$script:ReviewedJobTemplateSha256 = 'BDB474F05EAF4C856826351D0C2B1911C51E0B0F95B463DA3644311A213D0267'
 
 function Throw-IdentityShadowSafeError {
     param(
@@ -226,8 +228,264 @@ function Test-IdentityShadowFoundationWhatIf {
     }
 }
 
+function Assert-IdentityShadowReviewedTemplateHash {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('Foundation', 'Job')][string]$TemplateKind,
+        [Parameter(Mandatory = $true)][string]$TemplatePath
+    )
+
+    if (-not (Test-Path -LiteralPath $TemplatePath -PathType Leaf)) {
+        Throw-IdentityShadowSafeError -Code 'REVIEWED_TEMPLATE_MISSING'
+    }
+    $expectedHash = if ($TemplateKind -eq 'Foundation') {
+        $script:ReviewedFoundationTemplateSha256
+    }
+    else {
+        $script:ReviewedJobTemplateSha256
+    }
+    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $TemplatePath).Hash.ToUpperInvariant()
+    if ($actualHash -ne $expectedHash) {
+        Throw-IdentityShadowSafeError -Code 'REVIEWED_TEMPLATE_HASH_MISMATCH'
+    }
+    return [pscustomobject]@{
+        Status = 'pass'
+        TemplateKind = $TemplateKind
+    }
+}
+
+function Assert-IdentityShadowJobRuntimeInput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$ExpectedSubscriptionId,
+        [Parameter(Mandatory = $true)][string]$ExpectedResourceTenantId,
+        [Parameter(Mandatory = $true)][string]$ExpectedExternalDirectoryId,
+        [Parameter(Mandatory = $true)][string]$ResourceGroupName,
+        [Parameter(Mandatory = $true)][string]$ContainerAppsEnvironmentName,
+        [Parameter(Mandatory = $true)][string]$AcrName,
+        [Parameter(Mandatory = $true)][string]$KeyVaultName,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretName,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$JobName,
+        [Parameter(Mandatory = $true)][string]$ImageRepository,
+        [Parameter(Mandatory = $true)][string]$ImageDigest,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretVersion,
+        [Parameter(Mandatory = $true)][string]$WorkloadProfileName
+    )
+
+    $resourceArguments = @{
+        ExpectedSubscriptionId = $ExpectedSubscriptionId
+        ExpectedResourceTenantId = $ExpectedResourceTenantId
+        ExpectedExternalDirectoryId = $ExpectedExternalDirectoryId
+        ResourceGroupName = $ResourceGroupName
+        ContainerAppsEnvironmentName = $ContainerAppsEnvironmentName
+        AcrName = $AcrName
+        KeyVaultName = $KeyVaultName
+        DatabaseSecretName = $DatabaseSecretName
+        IdentityName = $IdentityName
+        JobName = $JobName
+    }
+    $resourceState = Assert-IdentityShadowPreflightInput @resourceArguments
+    if (
+        [string]::IsNullOrWhiteSpace($ImageRepository) -or
+        $ImageRepository.Length -gt 255 -or
+        $ImageRepository -cnotmatch '^[a-z0-9]+(?:(?:[._-][a-z0-9]+)|(?:/[a-z0-9]+))*$'
+    ) {
+        Throw-IdentityShadowSafeError -Code 'IMAGE_REPOSITORY_INVALID'
+    }
+    if ($ImageDigest -cnotmatch '^sha256:[0-9a-f]{64}$') {
+        Throw-IdentityShadowSafeError -Code 'IMAGE_DIGEST_INVALID'
+    }
+    if ($DatabaseSecretVersion -cnotmatch '^[0-9a-f]{32}$') {
+        Throw-IdentityShadowSafeError -Code 'DATABASE_SECRET_VERSION_INVALID'
+    }
+    if ($WorkloadProfileName -cne 'Consumption') {
+        Throw-IdentityShadowSafeError -Code 'WORKLOAD_PROFILE_NOT_ALLOWED'
+    }
+
+    return [pscustomobject]@{
+        Resource = $resourceState
+        ImageRepository = $ImageRepository
+        ImageDigest = $ImageDigest
+        DatabaseSecretVersion = $DatabaseSecretVersion
+        WorkloadProfileName = $WorkloadProfileName
+    }
+}
+
+function Test-IdentityShadowFoundationRoleAssignments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Assignments,
+        [Parameter(Mandatory = $true)][string]$IdentityPrincipalId,
+        [Parameter(Mandatory = $true)][string]$ExpectedSubscriptionId,
+        [Parameter(Mandatory = $true)][string]$ExpectedResourceTenantId,
+        [Parameter(Mandatory = $true)][string]$ExpectedExternalDirectoryId,
+        [Parameter(Mandatory = $true)][string]$ResourceGroupName,
+        [Parameter(Mandatory = $true)][string]$ContainerAppsEnvironmentName,
+        [Parameter(Mandatory = $true)][string]$AcrName,
+        [Parameter(Mandatory = $true)][string]$KeyVaultName,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretName,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$JobName
+    )
+
+    $resourceArguments = @{
+        ExpectedSubscriptionId = $ExpectedSubscriptionId
+        ExpectedResourceTenantId = $ExpectedResourceTenantId
+        ExpectedExternalDirectoryId = $ExpectedExternalDirectoryId
+        ResourceGroupName = $ResourceGroupName
+        ContainerAppsEnvironmentName = $ContainerAppsEnvironmentName
+        AcrName = $AcrName
+        KeyVaultName = $KeyVaultName
+        DatabaseSecretName = $DatabaseSecretName
+        IdentityName = $IdentityName
+        JobName = $JobName
+    }
+    $expected = Get-IdentityShadowFoundationExpectedResources @resourceArguments
+    $principalId = ConvertTo-NormalizedGuid -Value $IdentityPrincipalId -ErrorCode 'IDENTITY_PRINCIPAL_ID_INVALID'
+    $items = @($Assignments)
+    if ($items.Count -ne 2) {
+        Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_COUNT_MISMATCH'
+    }
+
+    $roleBase = "/subscriptions/$($expected.Input.SubscriptionId)/providers/Microsoft.Authorization/roleDefinitions"
+    $acrRoleId = "$roleBase/7f951dda-4ed3-4680-a7ca-43fe172d538d"
+    $secretRoleId = "$roleBase/4633458b-17de-408a-b874-0445c86b69e6"
+    $acrMatches = 0
+    $secretMatches = 0
+
+    foreach ($assignment in $items) {
+        $properties = @($assignment.PSObject.Properties.Name)
+        foreach ($requiredProperty in @(
+            'principalId',
+            'principalType',
+            'roleDefinitionId',
+            'scope',
+            'condition',
+            'conditionVersion',
+            'description',
+            'delegatedManagedIdentityResourceId'
+        )) {
+            if (-not ($properties -contains $requiredProperty)) {
+                Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_SHAPE_INVALID'
+            }
+        }
+        if ([string]$assignment.principalId -ine $principalId) {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_PRINCIPAL_MISMATCH'
+        }
+        if ([string]$assignment.principalType -ine 'ServicePrincipal') {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_PRINCIPAL_TYPE_INVALID'
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$assignment.condition)) {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_CONDITION_REJECTED'
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$assignment.conditionVersion)) {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_CONDITION_VERSION_REJECTED'
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$assignment.description)) {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_DESCRIPTION_REJECTED'
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$assignment.delegatedManagedIdentityResourceId)) {
+            Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_DELEGATION_REJECTED'
+        }
+
+        $scope = ([string]$assignment.scope).Trim().TrimEnd('/')
+        $roleDefinitionId = ([string]$assignment.roleDefinitionId).Trim().TrimEnd('/')
+        if ($scope -ieq $expected.AcrId -and $roleDefinitionId -ieq $acrRoleId) {
+            $acrMatches += 1
+            continue
+        }
+        if ($scope -ieq $expected.DatabaseSecretId -and $roleDefinitionId -ieq $secretRoleId) {
+            $secretMatches += 1
+            continue
+        }
+        Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_OUTSIDE_ALLOWLIST'
+    }
+
+    if ($acrMatches -ne 1 -or $secretMatches -ne 1) {
+        Throw-IdentityShadowSafeError -Code 'FOUNDATION_ROLE_ASSIGNMENT_REQUIRED_PAIR_MISSING'
+    }
+    return [pscustomobject]@{
+        Status = 'pass'
+        AssignmentCount = 2
+        AcrRoleCount = 1
+        KeyVaultSecretRoleCount = 1
+    }
+}
+
+function Test-IdentityShadowJobWhatIf {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object]$WhatIfResult,
+        [Parameter(Mandatory = $true)][string]$ExpectedSubscriptionId,
+        [Parameter(Mandatory = $true)][string]$ExpectedResourceTenantId,
+        [Parameter(Mandatory = $true)][string]$ExpectedExternalDirectoryId,
+        [Parameter(Mandatory = $true)][string]$ResourceGroupName,
+        [Parameter(Mandatory = $true)][string]$ContainerAppsEnvironmentName,
+        [Parameter(Mandatory = $true)][string]$AcrName,
+        [Parameter(Mandatory = $true)][string]$KeyVaultName,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretName,
+        [Parameter(Mandatory = $true)][string]$IdentityName,
+        [Parameter(Mandatory = $true)][string]$JobName,
+        [Parameter(Mandatory = $true)][string]$ImageRepository,
+        [Parameter(Mandatory = $true)][string]$ImageDigest,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretVersion,
+        [Parameter(Mandatory = $true)][string]$WorkloadProfileName
+    )
+
+    $jobArguments = @{} + $PSBoundParameters
+    [void]$jobArguments.Remove('WhatIfResult')
+    $runtime = Assert-IdentityShadowJobRuntimeInput @jobArguments
+    $resourceArguments = @{
+        ExpectedSubscriptionId = $ExpectedSubscriptionId
+        ExpectedResourceTenantId = $ExpectedResourceTenantId
+        ExpectedExternalDirectoryId = $ExpectedExternalDirectoryId
+        ResourceGroupName = $ResourceGroupName
+        ContainerAppsEnvironmentName = $ContainerAppsEnvironmentName
+        AcrName = $AcrName
+        KeyVaultName = $KeyVaultName
+        DatabaseSecretName = $DatabaseSecretName
+        IdentityName = $IdentityName
+        JobName = $JobName
+    }
+    $expected = Get-IdentityShadowFoundationExpectedResources @resourceArguments
+    $rootProperties = @($WhatIfResult.PSObject.Properties.Name)
+    if (-not ($rootProperties -contains 'status') -or [string]$WhatIfResult.status -ne 'Succeeded') {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_STATUS_NOT_SUCCEEDED'
+    }
+    if (-not ($rootProperties -contains 'changes') -or $null -eq $WhatIfResult.changes) {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_CHANGES_MISSING'
+    }
+    $changes = @($WhatIfResult.changes)
+    if ($changes.Count -ne 1) {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_CHANGE_COUNT_UNEXPECTED'
+    }
+    $change = $changes[0]
+    $properties = @($change.PSObject.Properties.Name)
+    if (-not ($properties -contains 'changeType') -or -not ($properties -contains 'resourceId')) {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_CHANGE_SHAPE_INVALID'
+    }
+    if ([string]$change.changeType -ne 'Create') {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_NON_CREATE_CHANGE_REJECTED'
+    }
+    if (([string]$change.resourceId).Trim().TrimEnd('/') -ine $expected.JobId) {
+        Throw-IdentityShadowSafeError -Code 'JOB_WHAT_IF_RESOURCE_OUTSIDE_ALLOWLIST'
+    }
+
+    return [pscustomobject]@{
+        Status = 'pass'
+        CreateCount = 1
+        JobCreateCount = 1
+        TemplateInputValidated = ($null -ne $runtime)
+    }
+}
+
 Export-ModuleMember -Function @(
+    'Assert-IdentityShadowJobRuntimeInput',
     'Assert-IdentityShadowPreflightInput',
+    'Assert-IdentityShadowReviewedTemplateHash',
     'Get-IdentityShadowFoundationExpectedResources',
-    'Test-IdentityShadowFoundationWhatIf'
+    'Test-IdentityShadowFoundationRoleAssignments',
+    'Test-IdentityShadowFoundationWhatIf',
+    'Test-IdentityShadowJobWhatIf'
 )

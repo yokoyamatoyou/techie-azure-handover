@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('ContextOnly', 'FoundationWhatIf')]
+    [ValidateSet('ContextOnly', 'FoundationWhatIf', 'JobWhatIf')]
     [string]$Action,
 
     [Parameter(Mandatory = $true)][string]$ExpectedSubscriptionId,
@@ -13,13 +13,18 @@ param(
     [Parameter(Mandatory = $true)][string]$KeyVaultName,
     [string]$DatabaseSecretName = 'database-url',
     [string]$IdentityName = 'techie-identity-shadow-mi',
-    [string]$JobName = 'techie-identity-shadow'
+    [string]$JobName = 'techie-identity-shadow',
+    [string]$ImageRepository = 'techie-identity-shadow',
+    [string]$ImageDigest,
+    [string]$DatabaseSecretVersion,
+    [string]$WorkloadProfileName = 'Consumption'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $modulePath = Join-Path $PSScriptRoot 'IdentityShadowFoundationPreflight.psm1'
 $foundationPath = Join-Path $PSScriptRoot 'foundation.bicep'
+$jobPath = Join-Path $PSScriptRoot 'job.bicep'
 
 function Throw-PreflightSafeError {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -47,13 +52,17 @@ function Invoke-AzureCliCapture {
         'resource show',
         'resource list',
         'keyvault secret',
+        'role assignment',
         'deployment group'
     )
     if (-not ($allowedPrefixes -contains $commandPrefix)) {
         Throw-PreflightSafeError -Code 'AZURE_CLI_COMMAND_OUTSIDE_READ_ONLY_ALLOWLIST'
     }
-    if ($commandPrefix -eq 'keyvault secret' -and ($Arguments.Count -lt 3 -or $Arguments[2] -ne 'show')) {
+    if ($commandPrefix -eq 'keyvault secret' -and ($Arguments.Count -lt 3 -or $Arguments[2] -ne 'list-versions')) {
         Throw-PreflightSafeError -Code 'AZURE_CLI_KEY_VAULT_COMMAND_REJECTED'
+    }
+    if ($commandPrefix -eq 'role assignment' -and ($Arguments.Count -lt 3 -or $Arguments[2] -ne 'list')) {
+        Throw-PreflightSafeError -Code 'AZURE_CLI_ROLE_ASSIGNMENT_COMMAND_REJECTED'
     }
     if ($commandPrefix -eq 'deployment group' -and ($Arguments.Count -lt 3 -or $Arguments[2] -ne 'what-if')) {
         Throw-PreflightSafeError -Code 'AZURE_CLI_DEPLOYMENT_COMMAND_REJECTED'
@@ -130,21 +139,112 @@ function Test-DatabaseSecretPresent {
         [Parameter(Mandatory = $true)][string]$SubscriptionId
     )
     $result = Invoke-AzureCliCapture -Arguments @(
-        'keyvault', 'secret', 'show',
+        'keyvault', 'secret', 'list-versions',
         '--vault-name', $KeyVaultName,
         '--name', $DatabaseSecretName,
         '--subscription', $SubscriptionId,
-        '--query', 'id',
+        '--query', 'length(@)',
         '--output', 'tsv',
         '--only-show-errors'
     )
-    if ($result.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($result.Text)) {
-        return $true
+    if ($result.ExitCode -eq 0) {
+        $versionCount = 0
+        if (-not [int]::TryParse($result.Text.Trim(), [ref]$versionCount)) {
+            Throw-PreflightSafeError -Code 'DATABASE_SECRET_VERSION_COUNT_INVALID'
+        }
+        return ($versionCount -gt 0)
     }
     if ($result.Text -match '(?i)SecretNotFound|secret[^\r\n]{0,80}not found') {
         return $false
     }
     Throw-PreflightSafeError -Code 'DATABASE_SECRET_READ_STATE_UNVERIFIED'
+}
+
+function Get-IdentityPrincipalId {
+    param(
+        [Parameter(Mandatory = $true)][string]$IdentityResourceId,
+        [Parameter(Mandatory = $true)][string]$SubscriptionId
+    )
+    $raw = Invoke-AzureCliRequiredText -FailureCode 'IDENTITY_PRINCIPAL_READ_FAILED' -Arguments @(
+        'resource', 'show',
+        '--ids', $IdentityResourceId,
+        '--subscription', $SubscriptionId,
+        '--query', '{id:id,principalId:properties.principalId}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+    try {
+        $identity = $raw | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Throw-PreflightSafeError -Code 'IDENTITY_PRINCIPAL_RESPONSE_INVALID'
+    }
+    if (
+        [string]$identity.id -ine $IdentityResourceId -or
+        [string]::IsNullOrWhiteSpace([string]$identity.principalId)
+    ) {
+        Throw-PreflightSafeError -Code 'IDENTITY_PRINCIPAL_RESPONSE_INVALID'
+    }
+    return [string]$identity.principalId
+}
+
+function Get-IdentityEffectiveRoleAssignments {
+    param(
+        [Parameter(Mandatory = $true)][string]$IdentityPrincipalId,
+        [Parameter(Mandatory = $true)][string]$SubscriptionId
+    )
+    $raw = Invoke-AzureCliRequiredText -FailureCode 'IDENTITY_ROLE_ASSIGNMENT_READ_FAILED' -Arguments @(
+        'role', 'assignment', 'list',
+        '--assignee-object-id', $IdentityPrincipalId,
+        '--all',
+        '--include-inherited',
+        '--fill-principal-name', 'false',
+        '--fill-role-definition-name', 'false',
+        '--subscription', $SubscriptionId,
+        '--query', '[].{principalId:principalId,principalType:principalType,roleDefinitionId:roleDefinitionId,scope:scope,condition:condition,conditionVersion:conditionVersion,description:description,delegatedManagedIdentityResourceId:delegatedManagedIdentityResourceId}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+    try {
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Throw-PreflightSafeError -Code 'IDENTITY_ROLE_ASSIGNMENT_RESPONSE_INVALID'
+    }
+    return @($parsed)
+}
+
+function Test-DatabaseSecretVersionEnabled {
+    param(
+        [Parameter(Mandatory = $true)][string]$KeyVaultName,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretName,
+        [Parameter(Mandatory = $true)][string]$DatabaseSecretVersion,
+        [Parameter(Mandatory = $true)][string]$SubscriptionId
+    )
+    $raw = Invoke-AzureCliRequiredText -FailureCode 'DATABASE_SECRET_VERSION_READ_FAILED' -Arguments @(
+        'keyvault', 'secret', 'list-versions',
+        '--vault-name', $KeyVaultName,
+        '--name', $DatabaseSecretName,
+        '--subscription', $SubscriptionId,
+        '--query', '[].{id:id,enabled:attributes.enabled}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+    try {
+        $versions = @($raw | ConvertFrom-Json -ErrorAction Stop)
+    }
+    catch {
+        Throw-PreflightSafeError -Code 'DATABASE_SECRET_VERSION_RESPONSE_INVALID'
+    }
+    $expectedId = "https://$KeyVaultName.vault.azure.net/secrets/$DatabaseSecretName/$DatabaseSecretVersion"
+    $matches = @($versions | Where-Object { [string]$_.id -ieq $expectedId })
+    if ($matches.Count -ne 1) {
+        Throw-PreflightSafeError -Code 'DATABASE_SECRET_VERSION_NOT_CONFIRMED'
+    }
+    if ($matches[0].enabled -ne $true) {
+        Throw-PreflightSafeError -Code 'DATABASE_SECRET_VERSION_NOT_ENABLED'
+    }
+    return $true
 }
 
 try {
@@ -154,7 +254,12 @@ try {
     if (-not (Test-Path -LiteralPath $foundationPath -PathType Leaf)) {
         Throw-PreflightSafeError -Code 'FOUNDATION_TEMPLATE_MISSING'
     }
+    if (-not (Test-Path -LiteralPath $jobPath -PathType Leaf)) {
+        Throw-PreflightSafeError -Code 'JOB_TEMPLATE_MISSING'
+    }
     Import-Module $modulePath -Force -ErrorAction Stop
+    [void](Assert-IdentityShadowReviewedTemplateHash -TemplateKind 'Foundation' -TemplatePath $foundationPath)
+    [void](Assert-IdentityShadowReviewedTemplateHash -TemplateKind 'Job' -TemplatePath $jobPath)
 
     $resourceArguments = @{
         ExpectedSubscriptionId = $ExpectedSubscriptionId
@@ -204,11 +309,87 @@ try {
 
     $identityCount = Get-AzureResourceNameCount -ResourceGroupName $expected.Input.ResourceGroupName -ResourceType 'Microsoft.ManagedIdentity/userAssignedIdentities' -ResourceName $expected.Input.IdentityName -SubscriptionId $expected.Input.SubscriptionId -FailureCode 'IDENTITY_EXISTENCE_CHECK_FAILED'
     $jobCount = Get-AzureResourceNameCount -ResourceGroupName $expected.Input.ResourceGroupName -ResourceType 'Microsoft.App/jobs' -ResourceName $expected.Input.JobName -SubscriptionId $expected.Input.SubscriptionId -FailureCode 'JOB_EXISTENCE_CHECK_FAILED'
-    if ($identityCount -ne 0) {
-        Throw-PreflightSafeError -Code 'DEDICATED_IDENTITY_ALREADY_EXISTS'
-    }
     if ($jobCount -ne 0) {
         Throw-PreflightSafeError -Code 'SHADOW_JOB_ALREADY_EXISTS'
+    }
+
+    if ($Action -eq 'JobWhatIf') {
+        $jobArguments = @{
+            ExpectedSubscriptionId = $ExpectedSubscriptionId
+            ExpectedResourceTenantId = $ExpectedResourceTenantId
+            ExpectedExternalDirectoryId = $ExpectedExternalDirectoryId
+            ResourceGroupName = $ResourceGroupName
+            ContainerAppsEnvironmentName = $ContainerAppsEnvironmentName
+            AcrName = $AcrName
+            KeyVaultName = $KeyVaultName
+            DatabaseSecretName = $DatabaseSecretName
+            IdentityName = $IdentityName
+            JobName = $JobName
+            ImageRepository = $ImageRepository
+            ImageDigest = $ImageDigest
+            DatabaseSecretVersion = $DatabaseSecretVersion
+            WorkloadProfileName = $WorkloadProfileName
+        }
+        $runtime = Assert-IdentityShadowJobRuntimeInput @jobArguments
+        if ($identityCount -ne 1) {
+            Throw-PreflightSafeError -Code 'DEDICATED_IDENTITY_NOT_CONFIRMED'
+        }
+        $principalId = Get-IdentityPrincipalId -IdentityResourceId $expected.IdentityId -SubscriptionId $expected.Input.SubscriptionId
+        $assignments = Get-IdentityEffectiveRoleAssignments -IdentityPrincipalId $principalId -SubscriptionId $expected.Input.SubscriptionId
+        $roleState = Test-IdentityShadowFoundationRoleAssignments -Assignments $assignments -IdentityPrincipalId $principalId @resourceArguments
+        [void](Test-DatabaseSecretVersionEnabled -KeyVaultName $expected.Input.KeyVaultName -DatabaseSecretName $expected.Input.DatabaseSecretName -DatabaseSecretVersion $runtime.DatabaseSecretVersion -SubscriptionId $expected.Input.SubscriptionId)
+
+        $whatIfText = Invoke-AzureCliRequiredText -FailureCode 'JOB_WHAT_IF_COMMAND_FAILED' -Arguments @(
+            'deployment', 'group', 'what-if',
+            '--name', 'techie-identity-shadow-job-preflight',
+            '--resource-group', $expected.Input.ResourceGroupName,
+            '--subscription', $expected.Input.SubscriptionId,
+            '--mode', 'Incremental',
+            '--template-file', $jobPath,
+            '--parameters',
+            "containerAppsEnvironmentName=$($expected.Input.ContainerAppsEnvironmentName)",
+            "acrName=$($expected.Input.AcrName)",
+            "keyVaultName=$($expected.Input.KeyVaultName)",
+            "identityName=$($expected.Input.IdentityName)",
+            "jobName=$($expected.Input.JobName)",
+            "imageRepository=$($runtime.ImageRepository)",
+            "imageDigest=$($runtime.ImageDigest)",
+            "databaseSecretName=$($expected.Input.DatabaseSecretName)",
+            "databaseSecretVersion=$($runtime.DatabaseSecretVersion)",
+            "workloadProfileName=$($runtime.WorkloadProfileName)",
+            '--result-format', 'ResourceIdOnly',
+            '--no-pretty-print',
+            '--no-prompt', 'true',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+        try {
+            $whatIfResult = $whatIfText | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            Throw-PreflightSafeError -Code 'JOB_WHAT_IF_RESPONSE_INVALID'
+        }
+        $validated = Test-IdentityShadowJobWhatIf -WhatIfResult $whatIfResult @jobArguments
+        $safeSummary = [ordered]@{
+            action = 'JobWhatIf'
+            account_match = $true
+            directory_roles_separated = $true
+            dedicated_identity_present = $true
+            foundation_role_assignment_count = $roleState.AssignmentCount
+            database_secret_version_enabled = $true
+            immutable_image_digest = $true
+            create_count = $validated.CreateCount
+            job_create_count = $validated.JobCreateCount
+            non_create_count = 0
+            azure_write_performed = $false
+            job_execution_started = $false
+        }
+        Write-Output ("IDENTITY_SHADOW_JOB_WHAT_IF_PASS " + ($safeSummary | ConvertTo-Json -Compress))
+        exit 0
+    }
+
+    if ($identityCount -ne 0) {
+        Throw-PreflightSafeError -Code 'DEDICATED_IDENTITY_ALREADY_EXISTS'
     }
 
     $databaseSecretPresent = Test-DatabaseSecretPresent -KeyVaultName $expected.Input.KeyVaultName -DatabaseSecretName $expected.Input.DatabaseSecretName -SubscriptionId $expected.Input.SubscriptionId

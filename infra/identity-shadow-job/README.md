@@ -19,12 +19,27 @@ Current state: **LOCAL PREPARATION ONLY / NOT DEPLOYED / NOT STARTED**.
 - Docker build, ACR push, Azure what-if, and all live resources remain
   `NOT_CHECKED` or `NOT_STARTED` and require their own approvals.
 - `Invoke-IdentityShadowFoundationPreflight.ps1` is a secret-free, read-only
-  context and foundation what-if gate. It compares the current Azure CLI
+  context, foundation what-if, and manual Job what-if gate. It compares the current Azure CLI
   subscription/workforce tenant to caller-supplied expected GUIDs without
   printing them. Its what-if parser permits exactly three `Create` changes:
   the dedicated identity, `AcrPull` at the exact ACR scope, and Key Vault
   Secrets User at the exact individual-secret scope. Every other change type,
   resource, duplicate, broad vault scope, or directory ambiguity fails closed.
+- The `JobWhatIf` action is valid only after the reviewed foundation exists.
+  It requires the dedicated identity to have exactly two direct role
+  assignments across the subscription: `AcrPull` at the exact ACR and Key
+  Vault Secrets User at the exact individual-secret scope. Extra, inherited,
+  conditional, delegated, broad, or wrong-role assignments fail closed.
+- `JobWhatIf` also requires a lowercase immutable image manifest digest, the
+  `Consumption` workload profile, and an exact enabled 32-character Key Vault
+  secret version. It uses `secret list-versions`, whose response contains
+  identifiers and attributes but no secret values; it does not use `secret
+  show`. The what-if result must contain exactly one `Microsoft.App/jobs`
+  `Create` and no other change.
+- Both Bicep files must match their reviewed SHA-256 before any Azure command
+  is allowed. The reviewed Job template itself fixes manual trigger, no
+  ingress, one replica, zero retries, five-minute timeout, resolver `shadow`,
+  auto-provision `0`, and Entra binding-claim trust `0`.
 - The preflight never stores a live parameter file or prints raw Azure CLI
   output, resource IDs, tenant/subscription IDs, secret URIs, or values. The
   `ContextOnly` action may safely report that the secret is absent. The
@@ -35,6 +50,10 @@ Current state: **LOCAL PREPARATION ONLY / NOT DEPLOYED / NOT STARTED**.
   It covers valid and invalid what-if shapes, exact role scopes, directory
   separation, PowerShell parsing, mutation-command absence, and secret-literal
   scanning without contacting Azure.
+- The manual Job extension is validated with
+  `powershell -NoProfile -File .\Test-IdentityShadowJobPreflight.ps1`. It adds
+  19 runtime, RBAC, and Job what-if scenarios and confirms that no secret-value
+  read or Azure mutation command is present.
 
 ## Safety contract
 
@@ -119,6 +138,11 @@ customer directory is not the deployment directory.
 5. Run `az deployment group what-if` for `job.bicep`. Expected addition is one
    `Microsoft.App/jobs` resource. No application, Web App, Container App,
    Entra, Google, Stripe, database row, or network ingress may change.
+   Use the same reviewed wrapper with `-Action JobWhatIf`; pass an immutable
+   manifest digest and exact secret version only in the protected operator
+   session. Continue only when the aggregate result reports the reviewed two
+   direct role assignments, enabled secret version, immutable digest, and
+   exactly one Job create.
 6. Only after explicit approval, deploy `job.bicep`. Creation must leave the
    execution list empty.
 7. Only after a final start approval, run exactly one
