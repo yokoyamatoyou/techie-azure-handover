@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA APPLIED / API SHADOW NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / API SHADOW NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -140,6 +140,32 @@ currently running app setting or Azure resource.
   emitted by the preflight, dry-run, apply, or receipt.
 - Azure reports seven completed automatic backups. On-demand backup is not
   supported by the server's current burstable compute tier.
+- The production `techie-api` Web App is Linux on Basic B1. Its App Service
+  plan currently contains two apps and zero deployment slots. Basic does not
+  support a staging slot, so no in-place shadow deployment or plan change was
+  attempted.
+- Kudu boolean-only checks confirmed the expected Entra authentication mode
+  and sign-up/sign-in policy, present Entra tenant/client, database, and Stripe
+  configuration, effective legacy resolver behavior, auto-provision off, and
+  Entra business-binding claim trust off. No setting value was printed.
+- The live Key Vault currently lists zero available secrets. This conflicts
+  with the repository IaC, which defines a `database-url` secret and managed
+  identity references. Do not treat the IaC declaration as proof that live
+  Key Vault secret wiring exists, and do not copy the Web App connection string
+  into a new resource without a separately approved secret-bootstrap plan.
+- Read-only live shadow probe commit:
+  `bde7bf87849b031add4ff87656369198ff3cf658`.
+- Read-only shadow probe SHA-256:
+  `B100C59407E46768510088FEA05FF18AEA3188C5006970CDB53E2A6B5D8DA0E3`.
+- The remote hash matched before execution. `SHADOW_PROBE_PASS` then verified a
+  repeatable-read, read-only transaction; unchanged `26`/`26`/`26` business
+  aggregates; four empty identity tables; zero business/Stripe duplicates;
+  zero duplicate or orphan identity rows; a zero-match synthetic identity;
+  and one internal legacy-candidate lookup without emitting its coordinate.
+- Shadow-probe dynamic tests: `4 passed`. Existing migration-runner dynamic
+  tests: `3 passed`. Existing Python resolver tests reached all 39 test bodies
+  and 100%, but the process did not exit before the 120-second timeout; this is
+  test-body pass with teardown timeout, not a clean command pass.
 - The current PostgreSQL client warned that a future connection-string major
   version may change `sslmode=require` semantics. The successful run used the
   current certificate-verifying behavior; a later connection-setting change
@@ -155,6 +181,11 @@ The immutable local execution receipt is
 `C:\tmp\techie-live-audit-20260803\LIVE_IDENTITY_MIGRATION_RECEIPT_20260804.md`.
 It records only the reviewed hashes, aggregate counts, commit result, unchanged
 boundaries, and residual warning.
+
+The immutable API-shadow preflight receipt is
+`C:\tmp\techie-live-audit-20260803\LIVE_API_SHADOW_PREFLIGHT_RECEIPT_20260804.md`.
+It records the Azure role separation, Basic/no-slot constraint, boolean-only
+setting gates, read-only probe result, and the next deployment decision gate.
 
 A versioned local changed-file snapshot is available under
 `C:\tmp\techie-live-audit-20260803`. The external snapshot manifest records
@@ -190,8 +221,14 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    empty identity tables and unchanged pre-change aggregates. Apply mode used
    both `--apply` and the exact `--confirm-sha256` value; the DB URL was never
    logged. The runner kept TLS certificate verification enabled.
-4. Deploy code with resolver `shadow`, auto-provision `0`, and Entra binding
-   claims trust `0`.
+4. **Preflight completed 2026-08-04; live write not started:** the production
+   Web App is on Basic B1 with no deployment slot. Do not deploy in place or
+   add an app to the same plan without a separate risk/cost decision. Obtain
+   explicit approval for either an ingress-disabled, scale-to-zero Container
+   Apps manual job on the existing workload-profile environment together with
+   a least-secret Key Vault bootstrap, or a paid Standard-or-higher App Service
+   tier and staging slot. Then deploy code with resolver `shadow`,
+   auto-provision `0`, and Entra binding claims trust `0`.
 5. Verify email and Google traffic remains on its current authorization
    tenant while `shadow_*` comparison evidence is collected. Verify the
    isolated Microsoft pilot token's directory/provider claims separately.
@@ -220,10 +257,11 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
 - Stop on directory ambiguity, provider ambiguity, customer/Stripe count
   drift, any duplicate link, secret/PII exposure, or a migration hash mismatch.
 
-The live database migration is complete and must not be rerun. The current
-owner is now at the API-shadow gate: first confirm the live settings and a
-bounded slot/canary capability read-only, then deploy only with resolver
-`shadow`, auto-provision `0`, and Entra binding-claim trust `0`. The running
-application remains on legacy behavior until that separate deployment gate is
-verified. Any push must target the user-owned fork branch; PR merge and every
-remaining live gate remain separate and prohibited at this stage.
+The live database migration is complete and must not be rerun. The read-only
+API-shadow probe is also complete. The current owner is at the isolated-runtime
+decision gate because the production Basic plan has no slots. The running
+application remains on legacy behavior until a separately approved isolated
+runtime is deployed with resolver `shadow`, auto-provision `0`, and Entra
+binding-claim trust `0`. Any push must target the user-owned fork branch; PR
+merge and every remaining live gate remain separate and prohibited at this
+stage.
