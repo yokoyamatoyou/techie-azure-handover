@@ -1,0 +1,13 @@
+{
+  "name": "techie-identity-shadow-job",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only TECHIE canonical identity shadow probe image",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "dependencies": {
+    "pg": "8.22.0"
+  }
+}

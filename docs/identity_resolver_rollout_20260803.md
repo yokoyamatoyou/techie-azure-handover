@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-04 JST
 - Current owner: one SOL agent only
-- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / API SHADOW NOT DEPLOYED / PRODUCTION NOT CUT OVER`
+- Status: `LIVE DB SCHEMA + READ-ONLY SHADOW PROBE PASS / ISOLATED JOB LOCAL PACKAGE READY / LIVE JOB NOT DEPLOYED / PRODUCTION NOT CUT OVER`
 - Repository branch: `agent/clarify-techie-login-options`
 - Baseline commit: `705839b50414b4691574eeff29364a5b47d6462b`
 
@@ -170,6 +170,24 @@ currently running app setting or Azure resource.
   version may change `sslmode=require` semantics. The successful run used the
   current certificate-verifying behavior; a later connection-setting change
   must preserve explicit `verify-full` semantics without exposing the URL.
+- A deployment-hold package now exists at
+  `infra/identity-shadow-job/` for an isolated Container Apps manual job. It
+  contains a digest-required Docker build, a lockfile-pinned PostgreSQL client,
+  a separate managed-identity/RBAC foundation, a version-pinned Key Vault
+  reference, and the manual job Bicep resource. It does not contain a secret
+  value or a live parameter file.
+- The dedicated user-assigned identity is limited to `AcrPull` on the existing
+  ACR and `Key Vault Secrets User` on the individual `database-url` secret,
+  not the whole vault, resource group, or subscription. The job has no ingress,
+  one replica, zero retries, a five-minute timeout, and a manual-only trigger.
+- Isolated-job contract test: `1 passed`. Existing shadow-probe tests: `4
+  passed`. Existing migration-runner tests: `3 passed`. The dependency lock is
+  internally consistent and npm reported zero known vulnerabilities.
+- A real Bicep compile, Docker build, ACR push, Azure what-if, Key Vault secret
+  bootstrap, identity/RBAC creation, job creation, and job start are all
+  `NOT_CHECKED` or `NOT_STARTED`. Neither `az`, `bicep`, nor `docker` is
+  installed in the local command environment. These remain explicit live
+  approval gates and are not implied by the local preparation.
 
 Only the additive, empty identity schema has been applied. No application
 setting, API image, Entra production flow, Google Cloud setting, Stripe object,
@@ -221,14 +239,17 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    empty identity tables and unchanged pre-change aggregates. Apply mode used
    both `--apply` and the exact `--confirm-sha256` value; the DB URL was never
    logged. The runner kept TLS certificate verification enabled.
-4. **Preflight completed 2026-08-04; live write not started:** the production
-   Web App is on Basic B1 with no deployment slot. Do not deploy in place or
-   add an app to the same plan without a separate risk/cost decision. Obtain
-   explicit approval for either an ingress-disabled, scale-to-zero Container
-   Apps manual job on the existing workload-profile environment together with
-   a least-secret Key Vault bootstrap, or a paid Standard-or-higher App Service
-   tier and staging slot. Then deploy code with resolver `shadow`,
-   auto-provision `0`, and Entra binding claims trust `0`.
+4. **Preflight completed and local manual-job package prepared 2026-08-04;
+   live write not started:** the production Web App is on Basic B1 with no
+   deployment slot. Do not deploy in place or add an app to the same plan.
+   The recommended no-ingress manual-job option is now reviewable under
+   `infra/identity-shadow-job/`, but it remains on deployment hold. Obtain
+   explicit approval before the image push, the single-secret Key Vault
+   bootstrap, the managed identity/two narrowly scoped role assignments, the
+   job resource, and a separate approval before its first execution. The paid
+   Standard-or-higher App Service tier and staging-slot option remains an
+   alternative requiring its own approval. Any isolated runtime must keep
+   resolver `shadow`, auto-provision `0`, and Entra binding claims trust `0`.
 5. Verify email and Google traffic remains on its current authorization
    tenant while `shadow_*` comparison evidence is collected. Verify the
    isolated Microsoft pilot token's directory/provider claims separately.
@@ -258,10 +279,11 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
   drift, any duplicate link, secret/PII exposure, or a migration hash mismatch.
 
 The live database migration is complete and must not be rerun. The read-only
-API-shadow probe is also complete. The current owner is at the isolated-runtime
-decision gate because the production Basic plan has no slots. The running
-application remains on legacy behavior until a separately approved isolated
-runtime is deployed with resolver `shadow`, auto-provision `0`, and Entra
-binding-claim trust `0`. Any push must target the user-owned fork branch; PR
-merge and every remaining live gate remain separate and prohibited at this
+API-shadow probe is also complete. The current owner remains at the
+isolated-runtime decision gate because the production Basic plan has no slots.
+The recommended manual-job path is prepared locally but not deployed. The
+running application remains on legacy behavior until a separately approved
+isolated runtime is deployed with resolver `shadow`, auto-provision `0`, and
+Entra binding-claim trust `0`. Any push must target the user-owned fork branch;
+PR merge and every remaining live gate remain separate and prohibited at this
 stage.
