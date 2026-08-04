@@ -511,7 +511,9 @@ stage.
 
 ## 2026-08-04 identity-linking activation contract update
 
-The uncommitted deployment candidate now keeps `IDENTITY_LINKING_ENABLED`
+The deployment candidate in source checkpoint
+`72b4211b1a46ac1148f88bcd75c3e65d73fce8bc` keeps
+`IDENTITY_LINKING_ENABLED`
 false in both the backend and Hub unless all of the following are explicitly
 selected: resolver `enforce`, schema verification, binding-hardening applied
 confirmation, and existing-customer-bootstrap verified confirmation. The
@@ -528,3 +530,8 @@ This is deployment-contract evidence only. Production resolver remains
 off; no Azure, DB, customer, or Stripe write was made. Confirmation switches
 and syntactically valid hashes must be backed by separately approved immutable
 live receipts and cannot create their own evidence.
+
+The checkpoint is published only to the user-owned fork branch
+`agent/clarify-techie-login-options`. Local and remote heads were verified to
+match. This source publication does not change the current isolated-runtime
+decision gate, authorize a PR merge, or satisfy any remaining live gate.

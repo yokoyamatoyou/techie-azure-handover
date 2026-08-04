@@ -14,7 +14,7 @@ independently verified.
 - Prepared: 2026-08-04 JST
 - Next owner: one SOL model only
 - Orchestration, subagents, Luna, and Terra: prohibited by user instruction
-- Status: `LOCAL UI GATED / READ-ONLY PROVIDER STATE REVALIDATED / NO LIVE WRITE AUTHORIZED`
+- Status: `SOURCE CHECKPOINT PUSHED / LOCAL UI GATED / READ-ONLY PROVIDER STATE REVALIDATED / NO LIVE WRITE AUTHORIZED`
 - Repository: `C:\tmp\techie-azure-handover`
 - Branch: `agent/clarify-techie-login-options`
 - Push target: user-owned remote `fork` only
@@ -168,8 +168,9 @@ availability, remaining approvals, and AGENTS/WORKLOG update need separately.
 
 ## 11. Post-handoff local continuation
 
-The working tree after commit `fbef631a8fc031a90513e96ca1c4658f8e0bdc6c`
-contains uncommitted local candidate changes. They:
+Checkpoint commit `72b4211b1a46ac1148f88bcd75c3e65d73fce8bc`, built on
+`fbef631a8fc031a90513e96ca1c4658f8e0bdc6c`, contains the local candidate
+changes below. It is pushed only to the user-owned fork branch. They:
 
 - implement the user-selected grouped provider UI in existing TECHIE colors;
 - stop automatic signup redirection before a provider is selected;
@@ -186,8 +187,9 @@ contains uncommitted local candidate changes. They:
 - add local design QA evidence and focused regression coverage, including
   provider-specific login, signup, and account-link request contracts.
 
-No commit, push, live provider setting, app association, DB/API behavior,
-Stripe object, resolver mode, or deployment was changed by this continuation.
+The source checkpoint commit and user-owned fork push are complete. No live
+provider setting, app association, DB/API behavior, Stripe object, resolver
+mode, PR merge, upstream push, or deployment was changed by this continuation.
 
 ## 12. New-window local connection and deployment audit
 
@@ -211,11 +213,12 @@ sensitive-literal and prohibited Microsoft runtime-hint
 scans pass. No Azure CLI or Bicep CLI is installed in the local command
 environment, so a fresh real Bicep compile remains `NOT_RUN` in this window.
 
-These are uncommitted local candidate changes only. No build, image push,
-cloud setting, live API call, OTP, customer, DB, Stripe, Google Cloud, deploy,
-commit, or push occurred.
+These are source-checkpointed local candidate changes only. No build, image
+push, cloud setting, live API call, OTP, customer, DB, Stripe, Google Cloud,
+deploy, PR merge, or upstream push occurred. The only publication was the
+checkpoint commit to the user-owned fork branch.
 
-Native Email account linking now has an uncommitted local candidate. It
+Native Email account linking is included in the source checkpoint candidate. It
 reauthenticates the bound source, creates a short-lived server-side intent, and
 then requires a separate target Email login or explicit signup. It does not
 use email equality and does not retain the source bearer token in session
@@ -262,3 +265,18 @@ an approved operator reconciliation/removal procedure. Automatic provisioning
 is off, so this candidate does not create a business tenant, customer account,
 or Stripe Customer. Identity linking therefore remains a live `HOLD` even
 though the local candidate is implemented.
+
+## 13. Source checkpoint publication
+
+- Checkpoint commit: `72b4211b1a46ac1148f88bcd75c3e65d73fce8bc`
+- Branch: `agent/clarify-techie-login-options`
+- Remote: user-owned `fork` only
+- Remote head verification: exact match with the checkpoint commit
+- Fresh verification before commit: combined Python suite `70 passed`, provider
+  policy contract `PASS`, both PowerShell deployment scripts parsed, staged
+  `git diff --check` passed, and added-file credential-pattern scan returned
+  zero matches.
+
+No PR creation, PR merge, `origin` push, production deployment, Azure/Entra
+write, DB connection, Stripe change, Google Cloud change, live OTP, or live
+identity operation was performed by the checkpoint publication.
