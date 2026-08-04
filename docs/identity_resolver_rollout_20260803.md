@@ -11,12 +11,22 @@ Microsoft/Google/email identity-linking slice. Older audit files remain valid
 as historical evidence for the state at their capture time, but their
 `IMPLEMENTATION HOLD` wording does not describe the current local branch.
 
+The 2026-08-04 product decision supersedes Microsoft SSO as a public target.
+The current Hub target is Email OTP plus Google. Outlook, Hotmail, Microsoft
+365, and other Microsoft-hosted addresses use Email OTP. The backend provider
+coordinate `microsoft` remains only for dormant/historical data compatibility;
+it does not authorize a public button, provider configuration, or cutover.
+
 The canonical directory/identifier/Stripe boundary and current-versus-target
 state are defined in
-`docs/identity_tenant_stripe_architecture_20260804.md`. The user-observed live
-login state is Email-only. Google and Microsoft production provider/UI state
-was not revalidated in this docs-only pass. The three-option Hub source is a
-repository candidate, not deployment evidence.
+`docs/identity_tenant_stripe_architecture_20260804.md`. A 2026-08-04 read-only
+revalidation observed Email available, Google as test availability, and
+Microsoft unavailable in the public Hub. The Google action reached the Google
+account chooser without account selection. The production External ID flow
+selected Email OTP and Google; Microsoft remained isolated to its Pilot flow.
+See `docs/identity_provider_ui_readonly_revalidation_20260804.md`. The grouped
+Email/Google Hub source remains a repository candidate, not deployment or
+completed-login evidence.
 
 ## Non-negotiable ownership boundaries
 
@@ -136,6 +146,13 @@ currently running app setting or Azure resource.
 
 - Focused identity tests: `49 passed` with pytest cache writes disabled because
   this managed workspace denies pytest's final cache-directory creation.
+- Post-handoff provider UI and billing-anchor extension: `52 passed`; the added
+  cases verify that Email, Google, and Microsoft checkout reuse the canonical
+  tenant and an existing customer anchor without customer creation.
+- Provider policy contract: passed, including inline Hub script compilation,
+  fail-closed configuration, provider-specific login/signup/link requests, and
+  inclusion of the policy file in the Hub container build context. A real
+  Docker build remains `NOT_CHECKED` because Docker is not installed locally.
 - Guarded migration-runner dynamic tests: `3 passed`.
 - Python in-memory syntax validation: `9` files passed.
 - PowerShell parser validation: both deployment scripts passed with zero
@@ -143,6 +160,12 @@ currently running app setting or Azure resource.
 - Bicep deployment contract: static regression passed. A real Bicep compile is
   `NOT_CHECKED` because neither `bicep` nor `az` is installed in this command
   environment.
+- Post-handoff Native Email connection/deployment audit: combined focused
+  Python suite `66 passed`. The exact unauthenticated broker prefix now reaches
+  the mounted API router instead of being stopped by service middleware;
+  success/error responses are no-store; and the Web App entrypoint separates
+  hidden broker enablement from later confirmed Hub publication. All changes
+  remain local and undeployed.
 - Hub inline script syntax: passed.
 - `git diff --check`: passed; only existing line-ending warnings remain.
 - Migration SHA-256:
@@ -430,12 +453,14 @@ reason to rewrite tenant, Stripe, or identity-link semantics in this rollout.
    any extra/broad/conditional RBAC assignment or any result other than one
    exact Job create. A passing Job what-if does not authorize Job creation or
    execution.
-5. Revalidate the actual live provider/UI state first. The current user report
-   is Email-only; the repository's Google and Microsoft controls are not live
-   proof. Preserve verified Email traffic on its current authorization tenant
-   while `shadow_*` comparison evidence is collected. If a live Google path is
-   independently confirmed, verify it separately. Verify the isolated
-   Microsoft pilot token's directory/provider claims separately.
+5. Preserve the 2026-08-04 read-only provider/UI observation as evidence, then
+   revalidate again immediately before any production cutover because live
+   state can drift. That observation established only Email availability,
+   Google test UI plus a Google chooser handoff, and Microsoft production
+   unavailability; it did not complete provider login or canonical resolution.
+   Preserve verified Email traffic on its current authorization tenant while
+   `shadow_*` comparison evidence is collected. Verify Google completion and
+   isolated Microsoft Pilot directory/provider claims separately.
 6. While all identity tables are still empty, remotely verify and dry-run the
    hash-pinned binding-hardening migration. Apply it only under a separate
    explicit DB approval, then confirm two validated constraints, zero unsafe
@@ -483,3 +508,23 @@ isolated runtime is deployed with resolver `shadow`, auto-provision `0`, and
 Entra binding-claim trust `0`. Any push must target the user-owned fork branch;
 PR merge and every remaining live gate remain separate and prohibited at this
 stage.
+
+## 2026-08-04 identity-linking activation contract update
+
+The uncommitted deployment candidate now keeps `IDENTITY_LINKING_ENABLED`
+false in both the backend and Hub unless all of the following are explicitly
+selected: resolver `enforce`, schema verification, binding-hardening applied
+confirmation, and existing-customer-bootstrap verified confirmation. The
+initial rollout also rejects auto-provision or binding-claim trust and requires
+distinct protected SHA-256 values for the immutable hardening-apply and
+bootstrap-verification receipts. The Web App deployment entrypoint fails before
+Azure CLI on missing or contradictory conditions; Bicep independently computes
+false unless the same conditions hold. Thirteen invalid deployment
+combinations pass the local fail-closed probe, including ten identity-linking
+cases and three Native Email cases.
+
+This is deployment-contract evidence only. Production resolver remains
+`legacy`; hardening is `NOT_APPLIED`; bootstrap is not live-applied; linking is
+off; no Azure, DB, customer, or Stripe write was made. Confirmation switches
+and syntactically valid hashes must be backed by separately approved immutable
+live receipts and cannot create their own evidence.

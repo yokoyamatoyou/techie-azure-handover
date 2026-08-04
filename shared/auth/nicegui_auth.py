@@ -48,6 +48,10 @@ _PUBLIC_PATHS = frozenset(
         "/webhook/stripe",
         "/api/stripe/webhook",
         "/api/stripe/webhooks",
+        # Native Email must start before a bearer token exists.  The broker
+        # independently enforces an exact Hub Origin allowlist, short-lived
+        # encrypted continuation state, and abuse limits.
+        "/api/auth/native-email",
     }
 )
 

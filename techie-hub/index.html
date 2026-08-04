@@ -9,9 +9,10 @@
 <title>TECHIE</title>
 <link rel="icon" href="/assets/logo.svg?v=20260207b" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=20260803a">
+<link rel="stylesheet" href="/style.css?v=20260804a">
 <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
-<script src="/config.js?v=20260521b"></script>
+<script src="/config.js?v=20260804a"></script>
+<script src="/auth-provider-policy.js?v=20260804b"></script>
 </head>
 <body>
 <div class="glow glow-a"></div>
@@ -42,14 +43,28 @@
     kotomegane: config.KOTOMEGANE_URL
   };
   const SAFE_COUPON_ERROR = 'クーポンコードが無効、または期限切れです。コードを確認して再入力してください。';
-  const AUTH_PROVIDER_HINTS = Object.freeze({
-    google: 'google'
-  });
+  const authProviderPolicy = window.TECHIE_AUTH_PROVIDER_POLICY;
   const IDENTITY_LINK_TARGET_KEY = 'TECHIE_IDENTITY_LINK_TARGET';
   const IDENTITY_LINK_STATE_KEY = 'TECHIE_IDENTITY_LINK_STATE';
+  const AUTH_TOKEN_SOURCE_KEY = 'TECHIE_AUTH_TOKEN_SOURCE';
 
   function isConfigured(value) {
     return Boolean(value && !placeholderPattern.test(String(value)));
+  }
+
+  function providerEnabled(provider) {
+    return authProviderPolicy ? authProviderPolicy.providerEnabled(provider, config) : provider === 'email';
+  }
+
+  function providerAuthRequest(provider, intent) {
+    if (authProviderPolicy && typeof authProviderPolicy.authRequest === 'function') {
+      return authProviderPolicy.authRequest(provider, intent, config);
+    }
+    if (provider !== 'email') return null;
+    return {
+      prompt: intent === 'signup' ? 'create' : 'select_account',
+      extraQueryParameters: { ui_locales: 'ja' }
+    };
   }
 
   const authReady = isConfigured(config.ENTRA_AUTHORITY) && isConfigured(config.ENTRA_CLIENT_ID);
@@ -65,6 +80,9 @@
   let redirectResultPromise = null;
   let interactiveAuthInProgress = false;
   let signupAutoStartTimer = null;
+  let nativeEmailFlow = null;
+  let nativeEmailPurpose = 'auth';
+  let nativeEmailFixedEmail = '';
 
   function decodeJwtPayload(token) {
     try {
@@ -78,24 +96,44 @@
     }
   }
 
-  function setStoredAuthToken(token) {
+  function setStoredAuthToken(token, source = '') {
     if (!token) return;
     const claims = decodeJwtPayload(token);
     const expiresAt = Number(claims.exp || 0) * 1000;
     if (!expiresAt || expiresAt <= Date.now()) return;
     localStorage.setItem('TECHIE_AUTH_TOKEN', token);
     localStorage.setItem('TECHIE_AUTH_TOKEN_EXPIRES_AT', String(expiresAt));
+    if (source === 'native' || source === 'msal') localStorage.setItem(AUTH_TOKEN_SOURCE_KEY, source);
   }
 
   function getStoredAuthToken() {
     const token = localStorage.getItem('TECHIE_AUTH_TOKEN') || '';
     const expiresAt = Number(localStorage.getItem('TECHIE_AUTH_TOKEN_EXPIRES_AT') || '0');
     if (!token || !expiresAt || expiresAt <= Date.now() + 60000) {
-      localStorage.removeItem('TECHIE_AUTH_TOKEN');
-      localStorage.removeItem('TECHIE_AUTH_TOKEN_EXPIRES_AT');
+      clearStoredAuthToken(localStorage.getItem(AUTH_TOKEN_SOURCE_KEY) === 'native');
       return '';
     }
     return token;
+  }
+
+  function clearStoredAuthToken(blockCachedMsal = false) {
+    localStorage.removeItem('TECHIE_AUTH_TOKEN');
+    localStorage.removeItem('TECHIE_AUTH_TOKEN_EXPIRES_AT');
+    if (blockCachedMsal) localStorage.setItem(AUTH_TOKEN_SOURCE_KEY, 'none');
+    else localStorage.removeItem(AUTH_TOKEN_SOURCE_KEY);
+  }
+
+  function nativeAccount() {
+    const token = getStoredAuthToken();
+    if (!token) return null;
+    const claims = decodeJwtPayload(token);
+    if (!claims.sub && !claims.oid) return null;
+    return {
+      homeAccountId: claims.oid || claims.sub,
+      name: claims.name || '',
+      username: claims.email || claims.preferred_username || claims.signInNames?.emailAddress || '',
+      native: true
+    };
   }
 
   function hasAuthResponseInUrl() {
@@ -135,7 +173,7 @@
       redirectResultPromise = msalClient.handleRedirectPromise()
         .then(result => {
           if (result && result.account) msalClient.setActiveAccount(result.account);
-          if (result) setStoredAuthToken(result.idToken || result.accessToken);
+          if (result) setStoredAuthToken(result.idToken || result.accessToken, 'msal');
           interactiveAuthInProgress = false;
           if (!hasAuthResponseInUrl()) removeMsalInteractionState();
           return result;
@@ -194,27 +232,33 @@
   }
 
   function account() {
-    if (!msalClient) return null;
-    return msalClient.getActiveAccount() || msalClient.getAllAccounts()[0] || null;
+    const tokenSource = localStorage.getItem(AUTH_TOKEN_SOURCE_KEY) || '';
+    if (tokenSource === 'none') return null;
+    if (tokenSource === 'native') return nativeAccount();
+    const msalAccount = msalClient
+      ? (msalClient.getActiveAccount() || msalClient.getAllAccounts()[0] || null)
+      : null;
+    return msalAccount || nativeAccount();
   }
 
   function syncAccount() {
-    if (!msalClient) return null;
     const current = account();
-    if (current) msalClient.setActiveAccount(current);
+    if (current && msalClient && !current.native) msalClient.setActiveAccount(current);
     logoutButton.hidden = !current;
     return current;
   }
 
   async function getToken() {
+    const storedToken = getStoredAuthToken();
+    if (storedToken) return storedToken;
     if (!msalClient) throw new Error('認証設定が未完了です。');
     const current = syncAccount();
-    if (!current) throw new Error('ログインが必要です。');
+    if (!current || current.native) throw new Error('ログインが必要です。');
     const request = { account: current, scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'] };
     try {
       const result = await msalClient.acquireTokenSilent(request);
       const token = result.idToken || result.accessToken;
-      setStoredAuthToken(token);
+      setStoredAuthToken(token, 'msal');
       return token;
     } catch (_) {
       const storedToken = getStoredAuthToken();
@@ -229,6 +273,11 @@
 
   async function apiFetch(endpoint, options = {}) {
     const token = await getToken();
+    return apiFetchWithToken(endpoint, token, options);
+  }
+
+  async function apiFetchWithToken(endpoint, token, options = {}) {
+    if (!token) throw new Error('ログインが必要です。');
     let response;
     try {
       response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
@@ -257,6 +306,56 @@
       throw error;
     }
     return body;
+  }
+
+  async function anonymousApiFetch(endpoint, options = {}) {
+    let response;
+    try {
+      response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+    } catch (_) {
+      throw Object.assign(new Error('認証サービスに接続できませんでした。'), { code: 'native_auth_unavailable' });
+    }
+    const text = await response.text();
+    let body = {};
+    try { body = text ? JSON.parse(text) : {}; } catch (_) { body = {}; }
+    if (!response.ok) {
+      const detail = body.detail && typeof body.detail === 'object' ? body.detail : {};
+      throw Object.assign(new Error('メール認証を続行できませんでした。'), {
+        code: String(detail.code || body.code || 'native_auth_failed'),
+        status: response.status
+      });
+    }
+    return body;
+  }
+
+  function nativeEmailEnabled() {
+    return Boolean(authProviderPolicy && authProviderPolicy.nativeEmailEnabled(config));
+  }
+
+  function delegatedEmailFallbackEnabled() {
+    return Boolean(authProviderPolicy && authProviderPolicy.delegatedEmailFallbackEnabled(config));
+  }
+
+  function linkProviderEnabled(provider) {
+    return Boolean(authProviderPolicy && authProviderPolicy.linkProviderEnabled(provider, config));
+  }
+
+  function nativeEmailMessage(error) {
+    const code = String(error && error.code || '');
+    if (code === 'email_invalid') return 'メールアドレスの形式を確認してください。';
+    if (code === 'display_name_required') return 'お名前を入力してください。';
+    if (code === 'native_auth_rate_limited') return '試行回数が上限に達しました。時間をおいてお試しください。';
+    if (code === 'otp_invalid' || code === 'otp_invalid_or_expired') return '確認コードが正しくないか、有効期限が切れています。';
+    if (code === 'native_flow_invalid' || code === 'native_flow_expired') return '確認コードの有効期限が切れました。最初からやり直してください。';
+    if (code === 'native_signup_attributes_not_supported') return '登録に必要な項目の設定を確認できませんでした。サポートへお問い合わせください。';
+    if (code === 'native_auth_fallback_required') return '現在このメール認証方式を利用できません。';
+    return 'メール認証を開始できませんでした。時間をおいて再度お試しください。';
   }
 
   function authNotice() {
@@ -311,6 +410,164 @@
     `;
   }
 
+  function authMethodChooser(mode) {
+    const action = mode === 'signup' ? '登録' : 'ログイン';
+    const emailEnabled = providerEnabled('email');
+    const emailNative = nativeEmailEnabled();
+    const emailFallback = delegatedEmailFallbackEnabled();
+    const googleEnabled = providerEnabled('google');
+    return `
+      <div class="auth-methods" aria-label="${action}方法">
+        <button class="auth-method-row${emailEnabled ? (emailNative ? ' native-email-start' : ' auth-start') : ''}" ${emailEnabled ? `data-auth-mode="${mode}" data-auth-provider="email"` : 'disabled'} type="button">
+          <span class="auth-method-content">
+            <span class="auth-method-heading">
+              <span class="auth-method-name">メールアドレス</span>
+              <span class="auth-method-badge${emailEnabled ? '' : ' auth-method-badge-construction'}">${emailNative ? '現在利用可能' : emailFallback ? '緊急フォールバック' : '準備中'}</span>
+            </span>
+            <span class="auth-method-detail">${emailNative
+              ? 'Outlook、Hotmail、Microsoft 365を含むメールアドレスに確認コードを送ります。'
+              : emailFallback
+                ? '従来のEntra認証画面を開きます。認証方法の選択が再表示される場合があります。'
+                : '分かりやすいメール確認コード画面を安全に準備しています。'}</span>
+          </span>
+          <span class="auth-method-action">${emailEnabled ? `メールで${action}` : '準備中'}</span>
+        </button>
+        <button class="auth-method-row${googleEnabled ? ' auth-start' : ''}" ${googleEnabled ? `data-auth-mode="${mode}" data-auth-provider="google"` : 'disabled'} type="button">
+          <span class="auth-method-content">
+            <span class="auth-method-heading">
+              <span class="auth-method-name">Google</span>
+              <span class="auth-method-badge auth-method-badge-test">${googleEnabled ? 'テスト提供中' : '確認待ち'}</span>
+            </span>
+            <span class="auth-method-detail">Google のアカウント選択画面へ進みます。</span>
+          </span>
+          <span class="auth-method-action">Googleで${action}</span>
+        </button>
+      </div>
+    `;
+  }
+
+  function renderNativeEmailForm(mode, message = '', purpose = 'auth', fixedEmail = '') {
+    nativeEmailFlow = null;
+    nativeEmailPurpose = purpose;
+    nativeEmailFixedEmail = fixedEmail;
+    const signup = mode === 'signup';
+    const linking = purpose === 'link_source' || purpose === 'link_target';
+    const heading = purpose === 'link_source'
+      ? '現在のメール認証をもう一度確認'
+      : purpose === 'link_target'
+        ? (signup ? '新しいメール認証を作成して追加' : '既存のメール認証を追加')
+        : (signup ? 'メールアドレスで新規登録' : 'メールアドレスでログイン');
+    const emailValue = fixedEmail ? ` value="${escapeHtml(fixedEmail)}" readonly` : '';
+    setView(`
+      <section class="page-panel login-panel native-email-panel">
+        <p class="eyebrow">メール認証</p>
+        <h1>${heading}</h1>
+        <p class="hero-summary">入力したメールアドレスへ確認コードを送ります。この画面で入力するメールアドレスは1回だけです。</p>
+        ${message ? `<div class="notice notice-warn" role="alert">${escapeHtml(message)}</div>` : ''}
+        <form id="native-email-start-form" class="native-auth-form" data-auth-mode="${mode}" data-auth-purpose="${purpose}">
+          ${signup ? '<label>お名前<input name="display_name" required maxlength="128" autocomplete="name"></label>' : ''}
+          <label>メールアドレス<input name="email" required maxlength="254" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false"${emailValue}></label>
+          <div class="button-row">
+            <button class="button button-primary" type="submit">確認コードを送る</button>
+            <a class="button button-secondary" href="${linking ? '/account' : `/${mode}`}">${linking ? '契約管理へ戻る' : '方法選択へ戻る'}</a>
+          </div>
+        </form>
+      </section>
+    `);
+    document.querySelector('#native-email-start-form input')?.focus();
+  }
+
+  function renderNativeEmailCode(mode, challenge, purpose = nativeEmailPurpose) {
+    const codeLength = Number(challenge.code_length || 0);
+    const target = String(challenge.challenge_target_label || '入力したメールアドレス');
+    setView(`
+      <section class="page-panel login-panel native-email-panel">
+        <p class="eyebrow">メール認証</p>
+        <h1>確認コードを入力</h1>
+        <p class="hero-summary">${escapeHtml(target)} に送信された${escapeHtml(codeLength)}桁の確認コードを入力してください。</p>
+        <form id="native-email-verify-form" class="native-auth-form" data-auth-mode="${mode}" data-auth-purpose="${purpose}">
+          <label>確認コード<input name="code" required type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{${escapeHtml(codeLength)}}" minlength="${escapeHtml(codeLength)}" maxlength="${escapeHtml(codeLength)}"></label>
+          <div id="native-email-result" aria-live="polite"></div>
+          <div class="button-row">
+            <button class="button button-primary" type="submit">確認して続ける</button>
+            <button class="button button-secondary native-email-restart" data-auth-mode="${mode}" data-auth-purpose="${purpose}" type="button">最初からやり直す</button>
+          </div>
+        </form>
+      </section>
+    `);
+    document.querySelector('#native-email-verify-form input')?.focus();
+  }
+
+  function renderNativeEmailLinkTargetChoice() {
+    setView(`
+      <section class="page-panel login-panel native-email-panel">
+        <p class="eyebrow">ログイン方法を追加</p>
+        <h1>追加するメール認証を選択</h1>
+        <p class="hero-summary">追加するメールアドレスをもう一度認証します。メールアドレスが同じという理由だけでは統合しません。</p>
+        <div class="auth-methods" aria-label="追加するメール認証">
+          <button class="auth-method-row native-email-link-target" data-auth-mode="login" type="button">
+            <span class="auth-method-content"><span class="auth-method-name">既存のメール認証を追加</span><span class="auth-method-detail">すでにTECHIEでメール認証を利用している場合</span></span>
+          </button>
+          <button class="auth-method-row native-email-link-target" data-auth-mode="signup" type="button">
+            <span class="auth-method-content"><span class="auth-method-name">新しいメール認証を作成して追加</span><span class="auth-method-detail">新しいメールアドレスを確認して追加する場合</span></span>
+          </button>
+        </div>
+        <a class="button button-secondary" href="/account">契約管理へ戻る</a>
+      </section>
+    `);
+  }
+
+  async function startNativeEmail(form) {
+    const data = new FormData(form);
+    const mode = form.dataset.authMode === 'signup' ? 'signup' : 'login';
+    const purpose = form.dataset.authPurpose || 'auth';
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    try {
+      const challenge = await anonymousApiFetch('/api/auth/native-email/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: String(data.get('email') || '').trim(),
+          intent: mode,
+          display_name: String(data.get('display_name') || '').trim()
+        })
+      });
+      nativeEmailFlow = String(challenge.flow_token || '');
+      if (!nativeEmailFlow) throw Object.assign(new Error('flow missing'), { code: 'native_auth_failed' });
+      renderNativeEmailCode(mode, challenge, purpose);
+    } catch (error) {
+      renderNativeEmailForm(mode, nativeEmailMessage(error), purpose, nativeEmailFixedEmail);
+    }
+  }
+
+  async function verifyNativeEmail(form) {
+    const mode = form.dataset.authMode === 'signup' ? 'signup' : 'login';
+    const purpose = form.dataset.authPurpose || 'auth';
+    const code = String(new FormData(form).get('code') || '').trim();
+    const resultTarget = document.getElementById('native-email-result');
+    const submit = form.querySelector('button[type="submit"]');
+    if (!nativeEmailFlow) return renderNativeEmailForm(mode, '確認コードの有効期限が切れました。最初からやり直してください。', purpose, nativeEmailFixedEmail);
+    if (submit) submit.disabled = true;
+    if (resultTarget) resultTarget.innerHTML = '<div class="notice">確認しています...</div>';
+    try {
+      const result = await anonymousApiFetch('/api/auth/native-email/verify', {
+        method: 'POST',
+        body: JSON.stringify({ flow_token: nativeEmailFlow, code })
+      });
+      nativeEmailFlow = null;
+      const verifiedToken = String(result.id_token || '');
+      setStoredAuthToken(verifiedToken, 'native');
+      if (!nativeAccount()) throw Object.assign(new Error('token rejected'), { code: 'native_auth_failed' });
+      if (purpose === 'link_source') return prepareIdentityLink();
+      if (purpose === 'link_target') return completeIdentityLink();
+      window.history.replaceState({}, document.title, mode === 'signup' ? '/onboarding' : '/');
+      return mode === 'signup' ? renderOnboarding() : renderHome();
+    } catch (error) {
+      if (submit) submit.disabled = false;
+      if (resultTarget) resultTarget.innerHTML = `<div class="notice notice-warn" role="alert">${escapeHtml(nativeEmailMessage(error))}</div>`;
+    }
+  }
+
   function renderLogin(mode) {
     if (mode !== 'signup' && syncAccount()) {
       window.history.replaceState({}, document.title, '/');
@@ -318,47 +575,13 @@
     }
     const label = mode === 'signup' ? '新規登録' : 'ログイン';
     const summary = mode === 'signup'
-      ? '新規ユーザー登録画面に移動します。メール確認後、TECHIE の初期登録画面へ戻ります。'
+      ? '登録に使用する方法を選択してください。認証完了後、TECHIE の初期登録画面へ戻ります。'
       : 'ご登録時に使用した方法を選択してください。認証完了後、TECHIE に戻ります。';
-    const actions = mode === 'signup'
-      ? `
-        <div class="button-row">
-          <button class="button button-primary" id="login-start" data-auth-mode="signup" type="button">新規登録</button>
-          <a class="button button-secondary" href="/plans">プランを見る</a>
-        </div>
-      `
-      : `
-        <div class="auth-methods" aria-label="ログイン方法">
-          <article class="auth-method-card auth-method-card-current">
-            <div class="auth-method-heading">
-              <span class="auth-method-name">メールアドレス</span>
-              <span class="auth-method-badge">これまでの方法</span>
-            </div>
-            <p class="auth-method-copy">これまでにご登録いただいた方はこちら</p>
-            <p class="auth-method-detail">次の画面でメールアドレスを入力し、確認コードを受け取ります。</p>
-            <button class="button button-primary auth-start" data-auth-mode="login" data-auth-provider="email" type="button">メールアドレスで続ける</button>
-          </article>
-          <article class="auth-method-card">
-            <div class="auth-method-heading">
-              <span class="auth-method-name">Google</span>
-              <span class="auth-method-badge auth-method-badge-test">テスト提供中</span>
-            </div>
-            <p class="auth-method-copy">Google アカウントでログイン</p>
-            <p class="auth-method-detail">Google のアカウント選択画面へ直接移動します。現在は登録済みのテストユーザーのみ利用できます。</p>
-            <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="google" type="button">Googleで続ける</button>
-          </article>
-          <article class="auth-method-card" aria-labelledby="microsoft-auth-title">
-            <div class="auth-method-heading">
-              <span class="auth-method-name" id="microsoft-auth-title">Microsoft</span>
-            </div>
-            <p class="auth-method-copy">Microsoft アカウントでログイン</p>
-            <p class="auth-method-detail">Microsoft の認証画面へ進みます。次の画面で Microsoft を選び直す場合があります。</p>
-            <button class="button button-secondary auth-start" data-auth-mode="login" data-auth-provider="microsoft" type="button">Microsoftで続ける</button>
-          </article>
-        </div>
+    const actions = `
+        ${authMethodChooser(mode)}
         <aside class="auth-guidance" aria-label="これまでにご登録いただいた方へのご案内">
-          <strong>これまでにご登録いただいた方へ</strong>
-          <p>Outlook、Hotmail、会社の Microsoft 系メールアドレスを登録していても、確認コードを受け取ってログインしていた方は「メールアドレスで続ける」を選択してください。</p>
+          <strong>Microsoft系のメールアドレスも利用できます</strong>
+          <p>Outlook、Hotmail、Microsoft 365の会社メールも「メールアドレス」から登録・ログインできます。</p>
         </aside>
         <div class="button-row auth-secondary-actions">
           <a class="button button-secondary" href="/plans">プランを見る</a>
@@ -378,25 +601,7 @@
   function renderSignupRedirect() {
     const current = syncAccount();
     if (current) return renderOnboarding();
-    if (signupAutoStartTimer) {
-      clearTimeout(signupAutoStartTimer);
-      signupAutoStartTimer = null;
-    }
-    setView(`
-      ${authNotice()}
-      <section class="page-panel">
-        <p class="eyebrow">認証</p>
-        <h1>新規登録へ移動しています</h1>
-        <p class="hero-summary">Microsoft Entra External ID の新規登録画面を開いています。画面が切り替わらない場合は下のボタンを押してください。</p>
-        <div class="button-row">
-          <button class="button button-primary" id="login-start" data-auth-mode="signup" type="button">新規登録を開始</button>
-        </div>
-      </section>
-    `);
-    signupAutoStartTimer = setTimeout(() => {
-      signupAutoStartTimer = null;
-      startLogin('signup');
-    }, 250);
+    renderLogin('signup');
   }
 
   function renderOnboarding() {
@@ -474,11 +679,11 @@
         <section class="auth-guidance" aria-labelledby="identity-link-title">
           <h2 id="identity-link-title">ログイン方法の管理</h2>
           <p>本人確認を2回行い、同じTECHIEアカウントへログイン方法を追加します。メールアドレスが同じという理由だけで自動統合はしません。</p>
+          <p>安全に追加されたログイン方法は、同じ契約・請求管理へ戻ります。Stripeの顧客情報をログイン方法として表示したり、照合に使用したりしません。</p>
           <div id="identity-bindings" class="notice">登録済みのログイン方法を確認しています...</div>
           <div class="button-row">
-            <button class="button button-secondary identity-link-start" data-link-provider="email" type="button">メールを追加</button>
-            <button class="button button-secondary identity-link-start" data-link-provider="google" type="button">Googleを追加</button>
-            <button class="button button-secondary identity-link-start" data-link-provider="microsoft" type="button">Microsoftを追加</button>
+            <button class="button button-secondary${linkProviderEnabled('email') ? ' identity-link-start' : ''}" ${linkProviderEnabled('email') ? 'data-link-provider="email"' : 'disabled'} type="button">メールを追加${linkProviderEnabled('email') ? '' : '（準備中）'}</button>
+            <button class="button button-secondary${linkProviderEnabled('google') ? ' identity-link-start' : ''}" ${linkProviderEnabled('google') ? 'data-link-provider="google"' : 'disabled'} type="button">Googleを追加${linkProviderEnabled('google') ? '' : '（確認待ち）'}</button>
           </div>
         </section>
         <form id="coupon-form" class="coupon-form">
@@ -561,8 +766,16 @@
   }
 
   async function beginIdentityLink(provider) {
-    if (!msalClient || !syncAccount()) throw new Error('ログインが必要です。');
+    if (!linkProviderEnabled(provider)) {
+      throw new Error('このログイン方法は現在利用できません。');
+    }
+    const current = syncAccount();
+    if (!current) throw new Error('ログインが必要です。');
     sessionStorage.setItem(IDENTITY_LINK_TARGET_KEY, provider);
+    if (current.native) {
+      return renderNativeEmailForm('login', '', 'link_source', current.username || '');
+    }
+    if (!msalClient) throw new Error('ログインが必要です。');
     sessionStorage.setItem('TECHIE_AUTH_INTENT', 'link_prepare');
     interactiveAuthInProgress = true;
     await msalClient.loginRedirect({
@@ -576,20 +789,25 @@
   async function prepareIdentityLink() {
     const provider = sessionStorage.getItem(IDENTITY_LINK_TARGET_KEY) || '';
     if (!provider) return renderAccount();
+    if (!linkProviderEnabled(provider)) {
+      sessionStorage.removeItem(IDENTITY_LINK_TARGET_KEY);
+      throw new Error('このログイン方法は現在利用できません。');
+    }
     const intent = await apiFetch('/api/identity/link-intents', {
       method: 'POST',
       body: JSON.stringify({ provider })
     });
     sessionStorage.setItem(IDENTITY_LINK_STATE_KEY, intent.state);
+    if (provider === 'email' && nativeEmailEnabled()) {
+      return renderNativeEmailLinkTargetChoice();
+    }
     sessionStorage.setItem('TECHIE_AUTH_INTENT', 'link_complete');
-    const providerHint = AUTH_PROVIDER_HINTS[provider] || '';
-    const extraQueryParameters = { ui_locales: 'ja' };
-    if (providerHint) extraQueryParameters.domain_hint = providerHint;
+    const request = providerAuthRequest(provider, 'link');
+    if (!request) throw new Error('このログイン方法は現在利用できません。');
     interactiveAuthInProgress = true;
     await msalClient.loginRedirect({
       scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
-      prompt: providerHint ? 'login' : 'select_account',
-      extraQueryParameters
+      ...request
     });
   }
 
@@ -597,7 +815,8 @@
     const state = sessionStorage.getItem(IDENTITY_LINK_STATE_KEY) || '';
     try {
       if (!state) throw new Error('アカウント連携の有効期限が切れました。最初からやり直してください。');
-      await apiFetch('/api/identity/link-complete', {
+      const targetToken = getStoredAuthToken();
+      await apiFetchWithToken('/api/identity/link-complete', targetToken, {
         method: 'POST',
         body: JSON.stringify({ state })
       });
@@ -609,7 +828,9 @@
     } catch (error) {
       sessionStorage.removeItem(IDENTITY_LINK_STATE_KEY);
       sessionStorage.removeItem(IDENTITY_LINK_TARGET_KEY);
-      setView(`<section class="page-panel"><h1>アカウント連携を完了できませんでした</h1><p>${escapeHtml(userMessage(error))}</p><a class="button button-primary" href="/account">契約管理へ戻る</a></section>`);
+      clearStoredAuthToken(true);
+      syncAccount();
+      setView(`<section class="page-panel"><h1>アカウント連携を完了できませんでした</h1><p>${escapeHtml(userMessage(error))}</p><p>安全のためログイン状態を終了しました。もう一度ログインしてください。</p><a class="button button-primary" href="/login">ログインへ戻る</a></section>`);
     }
   }
 
@@ -620,6 +841,14 @@
     }
     if (!authReady) {
       alert('認証設定が未完了です。');
+      return;
+    }
+    if (!providerEnabled(provider)) {
+      alert('このログイン方法は現在利用できません。');
+      return;
+    }
+    if (provider === 'email' && nativeEmailEnabled()) {
+      renderNativeEmailForm(mode);
       return;
     }
     if (!msalClient) {
@@ -634,13 +863,11 @@
     interactiveAuthInProgress = true;
     sessionStorage.setItem('TECHIE_AUTH_INTENT', mode);
     try {
-      const providerHint = AUTH_PROVIDER_HINTS[provider] || '';
-      const extraQueryParameters = { ui_locales: 'ja' };
-      if (providerHint) extraQueryParameters.domain_hint = providerHint;
+      const request = providerAuthRequest(provider, mode === 'signup' ? 'signup' : 'login');
+      if (!request) throw new Error('このログイン方法は現在利用できません。');
       await msalClient.loginRedirect({
         scopes: config.ENTRA_SCOPES || ['openid', 'profile', 'email'],
-        prompt: mode === 'signup' ? 'create' : providerHint ? 'login' : 'select_account',
-        extraQueryParameters
+        ...request
       });
     } catch (error) {
       interactiveAuthInProgress = false;
@@ -789,6 +1016,34 @@
         );
       });
     });
+    document.querySelectorAll('.native-email-start').forEach(button => {
+      button.addEventListener('click', event => {
+        renderNativeEmailForm(event.currentTarget.dataset.authMode === 'signup' ? 'signup' : 'login');
+      });
+    });
+    document.getElementById('native-email-start-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      startNativeEmail(event.currentTarget);
+    });
+    document.getElementById('native-email-verify-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      verifyNativeEmail(event.currentTarget);
+    });
+    document.querySelectorAll('.native-email-restart').forEach(button => {
+      button.addEventListener('click', event => renderNativeEmailForm(
+        event.currentTarget.dataset.authMode || 'login',
+        '',
+        event.currentTarget.dataset.authPurpose || 'auth',
+        event.currentTarget.dataset.authPurpose === 'link_source' ? nativeEmailFixedEmail : ''
+      ));
+    });
+    document.querySelectorAll('.native-email-link-target').forEach(button => {
+      button.addEventListener('click', event => renderNativeEmailForm(
+        event.currentTarget.dataset.authMode === 'signup' ? 'signup' : 'login',
+        '',
+        'link_target'
+      ));
+    });
     document.getElementById('onboarding-form')?.addEventListener('submit', event => {
       event.preventDefault();
       const profile = collectOnboardingProfile(event.currentTarget);
@@ -822,8 +1077,16 @@
   }
 
   logoutButton.addEventListener('click', async () => {
-    if (!msalClient) return;
-    await msalClient.logoutRedirect({ account: account() || undefined });
+    const current = account();
+    localStorage.removeItem('TECHIE_AUTH_TOKEN');
+    localStorage.removeItem('TECHIE_AUTH_TOKEN_EXPIRES_AT');
+    localStorage.removeItem(AUTH_TOKEN_SOURCE_KEY);
+    nativeEmailFlow = null;
+    if (current && current.native) {
+      window.location.href = '/signed-out';
+      return;
+    }
+    if (msalClient) await msalClient.logoutRedirect({ account: current || undefined });
   });
 
   async function route() {

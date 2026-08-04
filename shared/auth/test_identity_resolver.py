@@ -24,6 +24,7 @@ from shared.auth.jwt_validator import (
     extract_user_info,
     normalize_identity_provider,
 )
+from shared.billing import api as billing_api
 
 
 def _load_billing_repository_without_postgres_connection():
@@ -44,6 +45,26 @@ def configured_external_directory(monkeypatch):
     monkeypatch.delenv("ENTRA_EXTERNAL_ID_TENANT_ID", raising=False)
     monkeypatch.setenv("ENTRA_EXTERNAL_ID_DIRECTORY_ID", "external-directory")
     monkeypatch.delenv("AUTH_TRUST_ENTRA_BINDING_CLAIMS", raising=False)
+    monkeypatch.setenv("IDENTITY_LINKING_ENABLED", "1")
+
+
+def test_identity_linking_api_fails_closed_when_backend_flag_is_off(monkeypatch):
+    monkeypatch.setenv("IDENTITY_LINKING_ENABLED", "0")
+    user = {
+        "identity_status": "bound",
+        "principal_id": "principal",
+        "identity_binding_id": "binding",
+        "issued_at": str(int(time.time())),
+    }
+    with pytest.raises(HTTPException) as intent_error:
+        asyncio.run(identity_api.create_link_intent(identity_api.LinkIntentRequest(provider="google"), user))
+    assert intent_error.value.status_code == 503
+    assert intent_error.value.detail["code"] == "identity_linking_unavailable"
+
+    with pytest.raises(HTTPException) as complete_error:
+        asyncio.run(identity_api.complete_link(identity_api.LinkCompleteRequest(state="x" * 32), user))
+    assert complete_error.value.status_code == 503
+    assert complete_error.value.detail["code"] == "identity_linking_unavailable"
 
 
 class FakeIdentityRepository:
@@ -406,6 +427,55 @@ def test_recent_authentication_accepts_fresh_iat():
     require_recent_authentication(verified_user(issued_at=str(int(time.time()) - 30)))
 
 
+@pytest.mark.parametrize("provider", ["email", "google", "microsoft"])
+def test_bound_provider_checkout_reuses_canonical_tenant_and_customer_anchor(monkeypatch, provider):
+    canonical_tenant = "00000000-0000-0000-0000-000000000301"
+    existing_customer_anchor = "synthetic-existing-customer"
+    captured = {}
+
+    def fake_ensure_customer_account(**kwargs):
+        captured["account"] = kwargs
+        return {"stripe_customer_id": existing_customer_anchor}
+
+    def customer_creation_must_not_run(**kwargs):
+        raise AssertionError("an existing customer anchor must not be replaced")
+
+    def fake_create_checkout_session(**kwargs):
+        captured["checkout"] = kwargs
+        return {"session_id": "synthetic-session", "url": "https://checkout.example.invalid/session"}
+
+    monkeypatch.setattr(billing_api.repository, "ensure_customer_account", fake_ensure_customer_account)
+    monkeypatch.setattr(billing_api, "create_customer", customer_creation_must_not_run)
+    monkeypatch.setattr(billing_api, "create_checkout_session", fake_create_checkout_session)
+    monkeypatch.setattr(billing_api, "_allowed_stripe_price_ids", lambda: {"synthetic-price"})
+
+    payload = billing_api.CheckoutSessionRequest(
+        price_id="synthetic-price",
+        success_url="https://app.techie.jp/checkout/success",
+        cancel_url="https://app.techie.jp/plans",
+        service_code="synthetic-service",
+        service_name="Synthetic service",
+        company_name="Synthetic company",
+    )
+    result = asyncio.run(
+        billing_api.billing_checkout_session(
+            payload,
+            {
+                "tenant_id": canonical_tenant,
+                "user_id": "00000000-0000-0000-0000-000000000302",
+                "email": "synthetic@example.invalid",
+                "name": "Synthetic user",
+                "identity_provider": provider,
+            },
+        )
+    )
+
+    assert result["session_id"] == "synthetic-session"
+    assert captured["account"]["tenant_id"] == canonical_tenant
+    assert captured["checkout"]["customer_id"] == existing_customer_anchor
+    assert captured["checkout"]["metadata"]["tenant_id"] == canonical_tenant
+
+
 def test_link_intent_requires_a_canonical_binding():
     user = verified_user(identity_status="legacy", principal_id="", identity_binding_id="")
 
@@ -435,12 +505,49 @@ def test_link_intent_stores_only_a_digest(monkeypatch):
     )
 
     response = asyncio.run(
-        identity_api.create_link_intent(identity_api.LinkIntentRequest(provider="microsoft"), user)
+        identity_api.create_link_intent(identity_api.LinkIntentRequest(provider="google"), user)
     )
 
-    assert response["provider"] == "microsoft"
+    assert response["provider"] == "google"
     assert response["state"] not in captured.values()
     assert len(captured["state_digest"]) == 64
+
+
+def test_link_intent_rejects_microsoft_sso_before_repository(monkeypatch):
+    class RepositoryMustNotRun:
+        @staticmethod
+        def create_identity_link_intent(**kwargs):
+            raise AssertionError("repository must not run for disabled Microsoft SSO")
+
+    monkeypatch.setattr(identity_api, "_repository", lambda: RepositoryMustNotRun())
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            identity_api.create_link_intent(
+                identity_api.LinkIntentRequest(provider="microsoft"),
+                verified_user(),
+            )
+        )
+
+    assert error.value.status_code == 400
+    assert error.value.detail == "provider must be email or google"
+
+
+def test_repository_rejects_microsoft_link_intent_before_database(monkeypatch):
+    @contextmanager
+    def database_must_not_run(*args, **kwargs):
+        raise AssertionError("database must not run for disabled Microsoft SSO")
+        yield
+
+    monkeypatch.setattr(billing_repository, "get_cursor", database_must_not_run)
+
+    with pytest.raises(ValueError, match="not enabled for account linking"):
+        billing_repository.create_identity_link_intent(
+            principal_id="00000000-0000-0000-0000-000000000010",
+            source_identity_binding_id="00000000-0000-0000-0000-000000000011",
+            state_digest="a" * 64,
+            requested_provider="microsoft",
+        )
 
 
 def test_link_complete_fails_closed_on_cross_principal_conflict(monkeypatch):
@@ -566,10 +673,11 @@ def test_link_complete_fails_closed_on_same_identity_or_used_state(
 
 
 class FakeLinkCompletionCursor:
-    def __init__(self, *, intent_status, completed_match=False, existing=None):
+    def __init__(self, *, intent_status, completed_match=False, existing=None, requested_provider="google"):
         self.intent_status = intent_status
         self.completed_match = completed_match
         self.existing = existing
+        self.requested_provider = requested_provider
         self.row = None
         self.statements = []
 
@@ -584,7 +692,7 @@ class FakeLinkCompletionCursor:
                 "identity_link_intent_id": "00000000-0000-0000-0000-000000000100",
                 "principal_id": "00000000-0000-0000-0000-000000000101",
                 "source_identity_binding_id": "00000000-0000-0000-0000-000000000102",
-                "requested_provider": "google",
+                "requested_provider": self.requested_provider,
                 "status": self.intent_status,
                 "expires_at": "later",
                 "completed_identity_binding_id": "00000000-0000-0000-0000-000000000103",
@@ -613,7 +721,7 @@ class FakeLinkCompletionCursor:
         return self.row
 
 
-def _complete_with_fake_cursor(monkeypatch, cursor):
+def _complete_with_fake_cursor(monkeypatch, cursor, *, identity_provider="google"):
     @contextmanager
     def fake_get_cursor(*args, **kwargs):
         yield cursor
@@ -627,7 +735,7 @@ def _complete_with_fake_cursor(monkeypatch, cursor):
         subject_value="second-object",
         entra_object_id="second-object",
         token_subject="second-subject",
-        identity_provider="google",
+        identity_provider=identity_provider,
         email="second@example.test",
     )
 
@@ -700,6 +808,18 @@ def test_reauthenticated_link_changes_only_identity_tables_and_keeps_business_te
     assert not any("stripe" in statement.lower() for statement in mutation_sql)
     assert not any("UPDATE tenants" in statement for statement in mutation_sql)
     assert not any("UPDATE canonical_principal" in statement for statement in mutation_sql)
+
+
+def test_pending_microsoft_link_intent_is_cancelled_without_binding_mutation(monkeypatch):
+    cursor = FakeLinkCompletionCursor(intent_status="pending", requested_provider="microsoft")
+
+    result = _complete_with_fake_cursor(monkeypatch, cursor, identity_provider="microsoft")
+
+    assert result == {"status": "provider_mismatch"}
+    assert any("'provider_mismatch'" in statement for statement in cursor.statements)
+    assert not any("INSERT INTO external_identity_binding" in statement for statement in cursor.statements)
+    assert not any("customer_account" in statement for statement in cursor.statements)
+    assert not any("stripe" in statement.lower() for statement in cursor.statements)
 
 
 class ExistingBindingCursor:
@@ -890,17 +1010,44 @@ def test_identity_migration_runner_is_hash_pinned_and_dry_run_by_default():
     assert "if (require.main === module)" in runner
 
 
-def test_hub_has_three_login_choices_and_no_microsoft_domain_hint():
+def test_hub_exposes_email_and_google_only_and_keeps_microsoft_sso_disabled():
     root = Path(__file__).resolve().parents[2]
     hub = (root / "techie-hub" / "index.html").read_text(encoding="utf-8")
 
     assert 'data-auth-provider="email"' in hub
     assert 'data-auth-provider="google"' in hub
-    assert 'data-auth-provider="microsoft"' in hub
-    assert "google: 'google'" in hub
+    assert 'Microsoftで${action}' not in hub
+    assert 'data-auth-provider="microsoft"' not in hub
+    assert '/auth-provider-policy.js?v=20260804b' in hub
     assert "microsoft: 'login.live.com'" not in hub
+    assert "providerEnabled(provider)" in hub
+    assert "同じ契約・請求管理へ戻ります" in hub
+    assert "Stripeの顧客情報をログイン方法として表示したり" in hub
+    assert 'data-link-provider="microsoft"' not in hub
+    assert "renderLogin('signup')" in hub
+    assert "startLogin('signup');" not in hub
+    assert "Microsoft系のメールアドレスも利用できます" in hub
+    assert "Outlook、Hotmail、Microsoft 365の会社メール" in hub
+
+    config_template = (root / "techie-hub" / "config.template.js").read_text(encoding="utf-8")
+    assert "MICROSOFT_AUTH_" not in config_template
+
+    provider_policy = (root / "techie-hub" / "auth-provider-policy.js").read_text(encoding="utf-8")
+    hub_dockerfile = (root / "techie-hub" / "Dockerfile").read_text(encoding="utf-8")
+    assert "if (provider === 'microsoft') return false;" in provider_policy
+    assert "config.GOOGLE_AUTH_DIRECT_ROUTE_VERIFIED === true" in provider_policy
+    assert "authRequest(provider, intent, config)" in hub
+    assert "COPY auth-provider-policy.js /usr/share/nginx/html/auth-provider-policy.js" in hub_dockerfile
     assert "/api/identity/link-intents" in hub
     assert "/api/identity/link-complete" in hub
+    assert "purpose === 'link_source'" in hub
+    assert "purpose === 'link_target'" in hub
+    assert "apiFetchWithToken('/api/identity/link-complete'" in hub
+    assert "clearStoredAuthToken(true)" in hub
+    assert "clearStoredAuthToken(true);\n      syncAccount();" in hub
+    assert "IDENTITY_LINK_SOURCE_TOKEN" not in hub
+    start_login = hub[hub.index("async function startLogin(") : hub.index("async function openCheckout(")]
+    assert start_login.index("if (provider === 'email' && nativeEmailEnabled())") < start_login.index("if (!msalClient)")
 
 
 def test_nicegui_saved_tenant_cannot_bypass_nonlegacy_resolver():

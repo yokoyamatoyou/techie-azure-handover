@@ -1,5 +1,6 @@
 # TECHIE 共通依存（auth, billing, storage）
 PyJWT[crypto]>=2.8.0,<3.0.0
+cryptography>=42.0.0,<46.0.0
 requests>=2.31.0,<3.0.0
 stripe>=7.0.0,<8.0.0
 azure-storage-blob>=12.19.0,<13.0.0

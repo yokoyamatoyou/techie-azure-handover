@@ -13,6 +13,29 @@ param(
 
   [string]$PlatformAdminEmails = '',
 
+  [ValidateSet('legacy','shadow','enforce')]
+  [string]$IdentityResolverMode = 'legacy',
+
+  [switch]$IdentitySchemaVerified,
+
+  [switch]$EnableIdentityLinking,
+
+  [switch]$ConfirmIdentityBindingHardeningApplied,
+
+  [string]$IdentityBindingHardeningReceiptSha256 = '',
+
+  [switch]$ConfirmExistingCustomerBootstrapVerified,
+
+  [string]$ExistingCustomerBootstrapReceiptSha256 = '',
+
+  [switch]$EnableNativeEmailBroker,
+
+  [switch]$PublishNativeEmail,
+
+  [switch]$ConfirmNativeEmailLiveVerified,
+
+  [string]$NativeAuthTenantSubdomain = '',
+
   [switch]$SkipBuild,
 
   [switch]$SkipWebApps,
@@ -31,6 +54,17 @@ $scriptPath = Join-Path $PSScriptRoot 'deploy-azure0429-refresh.ps1'
   -ServiceBaseUrl $ServiceBaseUrl `
   -HubBaseUrl $HubBaseUrl `
   -PlatformAdminEmails $PlatformAdminEmails `
+  -IdentityResolverMode $IdentityResolverMode `
+  -IdentitySchemaVerified:$IdentitySchemaVerified `
+  -EnableIdentityLinking:$EnableIdentityLinking `
+  -ConfirmIdentityBindingHardeningApplied:$ConfirmIdentityBindingHardeningApplied `
+  -IdentityBindingHardeningReceiptSha256 $IdentityBindingHardeningReceiptSha256 `
+  -ConfirmExistingCustomerBootstrapVerified:$ConfirmExistingCustomerBootstrapVerified `
+  -ExistingCustomerBootstrapReceiptSha256 $ExistingCustomerBootstrapReceiptSha256 `
+  -EnableNativeEmailBroker:$EnableNativeEmailBroker `
+  -PublishNativeEmail:$PublishNativeEmail `
+  -ConfirmNativeEmailLiveVerified:$ConfirmNativeEmailLiveVerified `
+  -NativeAuthTenantSubdomain $NativeAuthTenantSubdomain `
   -SkipBuild:$SkipBuild `
   -SkipWebApps:$SkipWebApps `
   -SkipKotomegane:$SkipKotomegane

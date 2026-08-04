@@ -9,6 +9,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY index.html /usr/share/nginx/html/index.html
 COPY config.js  /usr/share/nginx/html/config.js
+COPY auth-provider-policy.js /usr/share/nginx/html/auth-provider-policy.js
 COPY style.css  /usr/share/nginx/html/style.css
 COPY assets/    /usr/share/nginx/html/assets/
 

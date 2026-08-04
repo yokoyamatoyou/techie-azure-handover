@@ -14,6 +14,18 @@ window.TECHIE_CONFIG = {
   ENTRA_REDIRECT_URI: 'https://app.techie.jp/auth/callback',
   ENTRA_POST_LOGOUT_REDIRECT_URI: 'https://app.techie.jp/signed-out',
   ENTRA_SCOPES: ['openid', 'profile', 'email'],
+  // Enable only after the broker, External ID app, and Email OTP flow pass the
+  // production acceptance gate. The delegated fallback is operator-controlled
+  // because it reopens the combined Entra provider screen.
+  EMAIL_NATIVE_AUTH_ENABLED: %%EMAIL_NATIVE_AUTH_ENABLED%%,
+  EMAIL_NATIVE_AUTH_LIVE_VERIFIED: %%EMAIL_NATIVE_AUTH_LIVE_VERIFIED%%,
+  EMAIL_DELEGATED_AUTH_FALLBACK_ENABLED: false,
+  // Keep off until binding hardening, bootstrap, and resolver gates pass.
+  IDENTITY_LINKING_ENABLED: %%IDENTITY_LINKING_ENABLED%%,
+  GOOGLE_AUTH_ENABLED: true,
+  // Keep false until the exact production app/user-flow association accepts
+  // domain_hint=google and reaches Google account selection without AADSTS90023.
+  GOOGLE_AUTH_DIRECT_ROUTE_VERIFIED: false,
 
   // Stripe Price IDs.
   PLANS: [

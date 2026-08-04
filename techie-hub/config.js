@@ -14,6 +14,12 @@ window.TECHIE_CONFIG = {
   ENTRA_REDIRECT_URI: 'https://app.techie.jp/auth/callback',
   ENTRA_POST_LOGOUT_REDIRECT_URI: 'https://app.techie.jp/signed-out',
   ENTRA_SCOPES: ['openid', 'profile', 'email'],
+  EMAIL_NATIVE_AUTH_ENABLED: false,
+  EMAIL_NATIVE_AUTH_LIVE_VERIFIED: false,
+  EMAIL_DELEGATED_AUTH_FALLBACK_ENABLED: false,
+  IDENTITY_LINKING_ENABLED: false,
+  GOOGLE_AUTH_ENABLED: true,
+  GOOGLE_AUTH_DIRECT_ROUTE_VERIFIED: false,
 
   // Stripe Price IDs.
   PLANS: [

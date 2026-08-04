@@ -11,6 +11,17 @@
 - Identity/business-tenant/Stripe boundary:
   `docs/identity_tenant_stripe_architecture_20260804.md`
 
+The uncommitted deployment candidate contains a
+`ConfirmIdentityBindingHardeningApplied` switch only as a downstream
+fail-closed activation guard for identity linking. The switch is not a dry-run,
+apply, verification, receipt, or approval. It must remain false until this
+document's separate protected-session apply and post-apply evidence have been
+approved and completed. The deployment candidate also requires the distinct
+protected SHA-256 of that immutable apply receipt. The hash is not rendered to
+Hub configuration, runtime settings, outputs, or logs. Neither a confirmation
+switch nor a syntactically valid hash proves the gate; local source or test
+success must never satisfy it.
+
 ## Purpose
 
 This gate prevents the first live identity binding from being created while

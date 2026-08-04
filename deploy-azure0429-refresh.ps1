@@ -40,6 +40,24 @@ param(
 
   [switch]$TrustEntraBindingClaims,
 
+  [switch]$EnableIdentityLinking,
+
+  [switch]$ConfirmIdentityBindingHardeningApplied,
+
+  [string]$IdentityBindingHardeningReceiptSha256 = '',
+
+  [switch]$ConfirmExistingCustomerBootstrapVerified,
+
+  [string]$ExistingCustomerBootstrapReceiptSha256 = '',
+
+  [switch]$EnableNativeEmailBroker,
+
+  [switch]$PublishNativeEmail,
+
+  [switch]$ConfirmNativeEmailLiveVerified,
+
+  [string]$NativeAuthTenantSubdomain = '',
+
   [string]$PlatformAdminEmails = '',
 
   [switch]$SkipBuild,
@@ -60,6 +78,51 @@ if (($EnableIdentityAutoProvision -or $TrustEntraBindingClaims) -and $IdentityRe
 }
 if ($IdentityResolverMode -ne 'legacy' -and [string]::IsNullOrWhiteSpace($ExternalTenantId)) {
   throw 'ExternalTenantId is required for shadow or enforce identity resolver mode.'
+}
+if ($EnableIdentityLinking -and $IdentityResolverMode -ne 'enforce') {
+  throw 'Identity linking requires -IdentityResolverMode enforce.'
+}
+if ($EnableIdentityLinking -and -not $IdentitySchemaVerified) {
+  throw 'Identity linking requires -IdentitySchemaVerified.'
+}
+if ($EnableIdentityLinking -and -not $ConfirmIdentityBindingHardeningApplied) {
+  throw 'Identity linking requires -ConfirmIdentityBindingHardeningApplied.'
+}
+if ($EnableIdentityLinking -and -not $ConfirmExistingCustomerBootstrapVerified) {
+  throw 'Identity linking requires -ConfirmExistingCustomerBootstrapVerified.'
+}
+if ($EnableIdentityLinking -and $IdentityBindingHardeningReceiptSha256 -notmatch '^(?!0{64}$)[0-9a-f]{64}$') {
+  throw 'Identity linking requires a protected lowercase SHA-256 for the approved binding-hardening apply receipt.'
+}
+if ($EnableIdentityLinking -and $ExistingCustomerBootstrapReceiptSha256 -notmatch '^(?!0{64}$)[0-9a-f]{64}$') {
+  throw 'Identity linking requires a protected lowercase SHA-256 for the approved existing-customer bootstrap receipt.'
+}
+if ($EnableIdentityLinking -and $IdentityBindingHardeningReceiptSha256 -eq $ExistingCustomerBootstrapReceiptSha256) {
+  throw 'Identity-linking hardening and bootstrap receipt SHA-256 values must be independently derived.'
+}
+if ($EnableIdentityLinking -and ($EnableIdentityAutoProvision -or $TrustEntraBindingClaims)) {
+  throw 'Identity linking initial rollout requires auto-provision and binding-claim trust to remain disabled.'
+}
+if (($ConfirmIdentityBindingHardeningApplied -or $ConfirmExistingCustomerBootstrapVerified) -and -not $EnableIdentityLinking) {
+  throw 'Identity-linking confirmation switches are accepted only with -EnableIdentityLinking.'
+}
+if ((-not [string]::IsNullOrWhiteSpace($IdentityBindingHardeningReceiptSha256) -or -not [string]::IsNullOrWhiteSpace($ExistingCustomerBootstrapReceiptSha256)) -and -not $EnableIdentityLinking) {
+  throw 'Identity-linking receipt SHA-256 values are accepted only with -EnableIdentityLinking.'
+}
+if ($PublishNativeEmail -and (-not $EnableNativeEmailBroker -or -not $ConfirmNativeEmailLiveVerified)) {
+  throw 'Publishing Native Email requires both -EnableNativeEmailBroker and -ConfirmNativeEmailLiveVerified.'
+}
+if ($ConfirmNativeEmailLiveVerified -and -not $PublishNativeEmail) {
+  throw '-ConfirmNativeEmailLiveVerified is accepted only with -PublishNativeEmail.'
+}
+if ($EnableNativeEmailBroker -and $NativeAuthTenantSubdomain -notmatch '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
+  throw 'NativeAuthTenantSubdomain must be an explicit lowercase External ID tenant subdomain.'
+}
+if ($EnableNativeEmailBroker -and [string]::IsNullOrWhiteSpace($NativeAuthTenantSubdomain)) {
+  throw 'NativeAuthTenantSubdomain is required when enabling the Native Email broker.'
+}
+if (-not $EnableNativeEmailBroker -and -not [string]::IsNullOrWhiteSpace($NativeAuthTenantSubdomain)) {
+  throw 'NativeAuthTenantSubdomain must not be supplied while the Native Email broker is disabled.'
 }
 
 function Write-Step([string]$Message) {
@@ -100,6 +163,20 @@ function Read-Secret([string]$Prompt, [string]$EnvName, [switch]$Optional) {
     if ($bstr -ne [IntPtr]::Zero) {
       [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
     }
+  }
+}
+
+function Assert-NativeAuthSessionKey([string]$Value) {
+  try {
+    $normalized = $Value.Replace('-', '+').Replace('_', '/')
+    $normalized += '=' * ((4 - ($normalized.Length % 4)) % 4)
+    $decoded = [Convert]::FromBase64String($normalized)
+  }
+  catch {
+    throw 'EMAIL_NATIVE_AUTH_SESSION_KEY must be base64url encoded.'
+  }
+  if ($decoded.Length -ne 32) {
+    throw 'EMAIL_NATIVE_AUTH_SESSION_KEY must decode to exactly 32 bytes.'
   }
 }
 
@@ -179,7 +256,10 @@ function Render-HubConfig {
     [string]$StandardPriceId,
     [string]$ProPriceId,
     [string]$Addon10CreditPriceId,
-    [string]$Addon1CreditPriceId
+    [string]$Addon1CreditPriceId,
+    [bool]$NativeEmailEnabled,
+    [bool]$NativeEmailLiveVerified,
+    [bool]$IdentityLinkingEnabled
   )
 
   $templatePath = Join-Path $HubDirectory 'config.template.js'
@@ -199,6 +279,9 @@ function Render-HubConfig {
     '%%STRIPE_PRO_PRICE_ID%%' = $ProPriceId
     '%%STRIPE_ADDON_10_CREDIT_PRICE_ID%%' = $Addon10CreditPriceId
     '%%STRIPE_ADDON_1_CREDIT_PRICE_ID%%' = $Addon1CreditPriceId
+    '%%EMAIL_NATIVE_AUTH_ENABLED%%' = $NativeEmailEnabled.ToString().ToLowerInvariant()
+    '%%EMAIL_NATIVE_AUTH_LIVE_VERIFIED%%' = $NativeEmailLiveVerified.ToString().ToLowerInvariant()
+    '%%IDENTITY_LINKING_ENABLED%%' = $IdentityLinkingEnabled.ToString().ToLowerInvariant()
   }
 
   foreach ($key in $replacements.Keys) {
@@ -408,6 +491,11 @@ foreach ($requiredSecret in $requiredRuntimeSecrets) {
   $secretValue = Read-Secret $requiredSecret.Prompt $requiredSecret.Name
   $optionalRuntimeSettings += "$($requiredSecret.Name)=$secretValue"
 }
+$nativeAuthSessionKey = ''
+if ($EnableNativeEmailBroker) {
+  $nativeAuthSessionKey = Read-Secret 'Native Email flow envelope key' 'EMAIL_NATIVE_AUTH_SESSION_KEY'
+  Assert-NativeAuthSessionKey $nativeAuthSessionKey
+}
 foreach ($envName in @(
   'ANTHROPIC_API_KEY',
   'CLAUDE_API_KEY',
@@ -441,6 +529,7 @@ $forcedRuntimeSettings = @(
   "AUTH_IDENTITY_RESOLVER_MODE=$IdentityResolverMode",
   "AUTH_IDENTITY_AUTO_PROVISION=$(if ($EnableIdentityAutoProvision) { '1' } else { '0' })",
   "AUTH_TRUST_ENTRA_BINDING_CLAIMS=$(if ($TrustEntraBindingClaims) { '1' } else { '0' })",
+  "IDENTITY_LINKING_ENABLED=$(if ($EnableIdentityLinking) { '1' } else { '0' })",
   'AUTH_ENFORCE_SERVICES=1',
   "HUB_LOGIN_URL=$resolvedHubBaseUrl/login",
   "HUB_BASE_URL=$resolvedHubBaseUrl",
@@ -460,6 +549,17 @@ $forcedRuntimeSettings = @(
   'NOTECODE_UI_BODY_ROUTE=route_0506_structured_blog_ui_v1'
 )
 
+$nativeEmailRuntimeSettings = @(
+  "ENTRA_CLIENT_ID=$ExternalClientId",
+  "EMAIL_NATIVE_AUTH_ENABLED=$(if ($EnableNativeEmailBroker) { '1' } else { '0' })"
+)
+if ($EnableNativeEmailBroker) {
+  $nativeEmailRuntimeSettings += @(
+    "ENTRA_NATIVE_TENANT_SUBDOMAIN=$NativeAuthTenantSubdomain",
+    "EMAIL_NATIVE_AUTH_SESSION_KEY=$nativeAuthSessionKey"
+  )
+}
+
 $optionalRuntimeSettings = @($optionalRuntimeSettings + $forcedRuntimeSettings | Select-Object -Unique)
 
 Render-HubConfig `
@@ -472,7 +572,10 @@ Render-HubConfig `
   -StandardPriceId $stripeStandardPriceId `
   -ProPriceId $stripeProPriceId `
   -Addon10CreditPriceId $stripeAddon10CreditPriceId `
-  -Addon1CreditPriceId $stripeAddon1CreditPriceId
+  -Addon1CreditPriceId $stripeAddon1CreditPriceId `
+  -NativeEmailEnabled ([bool]$PublishNativeEmail) `
+  -NativeEmailLiveVerified ([bool]$ConfirmNativeEmailLiveVerified) `
+  -IdentityLinkingEnabled ([bool]$EnableIdentityLinking)
 
 $appBuildMatrix = @(
   @{
@@ -528,7 +631,7 @@ foreach ($item in $appBuildMatrix) {
   $imageRef = "$acrServer/$($item.Repository):$tag"
   $envVars = @()
   if ($item.AppName -eq 'kotomake') {
-    $envVars = @('HOST=0.0.0.0', 'NICEGUI_HOST=0.0.0.0', "DATABASE_URL=$databaseUrl", 'REQUIRE_ACTIVE_ENTITLEMENT=1', 'AUTH_REDIRECT_TO_PLANS_ON_NO_ENTITLEMENT=0', 'AUTH_ALLOW_UNSAFE_PAGE_ENTITLEMENT_REDIRECT=0', 'TECHIE_SERVICE_KEY=kotomake') + $optionalRuntimeSettings
+    $envVars = @('HOST=0.0.0.0', 'NICEGUI_HOST=0.0.0.0', "DATABASE_URL=$databaseUrl", 'REQUIRE_ACTIVE_ENTITLEMENT=1', 'AUTH_REDIRECT_TO_PLANS_ON_NO_ENTITLEMENT_REDIRECT=0', 'TECHIE_SERVICE_KEY=kotomake') + $optionalRuntimeSettings + $nativeEmailRuntimeSettings
   }
   elseif ($item.AppName -eq 'kotomigaki') {
     $envVars = @('HOST=0.0.0.0', "DATABASE_URL=$databaseUrl", 'REQUIRE_ACTIVE_ENTITLEMENT=1', 'AUTH_REDIRECT_TO_PLANS_ON_NO_ENTITLEMENT=0', 'AUTH_ALLOW_UNSAFE_PAGE_ENTITLEMENT_REDIRECT=0', 'TECHIE_SERVICE_KEY=kotomigaki') + $optionalRuntimeSettings
@@ -585,7 +688,7 @@ if (-not $SkipWebApps) {
       'PORT=8080',
       'HOST=0.0.0.0',
       'NICEGUI_HOST=0.0.0.0'
-    ) + $commonWebSettings)
+    ) + $commonWebSettings + $nativeEmailRuntimeSettings)
 }
 
 if (-not $SkipKotomegane) {

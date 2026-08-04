@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 from typing import Any, Dict
 
@@ -15,7 +16,7 @@ from .jwt_validator import AuthError, configured_external_directory_id
 
 router = APIRouter(prefix="/api/identity", tags=["identity-linking"])
 
-_ALLOWED_PROVIDERS = {"email", "google", "microsoft"}
+_ALLOWED_PROVIDERS = {"email", "google"}
 _LINKABLE_STATUSES = {
     "bound",
     "legacy_bootstrap",
@@ -31,6 +32,23 @@ def _repository():
     from shared.billing import repository
 
     return repository
+
+
+def _identity_linking_enabled() -> bool:
+    return str(os.environ.get("IDENTITY_LINKING_ENABLED") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _require_identity_linking_enabled() -> None:
+    if not _identity_linking_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "identity_linking_unavailable", "message": "identity linking is not enabled"},
+        )
 
 
 class LinkIntentRequest(BaseModel):
@@ -107,9 +125,10 @@ async def create_link_intent(
     payload: LinkIntentRequest,
     user: Dict[str, Any] = Depends(require_auth),
 ) -> Dict[str, Any]:
+    _require_identity_linking_enabled()
     provider = str(payload.provider or "").strip().lower()
     if provider not in _ALLOWED_PROVIDERS:
-        raise HTTPException(status_code=400, detail="provider must be email, google, or microsoft")
+        raise HTTPException(status_code=400, detail="provider must be email or google")
     if user.get("identity_status") not in _LINKABLE_STATUSES:
         raise HTTPException(
             status_code=409,
@@ -137,6 +156,7 @@ async def complete_link(
     payload: LinkCompleteRequest,
     user: Dict[str, Any] = Depends(require_verified_identity),
 ) -> Dict[str, Any]:
+    _require_identity_linking_enabled()
     state = str(payload.state or "").strip()
     if len(state) < 32 or len(state) > 256:
         raise HTTPException(status_code=400, detail="invalid identity-link state")

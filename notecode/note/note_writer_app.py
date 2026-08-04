@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from core.app_config import get_source_reading_config
 from shared.auth.nicegui_auth import NiceGUIAuthMiddleware
 from shared.auth.api import router as identity_linking_router
+from shared.auth.native_email import router as native_email_router
 from shared.billing.api import router as phase2_billing_router
 from shared.billing.webhook_handler import router as stripe_webhook_router
 from shared.usage.api import router as usage_router
@@ -31,6 +32,7 @@ load_dotenv()
 
 app.include_router(phase2_billing_router)
 app.include_router(identity_linking_router)
+app.include_router(native_email_router)
 app.include_router(stripe_webhook_router)
 app.include_router(usage_router)
 app.add_middleware(NiceGUIAuthMiddleware)

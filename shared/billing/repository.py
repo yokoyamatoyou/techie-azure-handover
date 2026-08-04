@@ -130,6 +130,7 @@ def _normalize_identity_provider_value(value: str) -> str:
 
 
 _ALLOWED_IDENTITY_PROVIDERS = frozenset({"email", "google", "microsoft"})
+_LINKABLE_IDENTITY_PROVIDERS = frozenset({"email", "google"})
 
 
 def _uuid_or_none(value: str) -> Optional[str]:
@@ -555,6 +556,9 @@ def create_identity_link_intent(
     expires_in_seconds: int = 600,
 ) -> Dict[str, Any]:
     """Create a single-use, digest-only identity linking intent."""
+    normalized_requested_provider = _normalize_identity_provider_value(requested_provider)
+    if normalized_requested_provider not in _LINKABLE_IDENTITY_PROVIDERS:
+        raise ValueError("Identity provider is not enabled for account linking")
     with get_cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
@@ -599,7 +603,7 @@ def create_identity_link_intent(
                 principal_id,
                 source_identity_binding_id,
                 state_digest,
-                requested_provider,
+                normalized_requested_provider,
                 max(60, min(int(expires_in_seconds), 900)),
             ),
         )
@@ -620,7 +624,7 @@ def create_identity_link_intent(
                 principal_id,
                 source_identity_binding_id,
                 row["identity_link_intent_id"],
-                requested_provider,
+                normalized_requested_provider,
             ),
         )
         return row
@@ -800,7 +804,7 @@ def complete_identity_link(
         observed_provider = _normalize_identity_provider_value(
             str(existing.get("identity_provider") or "") if existing else identity_provider
         )
-        if requested_provider not in {"email", "google", "microsoft"} or observed_provider != requested_provider:
+        if requested_provider not in _LINKABLE_IDENTITY_PROVIDERS or observed_provider != requested_provider:
             cursor.execute(
                 "UPDATE identity_link_intent SET status = 'cancelled', updated_at = now() WHERE identity_link_intent_id = %s::uuid",
                 (intent["identity_link_intent_id"],),

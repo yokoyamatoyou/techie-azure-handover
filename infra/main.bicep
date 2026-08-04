@@ -63,6 +63,19 @@ param b2cClientId string = ''
 @description('Azure AD B2C policy name')
 param b2cPolicy string = 'B2C_1_signup_signin'
 
+@description('External ID tenant subdomain used only for the native authentication API host.')
+param nativeAuthTenantSubdomain string = ''
+
+@description('TECHIE Hub origin allowed to call the native Email OTP broker.')
+param hubBaseUrl string = 'https://app.techie.jp'
+
+@description('Enable the server-side native Email OTP broker only after configuration review.')
+param nativeEmailAuthEnabled bool = false
+
+@description('Base64url-encoded 32-byte AES key for short-lived native auth flow envelopes.')
+@secure()
+param nativeEmailAuthSessionKey string = ''
+
 @description('Canonical identity resolver mode. Keep legacy until schema and shadow gates pass.')
 @allowed(['legacy', 'shadow', 'enforce'])
 param identityResolverMode string = 'legacy'
@@ -76,9 +89,40 @@ param identityAutoProvision bool = false
 @description('Trust Entra tenant/principal binding claims only after their write controls are audited.')
 param trustEntraBindingClaims bool = false
 
+@description('Confirms that the identity-binding hardening migration was separately approved, applied, and verified.')
+param identityBindingHardeningVerified bool = false
+
+@description('Protected SHA-256 of the independently approved identity-binding hardening apply receipt.')
+@secure()
+param identityBindingHardeningReceiptSha256 string = ''
+
+@description('Confirms that the approved existing-customer bootstrap coverage was applied and verified.')
+param existingCustomerBootstrapVerified bool = false
+
+@description('Protected SHA-256 of the independently approved existing-customer bootstrap receipt.')
+@secure()
+param existingCustomerBootstrapReceiptSha256 string = ''
+
+@description('Enable identity linking only after resolver, hardening, and bootstrap gates pass.')
+param identityLinkingEnabled bool = false
+
 var effectiveIdentityResolverMode = identitySchemaVerified && !empty(b2cTenantId) ? identityResolverMode : 'legacy'
 var effectiveIdentityAutoProvision = effectiveIdentityResolverMode == 'enforce' && identityAutoProvision
 var effectiveTrustEntraBindingClaims = effectiveIdentityResolverMode == 'enforce' && trustEntraBindingClaims
+var effectiveIdentityLinking = identityLinkingEnabled
+  && effectiveIdentityResolverMode == 'enforce'
+  && identitySchemaVerified
+  && identityBindingHardeningVerified
+  && existingCustomerBootstrapVerified
+  && length(identityBindingHardeningReceiptSha256) == 64
+  && length(existingCustomerBootstrapReceiptSha256) == 64
+  && identityBindingHardeningReceiptSha256 != existingCustomerBootstrapReceiptSha256
+  && !effectiveIdentityAutoProvision
+  && !effectiveTrustEntraBindingClaims
+var effectiveNativeEmailAuth = nativeEmailAuthEnabled
+  && !empty(nativeAuthTenantSubdomain)
+  && !empty(b2cClientId)
+  && !empty(nativeEmailAuthSessionKey)
 
 var prefix = 'techie-${environment}'
 var acrName = replace('acr${prefix}', '-', '')
@@ -232,18 +276,29 @@ module kotomake 'modules/container-app.bicep' = if (!useExistingContainerApps) {
       { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
       { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
       { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
+      { name: 'IDENTITY_LINKING_ENABLED', value: effectiveIdentityLinking ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
       { name: 'ENTRA_EXTERNAL_ID_POLICY', value: b2cPolicy }
+      { name: 'ENTRA_CLIENT_ID', value: b2cClientId }
+      { name: 'ENTRA_NATIVE_TENANT_SUBDOMAIN', value: nativeAuthTenantSubdomain }
+      { name: 'EMAIL_NATIVE_AUTH_ENABLED', value: effectiveNativeEmailAuth ? '1' : '0' }
+      { name: 'HUB_BASE_URL', value: hubBaseUrl }
       { name: 'AZURE_B2C_TENANT_NAME', value: b2cTenantName }
       { name: 'AZURE_B2C_CLIENT_ID', value: b2cClientId }
       { name: 'AZURE_B2C_POLICY', value: b2cPolicy }
       { name: 'AUTH_DEV_MODE', value: environment == 'dev' ? '1' : '0' }
     ]
-    secretRefs: concat(sharedSecretRefs, [
-      { name: 'database-url', value: postgresConnectionStringValue }
-    ])
+    secretRefs: concat(
+      sharedSecretRefs,
+      [
+        { name: 'database-url', value: postgresConnectionStringValue }
+      ],
+      effectiveNativeEmailAuth ? [
+        { name: 'email-native-auth-session-key', value: nativeEmailAuthSessionKey }
+      ] : []
+    )
     registryUsername: acrUsername
     registryPassword: acrPassword
   }
@@ -273,6 +328,7 @@ module kotomigaki 'modules/container-app.bicep' = if (!useExistingContainerApps)
       { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
       { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
       { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
+      { name: 'IDENTITY_LINKING_ENABLED', value: effectiveIdentityLinking ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
@@ -339,6 +395,7 @@ module hub 'modules/container-app.bicep' = if (!useExistingContainerApps) {
       { name: 'AUTH_IDENTITY_RESOLVER_MODE', value: effectiveIdentityResolverMode }
       { name: 'AUTH_IDENTITY_AUTO_PROVISION', value: effectiveIdentityAutoProvision ? '1' : '0' }
       { name: 'AUTH_TRUST_ENTRA_BINDING_CLAIMS', value: effectiveTrustEntraBindingClaims ? '1' : '0' }
+      { name: 'IDENTITY_LINKING_ENABLED', value: effectiveIdentityLinking ? '1' : '0' }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_NAME', value: b2cTenantName }
       { name: 'ENTRA_EXTERNAL_ID_TENANT_ID', value: b2cTenantId }
       { name: 'ENTRA_EXTERNAL_ID_CLIENT_ID', value: b2cClientId }
