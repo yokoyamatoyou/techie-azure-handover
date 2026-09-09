@@ -1,0 +1,23 @@
+{
+  "name": "TECHIE SaaS (コトメイク / コトミガキ / コトメガネ / HUB)",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "notecode コトメイク (8080)",
+      "command": "export PYTHONPATH=\"$PWD\"; cd notecode && HEADLESS=1 PORT=8080 HOST=0.0.0.0 AUTH_DEV_MODE=1 OPENAI_API_KEY=\"${OPENAI_API_KEY:-sk-placeholder-dev-not-a-real-key}\" .venv/bin/python -m note.note_writer_app"
+    },
+    {
+      "name": "aio2-main コトミガキ (8081)",
+      "command": "export PYTHONPATH=\"$PWD\"; cd aio2-main && HEADLESS=1 PORT=8081 CONTAINER_ENV=1 AUTH_DEV_MODE=1 OPENAI_API_KEY=\"${OPENAI_API_KEY:-sk-placeholder-dev-not-a-real-key}\" .venv/bin/python run_app.py"
+    },
+    {
+      "name": "kotomegane コトメガネ (8083)",
+      "command": "export PYTHONPATH=\"$PWD\"; cd kotomegane && HEADLESS=1 PORT=8083 AUTH_DEV_MODE=1 OPENAI_API_KEY=\"${OPENAI_API_KEY:-sk-placeholder-dev-not-a-real-key}\" .venv/bin/python kotomegane_app.py"
+    },
+    {
+      "name": "techie-hub HUB (8090)",
+      "command": "cd techie-hub && python3 -m http.server 8090 --bind 0.0.0.0"
+    }
+  ],
+  "ports": [8080, 8081, 8083, 8090]
+}
